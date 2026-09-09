@@ -1,0 +1,29 @@
+✔ same-phase ordinal accommodates initial work plus three repairs (2.072904ms)
+✔ four successful new candidate slices need no retry permission (2.174305ms)
+✔ captured-report failure cannot relaunch with a free-text report-fix reason (0.600409ms)
+✖ bare recovery action without native/host provenance cannot authorize launch (0.575117ms)
+✔ throw preserves unknown execution and error without promoting to product pass (0.299897ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 4
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 52.67542
+
+✖ failing tests:
+
+test at ../../.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/lifecycle.test.mjs:26:1
+✖ bare recovery action without native/host provenance cannot authorize launch (0.575117ms)
+  AssertionError [ERR_ASSERTION]: Missing expected rejection.
+      at async TestContext.<anonymous> (file:///home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/lifecycle.test.mjs:30:2)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /recovery required/,
+    operator: 'rejects',
+    diff: 'simple'
+  }

@@ -1,0 +1,132 @@
+[
+  {
+    "path": "/home/timmypai/.pi/agent/settings.json",
+    "before": "689f6e8b029620aae9ff04eb063a886384fcceb8a1f5272c2388db928be6d815",
+    "after": "315c8bbc9e98190354d059b51485fadc4e3ce72938694706d7c41e86653cbd99"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/AGENTS.md",
+    "before": "d50bc5301b130acf5d6a77a376c46d5d151b97f95ce750ffdced0ef800f70b23",
+    "after": "505254d8a5056d912f5e1bd4972eac0a407a1e7006177817ba7f788f35dc75f7"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.advisor.md",
+    "before": "b0d7e980296ac8557cfa11a775e7f441dd087afbd8c7eb370835063ed3f99e4a",
+    "after": "dea0438d64f4c9228fab69a2460143765655357b3c2ba5337c224175e5fd2c99"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.challenger.md",
+    "before": "8df30024d3424b4739a3c1c075f719775a008cb87642b4a3ae18e56e3d5aee29",
+    "after": "ff9f97e79903593cf36d8e535578d47a70817fa17cd389da4b96ee303c0bfb57"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.curator.md",
+    "before": "ad0bad0a8081c0400965e421bea92af89d368f7c503ec293b2fbf686281e63fa",
+    "after": "eac3759773cbaa5a8f41b4047414784c660a921ead188f6dca70e4ddf7ddb963"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.debugger.md",
+    "before": "b62066b1b7cfda961906a7fd52e715f3ee1a069604c3a52540fa6240a1eefdc0",
+    "after": "e26725ef2f8355963d18ac6793d8107bbc8be0335a8000c9bcc2d8321cbf884c"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.docs.md",
+    "before": "bfa2243422824087dbc79b3115ef5c2b80ad77c7e8116a38b298d195d827c190",
+    "after": "9b496af581b267fc967ab077ba97bec70ed4132c2966d6ca37c3d473407ac942"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.e2e.md",
+    "before": "0a3db48ea463b8e058dd66d549788980a051ed20af5e7e2dad4b238378d66865",
+    "after": "3db00a8c0e734244b1f3d9188bd4c91a644e0c98f0a1e44294b2dec68be2bb21"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.implementer.md",
+    "before": "848296bd50eea8b4b164fedc0ae01050277c0ea54d1abceffff8bb171e7b0e81",
+    "after": "9bd9f05434bd2d7010098406fb0988e3822a6e6d3a163e596acbb271558b75be"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.planner.md",
+    "before": "382e382b0ae5678e73a25507a8f01eb735d54eb613a80446d98b98a3fc893dd1",
+    "after": "359f846e7e9f4649341347998c76a1f2bc4ba0ffe333fa2eb497d118b6ad7ac9"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.qa.md",
+    "before": "adb180d8ff72021fe1d98619af5b789ef037c01f61ece2b5a3c13b21b394a6f8",
+    "after": "f7ca968cad1532b2a673d277ce8fc68dd688fd83a368d137415f0de0d7784cb8"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.release.md",
+    "before": "e78ccd2293c258f1aa58801cefd892aad584b8fd9f67570766646f4c38e98c36",
+    "after": "9ea300b25516f619fbfa60cb876cd49c0415f6b336a16adf39d8049fdf02bab7"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.researcher.md",
+    "before": "472aef37b5c8b9d73b129c253c5140e6eef1ed1da6d6cf32bc8625c577ff4297",
+    "after": "e7577cad724299f0b161b56e2993c4c591463f64b3346e4222e63e2f5506781c"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.reviewer.md",
+    "before": "1cc5d18a3926fb50f4069f9053b4b0bcd21b3b81ce1398b162efce53564cc55e",
+    "after": "fcac94e50c320bd64ab81f269a954b38cf6bea535a9c326228b130562bb0f5d5"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.security.md",
+    "before": "b67fad34d22239da60c85ce9de1bda8b26464c2b1748a43d17450eb70d56f76e",
+    "after": "cd24a2d204b3a58eaa999e7066d8409542090e18326dc5b62042c3c313aaa672"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.verifier.md",
+    "before": "6cafc61d1788241045d7c99f4eab1727b0e04522e41a7a59f68aec11bdda73d9",
+    "after": "f7fbd54e635ba29fa36abb730e00d86f66ebec92d67df337c499fa5789d02bb8"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/skills/team-flow/SKILL.md",
+    "before": "ae8e27aefd1996a5476d1ddf062da782dcd19ddde4650c1230fce51c17059780",
+    "after": "ceda7a85e2d18ab6d0bdfe6604803ffb930fb5863d0f1ffe51571e4fc5fdf72d"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/skills/team-member/SKILL.md",
+    "before": "148a183a3bce9dc0693924e6d149651184a2a560c9ce46e44c0e4ddffced73d1",
+    "after": "105c02334b93474cf62300d21f39a66a93ec6abb96038010db6df8540172abe6"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/prompts/team.md",
+    "before": "5fde3c26d2e7b405062573aa0494b1f206382eadb3d831509632c9c5b237180c",
+    "after": "f88160547b5654d5aca8aa12c47ea8f14e45eb6401d593dc90e7c0d5c3904db1"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/OPERATING-MODEL.md",
+    "before": "5ab2134e433529fe58c79d0f51e171d0e183b423dec1509c6720c76ee39553b4",
+    "after": "ed6b1ea7925a035b8c611d431a22c8b41faf294a9b3c83ccd728bf0815be9f68"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/GOAL-TEAMS.md",
+    "before": "d09586a812fcb9089d06c9f9162bef28b18a8fefb97f0bfb7f9daea6b681e0c5",
+    "after": "a043c7031901209b42bcce2ae82bccd005881d3373b8e43ac1c5d644db1fdf8a"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/OUTCOME-PRACTICE.md",
+    "before": "e4a44736ca6a5add055316e81956c1438eda0c0e766faaa58b6c92229709c317",
+    "after": "2c0842c7019461e432f6e51300dfd6f2e847e088184ff96977c9f9bd5271bb85"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/gate-candidate.js",
+    "before": "f47b58b4e19e0d65690b5268ab972d9cf04bf94ea878068b0175c804aaaeca6b",
+    "after": "5bcc8b989e8ce468fa1307f6c82bf46bc9275f0453bbea3b9fa79e5bdda60ef3"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/check-config.mjs",
+    "before": "e98b425b4e549c0bfed0d637a2a6a178bbbd321d58bb511dbf2f377ae7791d9c",
+    "after": "7934b848c1148ce6cc1a4e3e9609af69af4d3fb0eac3ebfa6cc7da52212073da"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/check-team-outcomes.mjs",
+    "before": "7a2881715adcd929c4086ec6bac2ed9a46794359a13a91d530e78130226ca39f",
+    "after": "d0188e3351980eddd346cafd2b6cd206f5fb7ae073a4ef07e6b1a4921239a26e"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/check-goal-team.mjs",
+    "before": "c69ec5ea30374f1afbe37466ec3d371344913777f32e8ade374aa1d7636c1eab",
+    "after": "393503b6f0c6ed24212929865402d6a7c3b1221444013b8d268138c96e5e1c4c"
+  }
+]

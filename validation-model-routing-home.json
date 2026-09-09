@@ -1,0 +1,74 @@
+{
+  "status": "PASS",
+  "scope": "model-routing-only",
+  "modelCalls": 0,
+  "childAgents": 0,
+  "cwd": "/home/timmypai",
+  "roles": [
+    {
+      "name": "team.advisor",
+      "model": "openai-codex/gpt-6-astra",
+      "thinking": "high"
+    },
+    {
+      "name": "team.challenger",
+      "model": "openai-codex/gpt-5.6-terra",
+      "thinking": "high"
+    },
+    {
+      "name": "team.curator",
+      "model": "openai-codex/gpt-5.6-luna",
+      "thinking": "low"
+    },
+    {
+      "name": "team.docs",
+      "model": "openai-codex/gpt-5.6-luna",
+      "thinking": "medium"
+    },
+    {
+      "name": "team.e2e",
+      "model": "openai-codex/gpt-5.6-luna",
+      "thinking": "medium"
+    },
+    {
+      "name": "team.implementer",
+      "model": "openai-codex/gpt-5.6-luna",
+      "thinking": "max"
+    },
+    {
+      "name": "team.planner",
+      "model": "openai-codex/gpt-5.6-sol",
+      "thinking": "xhigh"
+    },
+    {
+      "name": "team.qa",
+      "model": "openai-codex/gpt-5.6-luna",
+      "thinking": "medium"
+    },
+    {
+      "name": "team.release",
+      "model": "openai-codex/gpt-5.6-luna",
+      "thinking": "high"
+    },
+    {
+      "name": "team.researcher",
+      "model": "openai-codex/gpt-5.6-luna",
+      "thinking": "medium"
+    },
+    {
+      "name": "team.reviewer",
+      "model": "openai-codex/gpt-5.6-terra",
+      "thinking": "high"
+    },
+    {
+      "name": "team.security",
+      "model": "openai-codex/gpt-5.6-terra",
+      "thinking": "high"
+    },
+    {
+      "name": "team.verifier",
+      "model": "openai-codex/gpt-5.6-luna",
+      "thinking": "low"
+    }
+  ]
+}

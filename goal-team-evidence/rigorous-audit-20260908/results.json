@@ -1,0 +1,49 @@
+{
+  "mode": "offline counterexamples, no model/child/live state",
+  "findings": [
+    {
+      "id": "F1",
+      "case": "initial + FOUR explicitly identified host-rejected implementation repairs",
+      "observed": {
+        "stubLaunches": 5,
+        "repairs": 0
+      },
+      "expected": "fourth repair refused, successes alone must not be treated as final product acceptance"
+    },
+    {
+      "id": "F2a",
+      "case": "recovery continue succeeds, then final host acceptance",
+      "observed": "unresolved retained step: goal-step.task.work.1",
+      "originalStatus": "blocked",
+      "originalRunId": null,
+      "recoveryChildRunId": "fixture-child-work"
+    },
+    {
+      "id": "F2b",
+      "case": "unrecovered blocked record with runId, active marker cleared",
+      "observed": "verified",
+      "limitation": "parent state is trusted; this is a consistency hole, not an adversarial security bypass"
+    },
+    {
+      "id": "F3",
+      "case": "report-only recovery then distinct C2 work by same task/role",
+      "observed": "Native terminal receipt and parent recovery required; text retry is not replay authority",
+      "nextStubLaunches": 0,
+      "qualification": "requires a second explicit continue recovery, not necessarily unsafe; no documented report-only-to-resolved finalization"
+    },
+    {
+      "id": "F4",
+      "case": "invalid taskId passes public dispatch preparation and state setup",
+      "observed": "step helper rejects only after setup"
+    },
+    {
+      "id": "F5",
+      "case": "same missing-skill role ordinary handoff vs Goal public preparation",
+      "observed": {
+        "ordinary": "prepared",
+        "goal": "rejected"
+      },
+      "qualification": "ordinary path docs require separate check-config; helper parity is not enforced"
+    }
+  ]
+}

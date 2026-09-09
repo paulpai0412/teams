@@ -1,0 +1,21 @@
+{
+  "cwd": "/home/timmypai",
+  "sourcePaths": [
+    ".pi/agent/teams/host-evidence.mjs",
+    ".pi/agent/teams/check-host-evidence.mjs",
+    ".pi/agent/teams/check-goal-completion.mjs",
+    ".pi/agent/teams/check-goal-hold-wake.mjs",
+    ".pi/agent/teams/patches/goal-team-delivery/verify-runtime.mjs",
+    ".pi/agent/teams/patches/goal-team-delivery/manifest.json",
+    ".pi/agent/teams/patches/goal-team-delivery/preimage",
+    ".pi/agent/teams/patches/goal-team-delivery/postimage",
+    ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions"
+  ],
+  "argv": [
+    "/home/timmypai/.nvm/versions/node/v24.18.0/bin/node",
+    "/home/timmypai/.pi/agent/teams/patches/goal-team-delivery/verify-runtime.mjs",
+    "--source-root",
+    "/home/timmypai/.pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions"
+  ],
+  "timeoutMs": 120000
+}

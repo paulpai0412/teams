@@ -1,0 +1,18 @@
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: missing sealed host evidence must block the actual completion entrypoint
+
+1 !== 0
+
+    at file:///home/timmypai/.pi/agent/teams/check-goal-completion.mjs:314:14 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: 1,
+  expected: 0,
+  operator: 'strictEqual',
+  diff: 'simple'
+}
+
+Node.js v24.18.0

@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "patchId": "pi-goal-x-0.30.5-goal-team-delivery-v1",
+  "targetRoot": "/tmp/team-reliability-package-Q6XRp4/pi-goal-x",
+  "packageVersion": "0.30.5",
+  "createdAt": "2026-09-08T03:34:22.174Z",
+  "state": "reverted",
+  "files": [
+    {
+      "path": "extensions/goal-completion.ts",
+      "existed": true,
+      "beforeSha256": "787fcf7eeebec6f52feaeef2fff1752ded6a0cbbe7cf4b11faace960c1b7b311",
+      "postSha256": "d3de66b4606ba9f6aba206f0307032979ada5e0e306f9917076652256a398d1b",
+      "backupPath": "files/extensions/goal-completion.ts"
+    },
+    {
+      "path": "extensions/goal-task-tools.ts",
+      "existed": true,
+      "beforeSha256": "02d4c4e855759256d510b1a86b24890f452e73b85816369af23419fa8b9283ec",
+      "postSha256": "c283b242dc8f15c46cb0070d0f40d2de2529f0cc8a58326596fa9e8e61b81c2e",
+      "backupPath": "files/extensions/goal-task-tools.ts"
+    },
+    {
+      "path": "extensions/goal-team-evidence.mjs",
+      "existed": false,
+      "beforeSha256": null,
+      "postSha256": "32386d8fe1fd3687841709b6bbf129ca0ea8c9021016f1c7ca17dc36a3cf01dd",
+      "backupPath": null
+    }
+  ],
+  "updatedAt": "2026-09-08T03:34:32.705Z"
+}

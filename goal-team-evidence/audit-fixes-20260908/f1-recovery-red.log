@@ -1,0 +1,48 @@
+✔ a terminal reconciled throw can be accepted without rewriting its failed history (26.854423ms)
+✔ unreconciled failure with a runId cannot pass merely by clearing the marker (18.829697ms)
+✔ writer self-pass does not authorize another same-role step without parent disposition (19.355812ms)
+✖ host-rejected writer passes consume three repairs, never a fourth (37.602284ms)
+✖ four parent-accepted slices continue without spending repair budget (20.204508ms)
+✔ recovery with a foreign request or child identity cannot settle execution (24.284386ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 4
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 247.585914
+
+✖ failing tests:
+
+test at ../../.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/reconciliation.test.mjs:78:1
+✖ host-rejected writer passes consume three repairs, never a fourth (37.602284ms)
+  AssertionError [ERR_ASSERTION]: unresolved step record required
+      at prepareGoalRecovery (file:///home/timmypai/.pi/agent/teams/goal-recovery.mjs:27:10)
+      at Object.recovery (file:///home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/reconciliation.test.mjs:42:10)
+      at TestContext.<anonymous> (file:///home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/reconciliation.test.mjs:84:20)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at ../../.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/reconciliation.test.mjs:92:1
+✖ four parent-accepted slices continue without spending repair budget (20.204508ms)
+  AssertionError [ERR_ASSERTION]: unresolved step record required
+      at prepareGoalRecovery (file:///home/timmypai/.pi/agent/teams/goal-recovery.mjs:27:10)
+      at Object.recovery (file:///home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/reconciliation.test.mjs:42:10)
+      at TestContext.<anonymous> (file:///home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/reconciliation.test.mjs:97:20)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }

@@ -1,0 +1,180 @@
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/prelaunch-fix-20260909/before/0-goal-task-step.js
++++ /home/timmypai/.pi/agent/teams/goal-task-step.js
+@@ -118,12 +118,14 @@
+   // Child reported is not parent acceptance. Every prior slice needs a terminal
+   // disposition; continue is free, evidence-backed retry consumes a repair.
+   const recovery = previous.recovery;
+-  const recoveryValid = ['reported', 'blocked', 'dispatching'].includes(previous.status) && recovery &&
++  const recoveryValid = ['reported', 'blocked', 'dispatching', 'unlaunched'].includes(previous.status) && recovery &&
+     recovery.requestDigest === previous.requestDigest && /^[a-f0-9]{64}$/.test(previous.requestDigest ?? '') &&
+     ['nativeStatusRef', 'hostReceiptRef'].every(field => typeof recovery[field] === 'string' && recovery[field].startsWith('/')) &&
+     ['nativeDigest', 'hostReceiptDigest'].every(field => typeof recovery[field] === 'string' && /^[a-f0-9]{64}$/.test(recovery[field])) &&
+-    typeof recovery.childRunId === 'string' && recovery.childRunId.trim() &&
+-    (previous.runId == null || previous.runId === recovery.childRunId) &&
++    (previous.status === 'unlaunched'
++      ? recovery.noLaunch === true && previous.runId == null && recovery.childRunId == null
++      : recovery.noLaunch !== true && typeof recovery.childRunId === 'string' && recovery.childRunId.trim() &&
++        (previous.runId == null || previous.runId === recovery.childRunId)) &&
+     typeof recovery.reason === 'string' && recovery.reason.trim() && recovery.reason.length <= 1024;
+   if (recovery?.action === 'report-only')
+     throw new Error('Report-only never authorizes another launch; finish report handling, then prepare explicit continue recovery for genuinely new work');
+@@ -141,9 +143,19 @@
+ }
+ // Save the bounded intent first: storage failure cannot orphan an active marker.
+ // A later crash/throw still retains intent; never blindly replay a different key.
+-await state.set(recordKey, { ...identity, status: "dispatching" });
+-await state.set(budgetKey, { version: 2, repairs, lastRecord: recordKey, sourceState: request.sourceState });
+-await state.set("teamGoalActiveStep", recordKey);
++try {
++  await state.set(recordKey, { ...identity, status: "dispatching" });
++  await state.set(budgetKey, { version: 2, repairs, lastRecord: recordKey, sourceState: request.sourceState });
++  await state.set("teamGoalActiveStep", recordKey);
++} catch (error) {
++  // Positive proof from control flow BEFORE runs.run, not inferred from absent
++  // child status. If saving this proof also fails, retain unknown and fail closed.
++  try {
++    // Shorter than dispatching: a size-limit failure needs no extra state space.
++    await state.set(recordKey, { ...identity, status: 'unlaunched' });
++  } catch { /* Keep the original storage failure; no launch is attempted. */ }
++  throw error;
++}
+ const schema = {
+   type: "object",
+   properties: {
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/prelaunch-fix-20260909/before/1-goal-recovery.mjs
++++ /home/timmypai/.pi/agent/teams/goal-recovery.mjs
+@@ -24,18 +24,25 @@
+   assert.equal(native.cwd, mission.projectRoot, 'native mission cwd mismatch');
+   const saved = readJson(path.join(mission.missionDir, mission.missionId, 'state.json'));
+   const record = saved[input.recordKey];
+-  assert.ok(record && ['dispatching', 'blocked', 'reported'].includes(record.status), 'retained step record required');
++  assert.ok(record && ['dispatching', 'blocked', 'reported', 'unlaunched'].includes(record.status), 'retained step record required');
+   const request = prepareGoalRequest(readJson(record.requestRef), record.requestRef);
+   assert.equal(request.requestDigest, record.requestDigest, 'saved request changed');
+   assert.deepEqual(saved.teamGoalBinding, {goalId: request.goalId, cwd: request.cwd}, 'goal binding mismatch');
+   assert.equal(request.cwd, native.cwd, 'request cwd mismatch');
+   const key = request.taskId + '.' + request.phase + '.' + request.attempt;
+   assert.equal(input.recordKey, 'goal-step.' + key, 'record key mismatch');
+-  const steps = native.steps?.filter(step => step.workflowKey === key);
+-  assert.ok(steps?.length === 1 && steps[0].agent === request.agent && typeof steps[0].runId === 'string' && steps[0].runId.trim(), 'unique native child identity required');
++  assert.ok(Array.isArray(native.steps), 'native steps evidence required');
++  const steps = native.steps.filter(step => step.workflowKey === key);
++  const noLaunch = record.status === 'unlaunched';
+   const child = steps[0];
+-  assert.ok(['completed', 'failed', 'stopped', 'cancelled'].includes(child.status), 'native child must be terminal');
+-  if (record.runId) assert.equal(child.runId, record.runId, 'native run identity mismatch');
++  if (noLaunch) {
++    assert.ok(record.runId == null && steps.length === 0, 'pre-launch proof conflicts with native child identity');
++    assert.notEqual(input.action, 'report-only', 'no child report exists for a pre-launch failure');
++  } else {
++    assert.ok(steps.length === 1 && child.agent === request.agent && typeof child.runId === 'string' && child.runId.trim(), 'unique native child identity required');
++    assert.ok(['completed', 'failed', 'stopped', 'cancelled'].includes(child.status), 'native child must be terminal');
++    if (record.runId) assert.equal(child.runId, record.runId, 'native run identity mismatch');
++  }
+   if (input.action === 'retry' && record.outcomes?.product === 'pass')
+     assert.ok(typeof input.rejection === 'string' && input.rejection.trim(), 'captured pass requires separate parent product-rejection evidence, never repeat work just for a report');
+   const rejection = input.rejection === undefined ? {} : {
+@@ -48,7 +55,8 @@
+   const checked = verifyCheck(input.check, input.receipt);
+   const recovery = {
+     action: input.action, reason: input.reason, requestDigest: record.requestDigest, ...rejection,
+-    nativeStatusRef: input.statusPath, nativeDigest: digest(native), childRunId: child.runId,
++    nativeStatusRef: input.statusPath, nativeDigest: digest(native),
++    ...(noLaunch ? {noLaunch: true} : {childRunId: child.runId}),
+     hostReceiptRef: input.receipt, hostReceiptDigest: digest(readJson(input.receipt)),
+     sourceState: 'sha256:' + checked.sourceDigest,
+   };
+@@ -66,7 +74,7 @@
+     'const active = await state.get("teamGoalActiveStep");',
+     'if (active != null && active !== key) throw new Error("Another active intent must be reconciled first");',
+     'await state.set(key, next);',
+-    'if (active === key) await state.set("teamGoalActiveStep", null);',
++    'if (active === key || ' + JSON.stringify(noLaunch) + ') await state.set("teamGoalActiveStep", null);',
+     'return {status:"reconciled", recordKey:key, action:' + JSON.stringify(input.action) + '};',
+   ].join('\n');
+   return {missionId: mission.missionId, cwd: request.cwd, setupScript, recovery};
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/prelaunch-fix-20260909/before/2-host-evidence.mjs
++++ /home/timmypai/.pi/agent/teams/host-evidence.mjs
+@@ -441,13 +441,15 @@
+ // source may change after a repair; never rerun historical checks to settle it.
+ export function goalStepSettled(record) {
+   const recovery = record?.recovery;
+-  return !!(record && ['reported', 'blocked', 'dispatching'].includes(record.status) &&
++  return !!(record && ['reported', 'blocked', 'dispatching', 'unlaunched'].includes(record.status) &&
+     recovery && ['continue', 'retry', 'report-only'].includes(recovery.action) &&
+     recovery.requestDigest === record.requestDigest && /^[a-f0-9]{64}$/.test(record.requestDigest ?? '') &&
+     ['nativeStatusRef', 'hostReceiptRef'].every(field => typeof recovery[field] === 'string' && recovery[field].startsWith('/')) &&
+     ['nativeDigest', 'hostReceiptDigest'].every(field => typeof recovery[field] === 'string' && /^[a-f0-9]{64}$/.test(recovery[field])) &&
+-    typeof recovery.childRunId === 'string' && recovery.childRunId.trim() &&
+-    (record.runId == null || record.runId === recovery.childRunId) &&
++    (record.status === 'unlaunched'
++      ? recovery.noLaunch === true && record.runId == null && recovery.childRunId == null && recovery.action !== 'report-only'
++      : recovery.noLaunch !== true && typeof recovery.childRunId === 'string' && recovery.childRunId.trim() &&
++        (record.runId == null || record.runId === recovery.childRunId)) &&
+     typeof recovery.sourceState === 'string' && recovery.sourceState.trim() &&
+     (recovery.action !== 'retry' || record.outcomes?.product !== 'pass' ||
+       (typeof recovery.rejectionRef === 'string' && recovery.rejectionRef.startsWith('/') && /^[a-f0-9]{64}$/.test(recovery.rejectionDigest ?? ''))) &&
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/prelaunch-fix-20260909/before/3-goal-team-evidence.mjs
++++ /home/timmypai/.pi/agent/npm/node_modules/pi-goal-x/extensions/goal-team-evidence.mjs
+@@ -441,13 +441,15 @@
+ // source may change after a repair; never rerun historical checks to settle it.
+ export function goalStepSettled(record) {
+   const recovery = record?.recovery;
+-  return !!(record && ['reported', 'blocked', 'dispatching'].includes(record.status) &&
++  return !!(record && ['reported', 'blocked', 'dispatching', 'unlaunched'].includes(record.status) &&
+     recovery && ['continue', 'retry', 'report-only'].includes(recovery.action) &&
+     recovery.requestDigest === record.requestDigest && /^[a-f0-9]{64}$/.test(record.requestDigest ?? '') &&
+     ['nativeStatusRef', 'hostReceiptRef'].every(field => typeof recovery[field] === 'string' && recovery[field].startsWith('/')) &&
+     ['nativeDigest', 'hostReceiptDigest'].every(field => typeof recovery[field] === 'string' && /^[a-f0-9]{64}$/.test(recovery[field])) &&
+-    typeof recovery.childRunId === 'string' && recovery.childRunId.trim() &&
+-    (record.runId == null || record.runId === recovery.childRunId) &&
++    (record.status === 'unlaunched'
++      ? recovery.noLaunch === true && record.runId == null && recovery.childRunId == null && recovery.action !== 'report-only'
++      : recovery.noLaunch !== true && typeof recovery.childRunId === 'string' && recovery.childRunId.trim() &&
++        (record.runId == null || record.runId === recovery.childRunId)) &&
+     typeof recovery.sourceState === 'string' && recovery.sourceState.trim() &&
+     (recovery.action !== 'retry' || record.outcomes?.product !== 'pass' ||
+       (typeof recovery.rejectionRef === 'string' && recovery.rejectionRef.startsWith('/') && /^[a-f0-9]{64}$/.test(recovery.rejectionDigest ?? ''))) &&
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/prelaunch-fix-20260909/before/4-GOAL-TEAMS.md
++++ /home/timmypai/.pi/agent/teams/GOAL-TEAMS.md
+@@ -18,7 +18,7 @@
+ 
+ 新工作優先使用 [EVIDENCE-PRACTICE.md](EVIDENCE-PRACTICE.md)：先 formatter／freeze，再 host receipt；以既有 `goal-request.mjs --dispatch` 產生 setup/dispatch args，不手抄 identity。只有已套用並驗證 delivery patch、且 runtime 已 reload 的新／明確重設 task list，才使用新 evidence reference。舊 Goal 不自動轉換。
+ 
+-`patches/goal-team-delivery/` 是 reliability v2 之上的增量；後續 flow/efficiency/usability overlays 已改變部分 hashes，舊 wrapper 拒絕並不代表可重套。已安裝組合的 read-only 核對見 `goal-team-evidence/audit-fixes-20260908/check-installed.mjs` 與該目錄報告；它不是升級 installer，任何不連續仍須停止。REQUIRED review/live canary 不因 offline fixture PASS 而免除。
++`patches/goal-team-delivery/` 是 reliability v2 之上的增量；後續 flow/efficiency/usability overlays 已改變部分 hashes，舊 wrapper 拒絕並不代表可重套。已安裝組合的 read-only 核對見 `goal-team-evidence/prelaunch-fix-20260909/check-installed.mjs` 與該目錄報告；它不是升級 installer，任何不連續仍須停止。REQUIRED review/live canary 不因 offline fixture PASS 而免除。
+ 
+ ## 使用方式
+ 
+@@ -61,7 +61,7 @@
+ PI_OFFLINE=1 PI_MEMORY_EXIT_SUMMARY=off node ~/.pi/agent/teams/check-config.mjs --roles-only "$PWD"
+ PI_OFFLINE=1 PI_MEMORY_EXIT_SUMMARY=off node ~/.pi/agent/teams/check-goal-team.mjs "$PWD"
+ node ~/.pi/agent/teams/check-goal-hold-wake.mjs
+-node ~/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/check-installed.mjs
++node ~/.pi/agent/teams/goal-team-evidence/prelaunch-fix-20260909/check-installed.mjs
+ node ~/.pi/agent/teams/check-goal-completion.mjs
+ ```
+ 
+@@ -169,6 +169,22 @@
+ 相同 key 只回 reconcile；準備後的 digest 不同就拒絕。舊 v1 record 仍可讀且不重派，
+ 不自動搬移或刪除舊 mission 歷史。sandbox 無 filesystem/crypto，不能驗證 parent
+ 是否原樣使用 prepared packet；digest 是 correlation，不是來源／驗收 attestation。
++
++### 派工前保存失敗（2026-09-09）
++
++若 intent／budget／active-marker 的 await 寫入拋錯，helper 在 **尚未呼叫 runs.run**
++的 catch 內嘗試保存 `status: unlaunched`，再重拋原錯誤。此狀態比 dispatching 小，
++原 intent 已能寫入時不額外佔用 state 配額；不將產品改成成功。
++`goal-recovery.mjs` 仍須核對原 request/mission、terminal native workflow、明確 steps
++陣列中沒有相符 child、fresh host receipt，才保存 `recovery.noLaunch:true` 並收尾。
++同 key 仍只回 reconcile；真的要繼續工作用新 key，continue/retry仍由parent明確決定。
++已保存的 repair 計數不自動退還或重置；quota不足時先處理容量，不能刪歷史繞過驗收。
++
++**空 steps／找不到 status 不是無launch證明**；必須有該 catch 保存的正面標記。
++若標記也保存失敗、進程在catch前被殺、已有runId或matching child、native未終止或
++證據缺失，仍 blocked/unknown，不猜補舊紀錄。舊 dispatching 不自動轉 unlaunched。
++受影響 runtime mirror 需 reload；parent 單owner／非CAS限制不變。當前回歸與相容性
++見 `goal-team-evidence/prelaunch-fix-20260909/README.md`。
+ 
+ ## 續跑、暫停與異常
+ 

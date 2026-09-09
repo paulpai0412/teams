@@ -1,0 +1,19 @@
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+2 !== 1
+
+    at scenario (file:///home/timmypai/.pi/agent/teams/goal-team-evidence/flow-fixes-20260908/check-steering.mjs:40:35)
+    at async file:///home/timmypai/.pi/agent/teams/goal-team-evidence/flow-fixes-20260908/check-steering.mjs:44:48 {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: 2,
+  expected: 1,
+  operator: 'strictEqual',
+  diff: 'simple'
+}
+
+Node.js v24.18.0

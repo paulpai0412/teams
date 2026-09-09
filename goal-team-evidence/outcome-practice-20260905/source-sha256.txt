@@ -1,0 +1,8 @@
+f47b58b4e19e0d65690b5268ab972d9cf04bf94ea878068b0175c804aaaeca6b  /home/timmypai/.pi/agent/teams/gate-candidate.js
+7a2881715adcd929c4086ec6bac2ed9a46794359a13a91d530e78130226ca39f  /home/timmypai/.pi/agent/teams/check-team-outcomes.mjs
+e98b425b4e549c0bfed0d637a2a6a178bbbd321d58bb511dbf2f377ae7791d9c  /home/timmypai/.pi/agent/teams/check-config.mjs
+e4a44736ca6a5add055316e81956c1438eda0c0e766faaa58b6c92229709c317  /home/timmypai/.pi/agent/teams/OUTCOME-PRACTICE.md
+97daeeee7982a85d60b01d7e007e59d781b19f732e19e819dbbd38744c7789d7  /home/timmypai/.pi/agent/teams/OPERATING-MODEL.md
+ae8e27aefd1996a5476d1ddf062da782dcd19ddde4650c1230fce51c17059780  /home/timmypai/.pi/agent/skills/team-flow/SKILL.md
+148a183a3bce9dc0693924e6d149651184a2a560c9ce46e44c0e4ddffced73d1  /home/timmypai/.pi/agent/skills/team-member/SKILL.md
+5fde3c26d2e7b405062573aa0494b1f206382eadb3d831509632c9c5b237180c  /home/timmypai/.pi/agent/prompts/team.md

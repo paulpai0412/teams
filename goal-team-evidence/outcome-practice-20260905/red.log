@@ -1,0 +1,19 @@
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: {"ok":true,"runId":"fixture","structuredOutput":{"verdict":"pass","sourceState":"fixture-sha+dirty-digest","evidence":["fixture.log"],"residualRisks":[]}}
+
+'pass' !== 'blocked'
+
+    at checkOutcomeGate (file:///home/timmypai/.pi/agent/teams/check-team-outcomes.mjs:35:12)
+    at async file:///home/timmypai/.pi/agent/teams/check-team-outcomes.mjs:47:52 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: 'pass',
+  expected: 'blocked',
+  operator: 'strictEqual',
+  diff: 'simple'
+}
+
+Node.js v24.18.0

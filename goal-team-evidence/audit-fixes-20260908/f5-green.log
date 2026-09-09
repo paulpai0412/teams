@@ -1,0 +1,16 @@
+✔ invalid taskId and phase are rejected at both preparation entrypoints (3.532829ms)
+✔ ordinary and Goal preparation both reject the same missing-skill override (1305.657273ms)
+✔ a terminal reconciled throw can be accepted without rewriting its failed history (33.087082ms)
+✔ unreconciled failure with a runId cannot pass merely by clearing the marker (21.24113ms)
+✔ writer self-pass does not authorize another same-role step without parent disposition (18.987941ms)
+✔ host-rejected writer passes consume three repairs, never a fourth (104.843701ms)
+✔ four parent-accepted slices continue without spending repair budget (25.1358ms)
+✔ recovery with a foreign request or child identity cannot settle execution (24.183376ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1405.02466

@@ -1,0 +1,29 @@
+{
+  "files": [
+    {
+      "path": "/home/timmypai/.pi/agent/teams/goal-task-step.js",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/prelaunch-fix-20260909/before/0-goal-task-step.js",
+      "preSha256": "6b0e2f8ecc2049e8c9d54aa1a113a39c8721509c87662828cb7e197898e09412"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/goal-recovery.mjs",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/prelaunch-fix-20260909/before/1-goal-recovery.mjs",
+      "preSha256": "1ab9ac35f06f16b048ee16f49a3102a04d0c4fcbc5d2f8c5963f2debc38aac31"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/host-evidence.mjs",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/prelaunch-fix-20260909/before/2-host-evidence.mjs",
+      "preSha256": "16109fc7460103ad6a1dc79ca62c68affce0c4d635a268094c9457b5bc04418b"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/npm/node_modules/pi-goal-x/extensions/goal-team-evidence.mjs",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/prelaunch-fix-20260909/before/3-goal-team-evidence.mjs",
+      "preSha256": "16109fc7460103ad6a1dc79ca62c68affce0c4d635a268094c9457b5bc04418b"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/GOAL-TEAMS.md",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/prelaunch-fix-20260909/before/4-GOAL-TEAMS.md",
+      "preSha256": "422fb22df23777e60acad6e2fdf354c293b829bdea069896a370e35b23e2b02f"
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+{"status":"PASS","cases":16,"sourceRoot":"/home/timmypai/.pi/agent/npm/node_modules/pi-goal-x/extensions","modelCalls":0,"childAgents":0,"limitation":"Real completion entrypoints; --evidence also uses native GoalService, actual disposable Goal files and a buffered-state boundary. Fake auditor, no existing Goal mutation or live model."}

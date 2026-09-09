@@ -1,0 +1,48 @@
+✔ CLI still prepares valid attempts without launching a child (3456.491847ms)
+✔ CLI rejects out-of-budget attempts before creating dispatch artifacts (337.322977ms)
+✔ existing host verification reuses unaffected evidence without executing the check again (35.528131ms)
+✔ same-phase ordinal accommodates initial work plus three repairs (1.867868ms)
+✔ four successful new candidate slices need no retry permission (1.88544ms)
+✔ captured-report failure cannot relaunch with a free-text report-fix reason (0.402267ms)
+✔ bare recovery action without native/host provenance cannot authorize launch (0.504765ms)
+✔ throw preserves unknown execution and error without promoting to product pass (0.340232ms)
+✔ public API rejects no-shell execution exactly like CLI (181.227584ms)
+✔ declared missing skill blocks both API and CLI before artifacts (1713.953271ms)
+✔ terminal native receipt + fresh host check produces zero-launch guarded recovery (45.731161ms)
+✔ active native child, foreign identity, stale source, changed record all fail closed (28.028959ms)
+✔ captured pass without product rejection cannot retry; report-only never authorizes replay (27.20283ms)
+✔ work/checks reach the child and summary-only cannot pass a contracted review (4.008382ms)
+✔ renaming phases cannot reset three authorized repairs after initial failure (1.861703ms)
+✔ failed execution keeps a captured product report distinct, never accepts it (0.448071ms)
+✔ missing report cannot trigger another same-source launch after clearing active marker (0.554713ms)
+✔ normal successful progression does not require pretending a failure occurred (0.56718ms)
+✔ missing, foreign, duplicate and unobserved criteria never pass (0.889214ms)
+✔ static review cannot pass on a different final source binding (0.354542ms)
+✔ declared execution command is retained once in the actual child task (0.313564ms)
+✔ matched criterion observations can pass without running browser in static role (0.350825ms)
+✔ new dispatch requires an explicit responsibility instead of silently dropping work (38.126056ms)
+✔ effective no-shell profile cannot receive an execution command (195.540024ms)
+✔ capable verifier prepares explicit browser checks without executing them (956.649877ms)
+✔ parent-only checks and undeclared browser execution fail before dispatch (60.51001ms)
+✔ browser work cannot be assigned to static QA even with no command declared (27.855039ms)
+✔ invalid taskId and phase are rejected at both preparation entrypoints (4.064848ms)
+✔ ordinary and Goal preparation both reject the same missing-skill override (1543.383063ms)
+✔ a terminal reconciled throw can be accepted without rewriting its failed history (35.643066ms)
+✔ unreconciled failure with a runId cannot pass merely by clearing the marker (25.565083ms)
+✔ writer self-pass does not authorize another same-role step without parent disposition (25.047993ms)
+✔ host-rejected writer passes consume three repairs, never a fourth (128.574473ms)
+✔ four parent-accepted slices continue without spending repair budget (32.206874ms)
+✔ report-only cannot replay work; explicit continue after report resolution permits the next slice (29.717959ms)
+✔ a declared repair cannot borrow a free continue decision or an empty rejection (26.93901ms)
+✔ terminal launch with a failed final record save can be recovered and accepted (27.305513ms)
+✔ fifty reconciled successful slices fit native state without rerunning the host check (166.171566ms)
+ℹ 50 reconciled slices: 57691 bytes; one host check receipt reused
+✔ recovery with a foreign request or child identity cannot settle execution (25.259828ms)
+ℹ tests 39
+ℹ suites 0
+ℹ pass 39
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3835.208461

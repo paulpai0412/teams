@@ -1,0 +1,12 @@
+✔ work/checks reach the child and summary-only cannot pass a contracted review (1.66751ms)
+✔ renaming phases cannot reset the per-task role admission ceiling (1.687849ms)
+✔ failed execution keeps a captured product report distinct, never accepts it (0.260242ms)
+✔ matched criterion observations can pass without running browser in static role (0.201053ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 44.00952

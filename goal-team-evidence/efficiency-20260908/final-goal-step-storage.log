@@ -1,0 +1,1 @@
+{"status":"PASS","cases":8,"steps":50,"stateBytes":38386,"modelCalls":0,"childAgents":0,"limitation":"Synthetic packets and fake launches; actual packet CLI/helper/native state persistence, including real capacity rejection."}

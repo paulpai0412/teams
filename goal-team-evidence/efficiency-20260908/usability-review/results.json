@@ -1,0 +1,36 @@
+{
+  "modelCalls": 0,
+  "realChildLaunches": 0,
+  "results": [
+    {
+      "case": "imported preparation bypasses effective shell preflight",
+      "fakeLaunches": 1,
+      "status": "reported"
+    },
+    {
+      "case": "CLI prepares e2e despite current declared missing browser skill",
+      "exit": 0,
+      "hasDispatchArgs": true,
+      "stderr": ""
+    },
+    {
+      "case": "four legitimate successful slice reviews",
+      "fakeLaunches": 3,
+      "fourthRejected": "Task/role admission limit reached; do not rename phase or change role to retry"
+    },
+    {
+      "case": "same-source captured report failure reruns work",
+      "fakeLaunches": 2,
+      "status": "reported"
+    },
+    {
+      "case": "thrown native failure classification",
+      "record": {
+        "version": 2,
+        "requestDigest": "4683b63ec3d593bbc0854d34bd0379ea96423408edf41be1b6803ccda2d5ba48",
+        "requestRef": "/tmp/team-audit-xqEU66/throw.json",
+        "status": "dispatching"
+      }
+    }
+  ]
+}

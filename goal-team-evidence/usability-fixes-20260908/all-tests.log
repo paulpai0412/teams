@@ -1,0 +1,36 @@
+✔ CLI still prepares valid attempts without launching a child (3446.456223ms)
+✔ CLI rejects out-of-budget attempts before creating dispatch artifacts (354.01273ms)
+✔ existing host verification reuses unaffected evidence without executing the check again (29.836403ms)
+✔ work/checks reach the child and summary-only cannot pass a contracted review (4.099885ms)
+✔ renaming phases cannot reset three authorized repairs after initial failure (2.049995ms)
+✔ failed execution keeps a captured product report distinct, never accepts it (0.763106ms)
+✔ missing report cannot trigger another same-source launch after clearing active marker (1.404531ms)
+✔ normal successful progression does not require pretending a failure occurred (0.617624ms)
+✔ missing, foreign, duplicate and unobserved criteria never pass (1.07318ms)
+✔ static review cannot pass on a different final source binding (0.304783ms)
+✔ declared execution command is retained once in the actual child task (0.279765ms)
+✔ matched criterion observations can pass without running browser in static role (0.408817ms)
+✔ new dispatch requires an explicit responsibility instead of silently dropping work (39.66009ms)
+✔ effective no-shell profile cannot receive an execution command (194.139689ms)
+✔ capable verifier prepares explicit browser checks without executing them (898.845069ms)
+✔ parent-only checks and undeclared browser execution fail before dispatch (57.984982ms)
+✔ browser work cannot be assigned to static QA even with no command declared (33.409577ms)
+✔ overlay verifier accepts copied known stack and rejects a changed installed byte (77.052807ms)
+✔ same-phase ordinal accommodates initial work plus three repairs (2.702775ms)
+✔ four successful new candidate slices need no retry permission (2.357944ms)
+✔ captured-report failure cannot relaunch with a free-text report-fix reason (0.685379ms)
+✔ bare recovery action without native/host provenance cannot authorize launch (0.491019ms)
+✔ throw preserves unknown execution and error without promoting to product pass (0.334947ms)
+✔ public API rejects no-shell execution exactly like CLI (159.290751ms)
+✔ declared missing skill blocks both API and CLI before artifacts (1613.588994ms)
+✔ terminal native receipt + fresh host check produces zero-launch guarded recovery (45.237739ms)
+✔ active native child, foreign identity, stale source, changed record all fail closed (27.942389ms)
+✔ captured pass cannot receive retry permission; report-only never authorizes replay (26.71663ms)
+ℹ tests 28
+ℹ suites 0
+ℹ pass 28
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3846.461257

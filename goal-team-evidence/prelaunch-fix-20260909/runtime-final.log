@@ -1,0 +1,15 @@
+✔ recover pre-launch write failure at goal-admissions.task.team.implementer (28.60022ms)
+✔ recover pre-launch write failure at teamGoalActiveStep (25.47513ms)
+✔ real native state capacity failure retains a smaller positive no-launch proof (27.212329ms)
+✔ marker write committed then threw still proves no launch (24.413408ms)
+✔ failed proof save preserves the original error and remains unknown (24.52284ms)
+✔ an attempted launch cannot use empty native steps as no-launch proof (23.010261ms)
+✔ no-launch recovery rejects missing, active, conflicting or stale evidence (23.249449ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 279.49136

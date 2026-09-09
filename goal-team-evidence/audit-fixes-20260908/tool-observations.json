@@ -1,0 +1,26 @@
+{
+  "kind": "parent-recorded offline tool observations; not signed attestation",
+  "primaryLsp": {
+    "files": 17,
+    "diagnostics": 0
+  },
+  "lens": "no blocking session findings",
+  "nativeValidate": [
+    {
+      "path": "/home/timmypai/.pi/agent/teams/goal-task-step.js",
+      "sha256": "6b0e2f8ecc2049e8c9d54aa1a113a39c8721509c87662828cb7e197898e09412",
+      "result": {
+        "ok": true,
+        "errors": []
+      }
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/recovery.workflow.txt",
+      "sha256": "435b01bb029425d1b5ba88e62ff0d23acee2714aa57c8ce9a48a13ceb61fd192",
+      "result": {
+        "ok": true,
+        "errors": []
+      }
+    }
+  ]
+}

@@ -1,0 +1,3 @@
+PASS foreground + background actual ingestion blocks and native schema reader: retain failed report/error; no success promotion; no-capture, malformed, stopped/timed-out protections; retry guard present.
+(node:1677581) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)

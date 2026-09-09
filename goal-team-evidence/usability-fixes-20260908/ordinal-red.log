@@ -1,0 +1,41 @@
+✖ same-phase ordinal accommodates initial work plus three repairs (0.939068ms)
+✔ four successful new candidate slices need no retry permission (2.837973ms)
+✔ captured-report failure cannot relaunch with a free-text report-fix reason (0.568922ms)
+✔ throw preserves unknown execution and error without promoting to product pass (0.304746ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 3
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 47.97329
+
+✖ failing tests:
+
+test at ../../.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/lifecycle.test.mjs:11:1
+✖ same-phase ordinal accommodates initial work plus three repairs (0.939068ms)
+  AssertionError [ERR_ASSERTION]: Got unwanted exception.
+  Actual message: "Attempt must be 1..3"
+      at TestContext.<anonymous> (file:///home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/lifecycle.test.mjs:12:27)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.start (node:internal/test_runner/test:1191:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:385:17) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: AssertionError [ERR_ASSERTION]: Attempt must be 1..3
+        at prepareGoalRequest (file:///home/timmypai/.pi/agent/teams/goal-request.mjs:20:10)
+        at packet (file:///home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/lifecycle.test.mjs:9:54)
+        at file:///home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/lifecycle.test.mjs:12:44
+        at getActual (node:assert:611:5)
+        at strict.doesNotThrow (node:assert:779:32)
+        at TestContext.<anonymous> (file:///home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/lifecycle.test.mjs:12:27)
+        at Test.runInAsyncScope (node:async_hooks:227:14)
+        at Test.run (node:internal/test_runner/test:1325:25)
+        at Test.start (node:internal/test_runner/test:1191:17)
+        at startSubtestAfterBootstrap (node:internal/test_runner/harness:385:17),
+    expected: undefined,
+    operator: 'doesNotThrow',
+    diff: 'simple'
+  }

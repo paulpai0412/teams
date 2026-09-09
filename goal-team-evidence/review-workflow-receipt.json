@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "workflowRunId": "a636b90c-760b-410e-81f0-7556d655ab41",
+  "state": "complete",
+  "createdAt": 1788617213911,
+  "entries": {
+    "goal-team-correctness": {
+      "key": "goal-team-correctness",
+      "agent": "team.reviewer",
+      "requestedContext": "fresh",
+      "resolvedContext": "fresh",
+      "outputReference": "/home/timmypai/.pi/agent/teams/goal-team-evidence/review-correctness.md",
+      "continuation": {
+        "runIds": [
+          "dad7b407-eb0f-4915-98d4-ed21dc988da0"
+        ]
+      },
+      "latestRunId": "dad7b407-eb0f-4915-98d4-ed21dc988da0",
+      "resumability": {
+        "state": "resumable"
+      }
+    },
+    "goal-team-security": {
+      "key": "goal-team-security",
+      "agent": "team.security",
+      "requestedContext": "fresh",
+      "resolvedContext": "fresh",
+      "outputReference": "/home/timmypai/.pi/agent/teams/goal-team-evidence/review-security.md",
+      "continuation": {
+        "runIds": [
+          "6514f09c-7ad5-46bb-a3f0-2edb259e2d97"
+        ]
+      },
+      "latestRunId": "6514f09c-7ad5-46bb-a3f0-2edb259e2d97",
+      "resumability": {
+        "state": "resumable"
+      }
+    }
+  },
+  "workflowChildren": {
+    "version": 1,
+    "parentToolCallId": "call_stIRH5Ca4rKJ1zsmNa2Ks77S|fc_00513a2dcfcfae2f016a9c214a13c887d0a4c2b84d7911afe2",
+    "workflowRunId": "a636b90c-760b-410e-81f0-7556d655ab41",
+    "inventoryComplete": true,
+    "workflowState": "completed",
+    "children": [
+      {
+        "childId": "goal-team-correctness",
+        "state": "completed",
+        "runId": "dad7b407-eb0f-4915-98d4-ed21dc988da0",
+        "agent": "team.reviewer",
+        "sessionName": "team.reviewer: Read-only review of parent-owned pi-goal-x/team integrati...",
+        "model": "openai-codex/gpt-5.6-terra:high",
+        "thinking": "high"
+      },
+      {
+        "childId": "goal-team-security",
+        "state": "completed",
+        "runId": "6514f09c-7ad5-46bb-a3f0-2edb259e2d97",
+        "agent": "team.security",
+        "sessionName": "team.security: Read-only review of parent-owned pi-goal-x/team integrati...",
+        "model": "openai-codex/gpt-5.6-terra:high",
+        "thinking": "high"
+      }
+    ]
+  }
+}

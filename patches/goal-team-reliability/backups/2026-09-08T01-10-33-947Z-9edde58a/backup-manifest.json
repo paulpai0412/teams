@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "patchId": "pi-goal-x-0.30.5-goal-team-reliability-v1",
+  "targetRoot": "/tmp/team-reliability-package-EQptXS/pi-goal-x",
+  "packageVersion": "0.30.5",
+  "createdAt": "2026-09-08T01:10:33.948Z",
+  "state": "rolled-back",
+  "files": [
+    {
+      "path": "extensions/goal-team-hold.ts",
+      "existed": true,
+      "beforeSha256": "c61c1a9628e2f68f08174c4ac441ea6363f6a788a85e1937b9f59ca596ba8531",
+      "postSha256": "6380e9f86fba65b62a431ed6e23ec8131dee315ee7a3431ce1bf85cacfa274e2",
+      "backupPath": "files/extensions/goal-team-hold.ts"
+    },
+    {
+      "path": "extensions/goal-events.ts",
+      "existed": true,
+      "beforeSha256": "1d2d6c4fe30bbc8ca0badaa81db83cffacb22d1c957849467bba857b6ccfe2ff",
+      "postSha256": "787f01915589c11baf06e0f793bcf6129f7a5138f5a158a372bee8639bdea8fe",
+      "backupPath": "files/extensions/goal-events.ts"
+    },
+    {
+      "path": "extensions/goal-completion.ts",
+      "existed": true,
+      "beforeSha256": "9832c7d85ad2b8f2503c5b08a2d5f514c1bb06afd0aeb5e449423f30b04e479f",
+      "postSha256": "787fcf7eeebec6f52feaeef2fff1752ded6a0cbbe7cf4b11faace960c1b7b311",
+      "backupPath": "files/extensions/goal-completion.ts"
+    },
+    {
+      "path": "extensions/goal-task-tools.ts",
+      "existed": true,
+      "beforeSha256": "aa02caf095d1f80265a5873ca015c4a5ea03396a604c714a7a930a8646256992",
+      "postSha256": "180239006516c9e20109407825cccfb8fcb1c8cecd3dea8c9cb0eb930b295474",
+      "backupPath": "files/extensions/goal-task-tools.ts"
+    }
+  ],
+  "updatedAt": "2026-09-08T01:10:33.957Z"
+}

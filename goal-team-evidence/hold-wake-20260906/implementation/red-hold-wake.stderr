@@ -1,0 +1,8 @@
+file:///home/timmypai/.pi/agent/teams/goal-team-evidence/hold-wake-20260906/implementation/red-hold-wake.mjs:24
+runtime.bindTeamRun({version: 1, goalId: goal.id, taskId: 'task-1', sessionId: 'session-1', cwd: '/fixture', runId: 'run-1', asyncDir: '/fixture/run-1'});
+        ^
+
+TypeError: runtime.bindTeamRun is not a function
+    at file:///home/timmypai/.pi/agent/teams/goal-team-evidence/hold-wake-20260906/implementation/red-hold-wake.mjs:24:9
+
+Node.js v24.18.0

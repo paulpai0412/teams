@@ -1,0 +1,25 @@
+✖ writer self-pass does not authorize another same-role step without parent disposition (24.082ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 129.413634
+
+✖ failing tests:
+
+test at ../../.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/reconciliation.test.mjs:69:1
+✖ writer self-pass does not authorize another same-role step without parent disposition (24.082ms)
+  AssertionError [ERR_ASSERTION]: Missing expected rejection.
+      at async TestContext.<anonymous> (file:///home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/reconciliation.test.mjs:75:2)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /parent recovery required/,
+    operator: 'rejects',
+    diff: 'simple'
+  }

@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "workflowRunId": "e8f4af03-b2d6-4693-89d8-c28a8cb03411",
+  "state": "complete",
+  "createdAt": 1788651603144,
+  "entries": {
+    "diagnose-hold-wake-v1": {
+      "key": "diagnose-hold-wake-v1",
+      "agent": "team.debugger",
+      "requestedContext": "fresh",
+      "resolvedContext": "fresh",
+      "outputReference": "/home/timmypai/.pi/agent/sessions/--home-timmypai--/subagent-artifacts/outputs/e8f4af03-b2d6-4693-89d8-c28a8cb03411/diagnose/hold-wake.md",
+      "continuation": {
+        "runIds": [
+          "43919142-95f7-4bda-9ffe-71f4dddf4c48"
+        ]
+      },
+      "latestRunId": "43919142-95f7-4bda-9ffe-71f4dddf4c48",
+      "resumability": {
+        "state": "resumable"
+      }
+    }
+  },
+  "workflowChildren": {
+    "version": 1,
+    "parentToolCallId": "call_EeKnpMZAHk3MWs1Cis0cwUpX|fc_01fdfe03a8d474f3016a9ca51c0b4c87d0a635f53e80de9da8",
+    "workflowRunId": "e8f4af03-b2d6-4693-89d8-c28a8cb03411",
+    "inventoryComplete": true,
+    "workflowState": "completed",
+    "children": [
+      {
+        "childId": "diagnose-hold-wake-v1",
+        "state": "completed",
+        "runId": "43919142-95f7-4bda-9ffe-71f4dddf4c48",
+        "agent": "team.debugger",
+        "sessionName": "team.debugger: Diagnose the cross-module Goal/team waiting wake lifecycl...",
+        "model": "openai-codex/gpt-5.6-luna:high",
+        "thinking": "high"
+      }
+    ]
+  }
+}

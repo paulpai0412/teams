@@ -1,0 +1,500 @@
+{
+  "runId": "878636f9-7309-468b-8557-6912e5e16d17",
+  "toolCallId": "call_GSHmwF1a9gtlEyIT2CAczTE3|fc_0fbe1265921012d3016aa0cf996cc487d083f6755760eeb2db",
+  "sessionId": "/home/timmypai/.pi/agent/sessions/--home-timmypai-apps-vocab-agent--/2026-09-08T14-56-47-194Z_01a08185-885a-7173-8561-68d6b2f1ba17.jsonl",
+  "completionOwnerId": "58ee61f2-ca43-46de-8a93-a5ff6ebe9516",
+  "mode": "workflow",
+  "state": "complete",
+  "startedAt": 1788923807898,
+  "lastUpdate": 1788924142232,
+  "deadlineAt": 1788925607898,
+  "timeoutMs": 1800000,
+  "cwd": "/home/timmypai/apps/vocab-agent",
+  "sessionRoot": "/home/timmypai/.pi/agent/sessions/--home-timmypai-apps-vocab-agent--/2026-09-08T14-56-47-194Z_01a08185-885a-7173-8561-68d6b2f1ba17",
+  "pid": 1683006,
+  "steps": [
+    {
+      "agent": "team.reviewer",
+      "sessionName": "team.reviewer: User authorized independent STATIC review only. Do not ch...",
+      "label": "correctness-v1",
+      "workflowKey": "correctness-v1",
+      "parentWorkflowRunId": "878636f9-7309-468b-8557-6912e5e16d17",
+      "status": "completed",
+      "startedAt": 1788923807953,
+      "sessionFile": "/home/timmypai/.pi/agent/sessions/--home-timmypai-apps-vocab-agent--/2026-09-08T14-56-47-194Z_01a08185-885a-7173-8561-68d6b2f1ba17/b17e0be8-ad75-42e3-ae67-9a673c3fdc1b/run-0/session.jsonl",
+      "async": false,
+      "runId": "b17e0be8-ad75-42e3-ae67-9a673c3fdc1b",
+      "lastActivityAt": 1788924017462,
+      "recentTools": [
+        {
+          "tool": "read",
+          "args": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-f...",
+          "endMs": 1788923828240
+        },
+        {
+          "tool": "read",
+          "args": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-f...",
+          "endMs": 1788923854136
+        },
+        {
+          "tool": "read",
+          "args": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-f...",
+          "endMs": 1788923854136
+        },
+        {
+          "tool": "read",
+          "args": "/home/timmypai/.pi/agent/teams/GOAL-TEAMS.md",
+          "endMs": 1788923854137
+        },
+        {
+          "tool": "read",
+          "args": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-f...",
+          "endMs": 1788923854137
+        },
+        {
+          "tool": "read",
+          "args": "/home/timmypai/.pi/agent/teams/HANDOFF-PRACTICE.md",
+          "endMs": 1788923854138
+        },
+        {
+          "tool": "read",
+          "args": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-f...",
+          "endMs": 1788923854138
+        },
+        {
+          "tool": "ls",
+          "args": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-f...",
+          "endMs": 1788923854140
+        },
+        {
+          "tool": "grep",
+          "args": "/home/timmypai/.pi/agent/npm/node_modules/pi-goal-x/exten...",
+          "endMs": 1788923863740
+        },
+        {
+          "tool": "grep",
+          "args": "/home/timmypai/.pi/agent/teams",
+          "endMs": 1788923863741
+        },
+        {
+          "tool": "read",
+          "args": "/home/timmypai/.pi/agent/teams/GOAL-TEAMS.md",
+          "endMs": 1788923863742
+        },
+        {
+          "tool": "read",
+          "args": "/home/timmypai/.pi/agent/teams/EFFICIENCY-CONTRACT.md",
+          "endMs": 1788923863743
+        },
+        {
+          "tool": "grep",
+          "args": "/home/timmypai/.pi/agent/teams",
+          "endMs": 1788923863744
+        },
+        {
+          "tool": "read",
+          "args": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-f...",
+          "endMs": 1788923899666
+        },
+        {
+          "tool": "read",
+          "args": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-f...",
+          "endMs": 1788923899666
+        },
+        {
+          "tool": "read",
+          "args": "/home/timmypai/.pi/agent/teams/check-goal-dispatch.mjs",
+          "endMs": 1788923899667
+        },
+        {
+          "tool": "read",
+          "args": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-f...",
+          "endMs": 1788923899668
+        },
+        {
+          "tool": "read",
+          "args": "/home/timmypai/.pi/agent/teams/check-goal-completion.mjs",
+          "endMs": 1788923899668
+        },
+        {
+          "tool": "read",
+          "args": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-f...",
+          "endMs": 1788923909451
+        },
+        {
+          "tool": "read",
+          "args": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-f...",
+          "endMs": 1788923909451
+        },
+        {
+          "tool": "read",
+          "args": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-f...",
+          "endMs": 1788923909452
+        },
+        {
+          "tool": "grep",
+          "args": "/home/timmypai/.pi/agent/npm/node_modules/pi-goal-x/exten...",
+          "endMs": 1788923909454
+        },
+        {
+          "tool": "grep",
+          "args": "/home/timmypai/.pi/agent/npm/node_modules/pi-goal-x/exten...",
+          "endMs": 1788923909456
+        },
+        {
+          "tool": "module_report",
+          "args": "/home/timmypai/.pi/agent/teams/goal-task-step.js",
+          "endMs": 1788923944342
+        },
+        {
+          "tool": "module_report",
+          "args": "/home/timmypai/.pi/agent/teams/goal-recovery.mjs",
+          "endMs": 1788923944343
+        },
+        {
+          "tool": "module_report",
+          "args": "/home/timmypai/.pi/agent/teams/host-evidence.mjs",
+          "endMs": 1788923944344
+        },
+        {
+          "tool": "module_report",
+          "args": "/home/timmypai/.pi/agent/teams/goal-request.mjs",
+          "endMs": 1788923944345
+        },
+        {
+          "tool": "module_report",
+          "args": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-f...",
+          "endMs": 1788923944346
+        },
+        {
+          "tool": "grep",
+          "args": "/home/timmypai/.pi/agent/teams/goal-task-step.js",
+          "endMs": 1788923948509
+        },
+        {
+          "tool": "grep",
+          "args": "/home/timmypai/.pi/agent/teams/goal-task-step.js",
+          "endMs": 1788923987185
+        },
+        {
+          "tool": "grep",
+          "args": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-f...",
+          "endMs": 1788923992323
+        },
+        {
+          "tool": "contact_supervisor",
+          "args": "reason=progress_update",
+          "endMs": 1788923996945
+        }
+      ],
+      "recentOutput": [
+        "**Smallest fix:** Add a narrowly bounded parent reconciliation path for a durable pre-launch intent: require the exact request/binding and a terminal native workflow status proving zero matching child steps, then record a distinct no-launch reconciliation/settlement without rewriting the original history. It must not authorize replay merely because status is missing or unknown.",
+        "**Regression:** Add an actual mission-state fixture where `state.set` fails separately at `goal-admissions...` and `teamGoalActiveStep`, assert `runs.run` was never called, then assert the supported recovery leaves final acceptance consumable and does not permit a second launch for the same key. `reconciliation.test.mjs:133-146` covers only failure saving the *post-launch final record*, so it does not cover this gap.",
+        "## Limitations / missing evidence",
+        "- The F1 repair-counter, F2 recovered-throw/final-save, F3 report-only→explicit-continue, F4 early identity, and F5 ordinary/Goal readiness paths have relevant static regressions and their code paths align with the requested fixes.",
+        "- I did not execute those tests, verify installed hashes independently, or perform live Goal/TUI/provider recovery; those remain user-owned/outside this static review.",
+        "- Parent-owned state and the documented single-owner/non-CAS limitation are not treated as a security bypass here. The finding concerns the supported helper lifecycle after an ordinary persistence error."
+      ],
+      "turnCount": 13,
+      "toolCount": 47,
+      "model": "gpt-5.6-terra",
+      "thinking": "high",
+      "durationMs": 210534
+    },
+    {
+      "agent": "team.security",
+      "sessionName": "team.security: User authorized independent STATIC review only. Do not ch...",
+      "label": "security-v1",
+      "workflowKey": "security-v1",
+      "parentWorkflowRunId": "878636f9-7309-468b-8557-6912e5e16d17",
+      "status": "completed",
+      "startedAt": 1788923808029,
+      "sessionFile": "/home/timmypai/.pi/agent/sessions/--home-timmypai-apps-vocab-agent--/2026-09-08T14-56-47-194Z_01a08185-885a-7173-8561-68d6b2f1ba17/969a8f8a-f5d4-4340-9435-08437c0e7a9a/run-0/session.jsonl",
+      "async": false,
+      "runId": "969a8f8a-f5d4-4340-9435-08437c0e7a9a",
+      "lastActivityAt": 1788924141217,
+      "recentTools": [
+        {
+          "tool": "grep",
+          "args": "/home/timmypai/.pi/agent/npm/node_modules/pi-subagents/src",
+          "endMs": 1788923884909
+        },
+        {
+          "tool": "read",
+          "args": "/home/timmypai/.pi/agent/npm/node_modules/pi-subagents/sr...",
+          "endMs": 1788923893964
+        },
+        {
+          "tool": "read",
+          "args": "/home/timmypai/.pi/agent/teams/check-config.mjs",
+          "endMs": 1788923893965
+        },
+        {
+          "tool": "read",
+          "args": "/home/timmypai/.pi/agent/npm/node_modules/pi-subagents/sr...",
+          "endMs": 1788923893966
+        },
+        {
+          "tool": "grep",
+          "args": "/home/timmypai/.pi/agent/npm/node_modules/pi-subagents/sr...",
+          "endMs": 1788923893966
+        },
+        {
+          "tool": "read",
+          "args": "/home/timmypai/.pi/agent/npm/node_modules/pi-subagents/sr...",
+          "endMs": 1788923908551
+        },
+        {
+          "tool": "read",
+          "args": "/home/timmypai/.pi/agent/npm/node_modules/pi-subagents/sr...",
+          "endMs": 1788923908552
+        },
+        {
+          "tool": "grep",
+          "args": "/home/timmypai/.pi/agent/npm/node_modules/pi-subagents/sr...",
+          "endMs": 1788923908554
+        },
+        {
+          "tool": "grep",
+          "args": "/home/timmypai/.pi/agent/teams/check-config.mjs",
+          "endMs": 1788923908554
+        },
+        {
+          "tool": "module_report",
+          "args": "/home/timmypai/.pi/agent/teams/goal-recovery.mjs",
+          "endMs": 1788923937849
+        },
+        {
+          "tool": "module_report",
+          "args": "/home/timmypai/.pi/agent/teams/host-evidence.mjs",
+          "endMs": 1788923937851
+        },
+        {
+          "tool": "module_report",
+          "args": "/home/timmypai/.pi/agent/teams/handoff-contract.mjs",
+          "endMs": 1788923937852
+        },
+        {
+          "tool": "module_report",
+          "args": "/home/timmypai/.pi/agent/teams/goal-request.mjs",
+          "endMs": 1788923937852
+        },
+        {
+          "tool": "module_report",
+          "args": "/home/timmypai/.pi/agent/teams/goal-task-step.js",
+          "endMs": 1788923937853
+        },
+        {
+          "tool": "read",
+          "args": "/home/timmypai/.pi/agent/npm/node_modules/pi-subagents/sr...",
+          "endMs": 1788923996890
+        },
+        {
+          "tool": "read",
+          "args": "/home/timmypai/.pi/agent/npm/node_modules/pi-subagents/sr...",
+          "endMs": 1788923996892
+        },
+        {
+          "tool": "grep",
+          "args": "/home/timmypai/.pi/agent/npm/node_modules/pi-subagents/src",
+          "endMs": 1788923996900
+        },
+        {
+          "tool": "grep",
+          "args": "/home/timmypai/.pi/agent/npm/node_modules/pi-subagents/src",
+          "endMs": 1788923996904
+        },
+        {
+          "tool": "read",
+          "args": "/home/timmypai/.pi/agent/npm/node_modules/pi-subagents/sr...",
+          "endMs": 1788924003480
+        },
+        {
+          "tool": "read",
+          "args": "/home/timmypai/.pi/agent/npm/node_modules/pi-subagents/sr...",
+          "endMs": 1788924003481
+        },
+        {
+          "tool": "read",
+          "args": "/home/timmypai/.pi/agent/npm/node_modules/pi-subagents/sr...",
+          "endMs": 1788924003482
+        },
+        {
+          "tool": "grep",
+          "args": "/home/timmypai/.pi/agent/npm/node_modules/pi-subagents/sr...",
+          "endMs": 1788924003483
+        },
+        {
+          "tool": "module_report",
+          "args": "/home/timmypai/.pi/agent/teams/check-config.mjs",
+          "endMs": 1788924034048
+        },
+        {
+          "tool": "module_report",
+          "args": "/home/timmypai/.pi/agent/npm/node_modules/pi-subagents/sr...",
+          "endMs": 1788924034231
+        },
+        {
+          "tool": "module_report",
+          "args": "/home/timmypai/.pi/agent/npm/node_modules/pi-subagents/sr...",
+          "endMs": 1788924034233
+        },
+        {
+          "tool": "module_report",
+          "args": "/home/timmypai/.pi/agent/npm/node_modules/pi-subagents/sr...",
+          "endMs": 1788924034234
+        },
+        {
+          "tool": "contact_supervisor",
+          "args": "reason=need_decision",
+          "endMs": 1788924066800
+        },
+        {
+          "tool": "read",
+          "args": "/home/timmypai/.pi/agent/teams/OPERATING-MODEL.md",
+          "endMs": 1788924079569
+        },
+        {
+          "tool": "read",
+          "args": "/home/timmypai/.pi/agent/skills/team-flow/SKILL.md",
+          "endMs": 1788924079569
+        },
+        {
+          "tool": "read",
+          "args": "/home/timmypai/.pi/agent/npm/node_modules/pi-subagents/sr...",
+          "endMs": 1788924079570
+        },
+        {
+          "tool": "read",
+          "args": "/home/timmypai/.pi/agent/npm/node_modules/pi-subagents/sr...",
+          "endMs": 1788924079570
+        },
+        {
+          "tool": "read",
+          "args": "/home/timmypai/.pi/agent/npm/node_modules/pi-subagents/sr...",
+          "endMs": 1788924079571
+        }
+      ],
+      "recentOutput": [
+        "- **Evidence/request/recovery binding:** statically traced; P2 exception above.",
+        "- **Authorization/prompt/tool boundaries:** traced from preparation through installed child launch; parent-approved project config remains the authority boundary.",
+        "- **Secrets/exfiltration/supply chain:** no dependency, CI, publication, or credential changes in the pinned diff. Authorized host commands can still log sensitive output; their command selection remains parent responsibility.",
+        "- **Checks:** not run, per static-only authorization.",
+        "**Artifacts:** contract, source pin, diff, audit README/spec, current helper bodies, installed mirror, and named regression sources.  ",
+        "**Residual risks:** no live native/Goal/provider evidence; no independent digest recomputation; no filesystem-permission or race validation.  ",
+        "**Next action:** decide whether to fix the P2 reader before live recovery use, then have the user run an approved disposable race/symlink regression and live recovery canary.  ",
+        "**memoryCandidates:** None; no role memory written."
+      ],
+      "turnCount": 14,
+      "toolCount": 64,
+      "model": "gpt-5.6-terra",
+      "thinking": "high",
+      "durationMs": 334197
+    }
+  ],
+  "workflow": {
+    "value": [
+      {
+        "key": "correctness-v1",
+        "ok": true,
+        "runId": "b17e0be8-ad75-42e3-ae67-9a673c3fdc1b",
+        "output": "# Correctness / Spec Review\n\n**verdict: blocked** — one unresolved P2 lifecycle dead-end needs parent disposition. No P0/P1 found by this static review. This is not evidence that tests or live workflows ran.\n\n## Reviewed scope and evidence\n\nReviewed the fixed archived diff, F1–F5 specification, candidate helper bodies (`goal-task-step.js`, `goal-recovery.mjs`, `goal-request.mjs`, `handoff-contract.mjs`, `host-evidence.mjs`), installed `pi-goal-x` evidence consumer and its completion callers, plus new and legacy reconciliation/preparation tests.\n\n`source-pin.json` binds the approved 23-file candidate set to manifest digest `d485a525…`; the contract records parent entry verification. I did not recompute hashes or execute tests/scanners, as prohibited. Historical logs were read only as claims, not treated as test proof.\n\n## Standards\n\nNo separate newly introduced standards violation found. The F1–F5 changes retain the documented one-parent/one-controller shape, do not add a controller or authority, preserve original outcome history during supported recovery, and place the selected-role readiness check in the shared preparation path.\n\nThe P2 below is a lifecycle/recoverability defect rather than a cosmetic/style concern. Its smallest remedy should remain within the existing parent recovery helper/state model, not add a scheduler, role, or framework.\n\n## Spec / correctness finding\n\n### P2 — pre-launch persistence failure creates a retained record that no supported recovery can settle\n\n**Status:** Pre-existing failure mode, **widened** by this candidate’s newly inserted budget write.\n\n**Source proof:**  \n- `goal-task-step.js:144-146` writes the durable `dispatching` record, then the admission budget, then the active marker.  \n- `goal-task-step.js:191-...` reaches `runs.run` only after all three awaits.  \n- `goal-recovery.mjs:31-36` requires exactly one matching terminal native child step to prepare recovery.  \n- `host-evidence.mjs:442-488` accepts a retained `dispatching` record at final acceptance only when it has a valid recovery; it rejects every other retained `goal-step.*` record.\n\n**Reachable action sequence (static control flow):**\n1. Parent prepares and applies a valid public dispatch packet.\n2. `state.set(recordKey, {status:\"dispatching\"})` at line 144 succeeds.\n3. `state.set(budgetKey, ...)` at line 145 fails (or, as already possible before this diff, the marker write at line 146 fails).\n4. Because these are awaited and precede line 191, no `runs.run` call is attempted and thus the terminal native status has no matching child step.\n5. A retry of the same key only returns “reconcile”; `prepareGoalRecovery` rejects the zero-child status; final acceptance rejects the retained `dispatching` record.\n\nDepending on which write failed, later work is either blocked by `budget.lastRecord` or may proceed but can never pass final acceptance because the old record remains unsettled. The documented “retain intent; reconcile” behavior therefore lacks a supported reconciliation route for this no-launch subset.\n\n**Impact:** A transient native-state storage failure can permanently strand a task/mission under the public protocol, despite no child or external effect having been launched. Manual state surgery would be outside the documented supported helper flow.\n\n**Smallest fix:** Add a narrowly bounded parent reconciliation path for a durable pre-launch intent: require the exact request/binding and a terminal native workflow status proving zero matching child steps, then record a distinct no-launch reconciliation/settlement without rewriting the original history. It must not authorize replay merely because status is missing or unknown.\n\n**Regression:** Add an actual mission-state fixture where `state.set` fails separately at `goal-admissions...` and `teamGoalActiveStep`, assert `runs.run` was never called, then assert the supported recovery leaves final acceptance consumable and does not permit a second launch for the same key. `reconciliation.test.mjs:133-146` covers only failure saving the *post-launch final record*, so it does not cover this gap.\n\n## Limitations / missing evidence\n\n- The F1 repair-counter, F2 recovered-throw/final-save, F3 report-only→explicit-continue, F4 early identity, and F5 ordinary/Goal readiness paths have relevant static regressions and their code paths align with the requested fixes.\n- I did not execute those tests, verify installed hashes independently, or perform live Goal/TUI/provider recovery; those remain user-owned/outside this static review.\n- Parent-owned state and the documented single-owner/non-CAS limitation are not treated as a security bypass here. The finding concerns the supported helper lifecycle after an ordinary persistence error.",
+        "outputReference": "/home/timmypai/.pi/agent/sessions/--home-timmypai-apps-vocab-agent--/subagent-artifacts/outputs/878636f9-7309-468b-8557-6912e5e16d17/reviews/correctness.md",
+        "artifactPaths": [
+          "/home/timmypai/.pi/agent/sessions/--home-timmypai-apps-vocab-agent--/subagent-artifacts/outputs/878636f9-7309-468b-8557-6912e5e16d17/reviews/correctness.md",
+          "/home/timmypai/.pi/agent/sessions/--home-timmypai-apps-vocab-agent--/2026-09-08T14-56-47-194Z_01a08185-885a-7173-8561-68d6b2f1ba17/b17e0be8-ad75-42e3-ae67-9a673c3fdc1b/run-0/session.jsonl"
+        ],
+        "error": null
+      },
+      {
+        "key": "security-v1",
+        "ok": true,
+        "runId": "969a8f8a-f5d4-4340-9435-08437c0e7a9a",
+        "output": "# Security static review\n\n**verdict:** needs_decision (one P2 remediation/disposition)  \n**sourceState:** Reviewed the supplied fixed candidate pinned by `source-pin.json` (manifest SHA-256 `d485a525…aab587`; 23 listed post-image hashes). This was not independently re-hashed because execution/shell is prohibited. Cwd is not a Git checkout.  \n**changedFiles:** None by this reviewer.\n\n## Scope, assets, and boundaries\n\nReviewed the diff, F1–F5 specification, current `goal-task-step.js`, `goal-request.mjs`, `goal-recovery.mjs`, `handoff-contract.mjs`, `host-evidence.mjs`, installed `pi-goal-x/extensions/goal-team-evidence.mjs`, and the two new regression suites. Read-only caller tracing covered the installed `pi-subagents` agent discovery, workflow state, and launch argument paths.\n\nAssets are parent dispatch/retry authority; mission state and active marker; request/source digest; native terminal receipt; host-check receipt/log; acceptance decision; and child prompts/tools/extensions. Public preparation entrypoints are `prepareHandoff`, `prepareGoalDispatch`, and `prepareGoalRecovery`; final consumption is `goalEvidenceBlockReason`.\n\nThe intended trust model is a single inspected/approved parent and approved project control plane. Child structured output, task text, project source, and evidence descriptions are not semantic authorization. No commands, tests, scanners, credential access, live Goal changes, or exploitation were performed.\n\n## Findings\n\n### P2 — recovery JSON reads have a check/use race on evidence files  \n**Location:** `goal-recovery.mjs:9–15, 19–55, 59–70`; downstream structural consumption at `host-evidence.mjs:442–488`.  \n**Status:** Pre-existing (the changed `evidenceDigest` safely reads rejection files, but this recovery reader remains path-based).\n\n`readJson()` first checks `realpathSync()` and `statSync()`, then reopens the pathname with `readFileSync()` without `O_NOFOLLOW` or post-read inode/metadata verification. It is used for supplied native status, sibling mission metadata, mission state, and the saved request. `prepareGoalRecovery()` uses those parsed values to construct a reconciliation script that clears the active marker. Later final acceptance only shape-checks stored recovery references/digests through `goalStepSettled`; it does not re-open the native receipt.\n\n**Reachable sequence:** a parent invokes the public recovery helper with evidence under a directory writable by another local principal; that principal replaces a checked file between validation and read; the helper consumes substituted status/mission/request data and emits a reconciliation script. If the script’s expected state still matches at application, it can settle a record and permit subsequent handling.\n\n**Impact/confidence:** Could incorrectly bind recovery to substituted/stale evidence, affecting launch/reconciliation integrity. Exploitability is **low-to-moderate confidence**: it requires concurrent write access to parent-native evidence files; no child-only route to those files was established, and a party able to rewrite mission state directly exceeds the supported-child threat model.\n\n**Smallest fix:** Make `goal-recovery` use an FD-based bounded JSON reader equivalent to `host-evidence.mjs:32–67`: canonical absolute path, `O_NOFOLLOW`, regular-file/size check, read through the FD, then inode/device/size/timestamp recheck before JSON parsing. Apply it uniformly to all recovery JSON inputs.\n\n**Regression:** In a disposable fixture, simulate replacement/symlink substitution between validation and read via an injected filesystem seam; require `prepareGoalRecovery` to reject and produce no usable setup script. Retain the existing foreign request/child identity checks.\n\n## No P0/P1 finding in the approved trust model\n\n`evidenceDigest` (`host-evidence.mjs:68–73`) correctly rejects non-absolute, empty, symlinked, oversized, and credential-named rejection artifacts through the hardened byte reader. Source snapshots reject traversal, symlinks, credential paths, and source drift (`host-evidence.mjs:105–169, 282–321`). Recovery also binds request digest, workflow key, agent, terminal child identity, exact source paths, and a current host receipt (`goal-recovery.mjs:25–55`). The new reconciliation tests cover foreign request/child/digest cases and report-only/retry behavior; I did not treat their PASS status as runtime proof.\n\n## Documented trust limitation (not a new P1)\n\nProject-local agent/skill/extension configuration has higher precedence than user/builtin configuration (`pi-subagents/src/agents/agent-selection.ts:3–14`; `agents.ts:1359–1413, 2734–2786`; `skills.ts:32–41`). Effective system prompt, resolved skills, and configured extensions are delivered to the child launch (`runs/foreground/execution.ts:405–420, 1860–1885`; `runs/shared/pi-args.ts:469–612`). The new shared readiness call (`handoff-contract.mjs:85–101, 232–245`; reached by `goal-request.mjs:95–107`) checks role conventions but is not a provenance/approval receipt.\n\nTherefore an arbitrary checkout must **not** be treated as automatically trusted merely because readiness succeeds: parent inspection/approval of effective project overrides, skills, prompt, and extension paths remains required. Per the supplied trust decision, this is an operational control-plane limitation, not a P1 against an approved project. Untrusted-checkout dispatch requires a separately approved isolated, credential-free runner; no such testing was performed.\n\n## Criteria and checks\n\n- **Evidence/request/recovery binding:** statically traced; P2 exception above.\n- **Authorization/prompt/tool boundaries:** traced from preparation through installed child launch; parent-approved project config remains the authority boundary.\n- **Secrets/exfiltration/supply chain:** no dependency, CI, publication, or credential changes in the pinned diff. Authorized host commands can still log sensitive output; their command selection remains parent responsibility.\n- **Checks:** not run, per static-only authorization.\n\n**Artifacts:** contract, source pin, diff, audit README/spec, current helper bodies, installed mirror, and named regression sources.  \n**Residual risks:** no live native/Goal/provider evidence; no independent digest recomputation; no filesystem-permission or race validation.  \n**Next action:** decide whether to fix the P2 reader before live recovery use, then have the user run an approved disposable race/symlink regression and live recovery canary.  \n**memoryCandidates:** None; no role memory written.",
+        "outputReference": "/home/timmypai/.pi/agent/sessions/--home-timmypai-apps-vocab-agent--/subagent-artifacts/outputs/878636f9-7309-468b-8557-6912e5e16d17/reviews/security.md",
+        "artifactPaths": [
+          "/home/timmypai/.pi/agent/sessions/--home-timmypai-apps-vocab-agent--/subagent-artifacts/outputs/878636f9-7309-468b-8557-6912e5e16d17/reviews/security.md",
+          "/home/timmypai/.pi/agent/sessions/--home-timmypai-apps-vocab-agent--/2026-09-08T14-56-47-194Z_01a08185-885a-7173-8561-68d6b2f1ba17/969a8f8a-f5d4-4340-9435-08437c0e7a9a/run-0/session.jsonl"
+        ],
+        "error": null
+      }
+    ],
+    "trace": [
+      {
+        "operation": "run",
+        "key": "correctness-v1",
+        "state": "started",
+        "agent": "team.reviewer"
+      },
+      {
+        "operation": "run",
+        "key": "security-v1",
+        "state": "started",
+        "agent": "team.security"
+      },
+      {
+        "operation": "run",
+        "key": "correctness-v1",
+        "state": "completed",
+        "durationMs": 210534,
+        "agent": "team.reviewer",
+        "runId": "b17e0be8-ad75-42e3-ae67-9a673c3fdc1b"
+      },
+      {
+        "operation": "run",
+        "key": "security-v1",
+        "state": "completed",
+        "durationMs": 334197,
+        "agent": "team.security",
+        "runId": "969a8f8a-f5d4-4340-9435-08437c0e7a9a"
+      }
+    ],
+    "emits": [],
+    "console": []
+  },
+  "workflowChildren": {
+    "version": 1,
+    "parentToolCallId": "call_GSHmwF1a9gtlEyIT2CAczTE3|fc_0fbe1265921012d3016aa0cf996cc487d083f6755760eeb2db",
+    "workflowRunId": "878636f9-7309-468b-8557-6912e5e16d17",
+    "inventoryComplete": true,
+    "workflowState": "completed",
+    "children": [
+      {
+        "childId": "correctness-v1",
+        "state": "completed",
+        "runId": "b17e0be8-ad75-42e3-ae67-9a673c3fdc1b",
+        "agent": "team.reviewer",
+        "sessionName": "team.reviewer: User authorized independent STATIC review only. Do not ch...",
+        "model": "gpt-5.6-terra",
+        "thinking": "high"
+      },
+      {
+        "childId": "security-v1",
+        "state": "completed",
+        "runId": "969a8f8a-f5d4-4340-9435-08437c0e7a9a",
+        "agent": "team.security",
+        "sessionName": "team.security: User authorized independent STATIC review only. Do not ch...",
+        "model": "gpt-5.6-terra",
+        "thinking": "high"
+      }
+    ]
+  },
+  "runFanoutBudget": {
+    "used": 2,
+    "limit": 2,
+    "remaining": 0
+  },
+  "turnCount": 27,
+  "toolCount": 111,
+  "endedAt": 1788924142230,
+  "totalTokens": {
+    "input": 285689,
+    "output": 25344,
+    "total": 311033
+  },
+  "totalCost": {
+    "inputTokens": 285689,
+    "outputTokens": 25344,
+    "costUsd": 1.2755828
+  }
+}

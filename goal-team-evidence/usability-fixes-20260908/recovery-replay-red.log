@@ -1,0 +1,21 @@
+✖ terminal native receipt + fresh host check produces zero-launch guarded recovery (32.982785ms)
+✔ active native child, foreign identity, stale source, changed record all fail closed (24.342826ms)
+✔ captured pass cannot receive retry permission; report-only never authorizes replay (23.691796ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 2
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 129.427695
+
+✖ failing tests:
+
+test at ../../.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/recovery.test.mjs:24:1
+✖ terminal native receipt + fresh host check produces zero-launch guarded recovery (32.982785ms)
+  Error: Step changed since recovery preparation
+      at eval (eval at <anonymous> (file:///home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/recovery.test.mjs:34:8), <anonymous>:6:66)
+      at async TestContext.<anonymous> (file:///home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/recovery.test.mjs:34:2)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3)

@@ -1,0 +1,12 @@
+5f052a07b2ec33ec50f99eea8052ef733bf882e610a8922561024d66bc81d20c  /home/timmypai/.pi/agent/npm/node_modules/pi-goal-x/extensions/goal-runtime.ts
+1d2d6c4fe30bbc8ca0badaa81db83cffacb22d1c957849467bba857b6ccfe2ff  /home/timmypai/.pi/agent/npm/node_modules/pi-goal-x/extensions/goal-events.ts
+c61c1a9628e2f68f08174c4ac441ea6363f6a788a85e1937b9f59ca596ba8531  /home/timmypai/.pi/agent/npm/node_modules/pi-goal-x/extensions/goal-team-hold.ts
+f4d053810543f7a10d348b66ad7fdc3b204b56c59d0cd40922880ade4e3ede44  /home/timmypai/.pi/agent/teams/check-goal-hold-wake.mjs
+c69ec5ea30374f1afbe37466ec3d371344913777f32e8ade374aa1d7636c1eab  /home/timmypai/.pi/agent/teams/check-goal-team.mjs
+d09586a812fcb9089d06c9f9162bef28b18a8fefb97f0bfb7f9daea6b681e0c5  /home/timmypai/.pi/agent/teams/GOAL-TEAMS.md
+5ab2134e433529fe58c79d0f51e171d0e183b423dec1509c6720c76ee39553b4  /home/timmypai/.pi/agent/teams/OPERATING-MODEL.md
+8a7301fce7c29ef0eb21376f185795618ec0cb56adcf8e6633b476e43cef668c  /home/timmypai/.pi/agent/teams/goal-task-step.js
+87fbf255702b998ce6695c8091740cfee8ef8d531634c6a3bf3fc84350856662  /home/timmypai/.pi/agent/teams/patches/goal-team-hold-wake/manifest.json
+5f1f62fc61bdec10a25167cab12a21701bcb53aecac726159075036398bfa538  /home/timmypai/.pi/agent/teams/patches/goal-team-hold-wake/apply.mjs
+dfe174a1e4362c636eb041ddef5e639fe84b1d847a24c769620c9d62232838f3  /home/timmypai/.pi/agent/teams/patches/goal-team-hold-wake/verify-runtime.mjs
+ca311734003f5bb65b55fec068184e51417d1b5690d0a219918362f3d0c88eed  /home/timmypai/.pi/agent/teams/patches/goal-team-hold-wake/README.md

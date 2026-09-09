@@ -1,0 +1,10 @@
+✔ work/checks reach the child and summary-only cannot pass a contracted review (1.50679ms)
+✔ matched criterion observations can pass without running browser in static role (0.342202ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 45.900287

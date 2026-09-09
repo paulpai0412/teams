@@ -1,0 +1,130 @@
+{
+  "files": [
+    {
+      "path": "/home/timmypai/.pi/agent/teams/goal-request.mjs",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/before/goal-request.mjs",
+      "after": "/home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/after/00-goal-request.mjs",
+      "preSha256": "8231532aecfed770ae81070c4b6c57f817a22ec398d15ac65b73b6b17e9ebb00",
+      "postSha256": "a129455a32c9288a8c26337c6246325a9310126c21671217ef54e33c6d382068"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/goal-task-step.js",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/before/goal-task-step.js",
+      "after": "/home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/after/01-goal-task-step.js",
+      "preSha256": "63cc188c6f34cc928f1759d10338b44a848ec7a253bb2451c58eb4b66de0f41e",
+      "postSha256": "15108bd95ab3a471882cc8ad8f2920a5de0c7f49031b09389094a08ad3baf641"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/check-goal-dispatch.mjs",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/before/check-goal-dispatch.mjs",
+      "after": "/home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/after/02-check-goal-dispatch.mjs",
+      "preSha256": "7eb6ce5342c8b29f8c2705f566a56be546b6ed49f7961b1d4941118bda7280ed",
+      "postSha256": "aa8f442e8f50b41bfc9bfd6c48c08886b44cd0328c9f56a17c6e63f93ae02316"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/check-goal-team.mjs",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/before/check-goal-team.mjs",
+      "after": "/home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/after/03-check-goal-team.mjs",
+      "preSha256": "6b531df185bfb280574685a60f7c089870fbb99b535b180aaba75a6862761806",
+      "postSha256": "d04e21c67dccd252948f928581a347eabfdb7f84f73c0610bdb5423938241e92"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/EFFICIENCY-CONTRACT.md",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/before/EFFICIENCY-CONTRACT.md",
+      "after": "/home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/after/04-EFFICIENCY-CONTRACT.md",
+      "preSha256": "82d50f1d6837169450660fa4c0a9d33ca9294f3aa39e70207000523ce7a1acba",
+      "postSha256": "fbcdd6178ea6c96f266c3bf70ae257fab8bf5444f42de8c52142fd9cf8d27e47"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/GOAL-TEAMS.md",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/before/GOAL-TEAMS.md",
+      "after": "/home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/after/05-GOAL-TEAMS.md",
+      "preSha256": "0e1bc5fdf1d92f218a45cc433995025e2381fabab41f675685da0ca95eca1e07",
+      "postSha256": "fd42c86524665531a547878e4f0832271a01d655548e43867cda21bf2eb49d60"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/HANDOFF-PRACTICE.md",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/before/HANDOFF-PRACTICE.md",
+      "after": "/home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/after/06-HANDOFF-PRACTICE.md",
+      "preSha256": "fa29b8d7af3d3687c2484a3c16f3fd1af7eba9172c18cf9cb1608424286d06e8",
+      "postSha256": "91d360b19864a0790b6a3272e602d0c245263fc42da5ad085d83ca8fb7e5209c"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/OPERATING-MODEL.md",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/before/OPERATING-MODEL.md",
+      "after": "/home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/after/07-OPERATING-MODEL.md",
+      "preSha256": "3bd0a712acc3bad7ed4d2c91d8c246383fb33e1a6425704871e487e0ce886cfa",
+      "postSha256": "6f656c274d99305d1809769f6bd40eed26a3ea1ae86c171e12666283a43eab9c"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/EVIDENCE-PRACTICE.md",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/before/EVIDENCE-PRACTICE.md",
+      "after": "/home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/after/08-EVIDENCE-PRACTICE.md",
+      "preSha256": "1df810c13321f5af5cd6e57dc678ce1c3347f39be46cb66d7d290f5928fa79be",
+      "postSha256": "33d470e461f2578cab9033cb0c715041053d4201e6ef9addd713dc5c0f9e157e"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/skills/team-flow/SKILL.md",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/before/team-flow-SKILL.md",
+      "after": "/home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/after/09-SKILL.md",
+      "preSha256": "9aa3410e4b4b38086a38c1dfe3b22847c47d29f96f9275e977e919cf468f1582",
+      "postSha256": "b4522682be5a6b852261e68bd61eac0f469c3821ce925bb885b290561d3b49b8"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/goal-team-evidence/efficiency-20260908/step-contract.test.mjs",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/before/step-contract.test.mjs",
+      "after": "/home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/after/10-step-contract.test.mjs",
+      "preSha256": "3abe3e53556f8798a2c06aa613747ae9dc0364098a92510ccdd82a3c72ed1762",
+      "postSha256": "3cd6091a9f9d47f26b0eec55fdb437125abfeba3d57614a9807144f2ab605262"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/goal-team-evidence/efficiency-20260908/dispatch-cli.test.mjs",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/before/dispatch-cli.test.mjs",
+      "after": "/home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/after/11-dispatch-cli.test.mjs",
+      "preSha256": "a4722e90acbc628a99fda74d3991c397fb0281ddfc37a2ac7ec7d77da643c349",
+      "postSha256": "7f978138d8218ac3a45e4fffdf5b1d913def68163389f1d45d9d95459f6c99fd"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/goal-recovery.mjs",
+      "before": null,
+      "after": "/home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/after/12-goal-recovery.mjs",
+      "preSha256": null,
+      "postSha256": "a941a255107352cc0eba798b6bd91e54e50ac3819389483d28f4f95cdce16be2"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/preparation.test.mjs",
+      "before": null,
+      "after": "/home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/after/13-preparation.test.mjs",
+      "preSha256": null,
+      "postSha256": "a459eb18dda45aa58066b793cb8b008f08aca4abc3cad1e199a95c915fbdcd8b"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/lifecycle.test.mjs",
+      "before": null,
+      "after": "/home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/after/14-lifecycle.test.mjs",
+      "preSha256": null,
+      "postSha256": "9c9d52cb4eb844b5e658da09b4406bbf45e7ca90e36541cacfcd9b5846aa3683"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/recovery.test.mjs",
+      "before": null,
+      "after": "/home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/after/15-recovery.test.mjs",
+      "preSha256": null,
+      "postSha256": "f53abd0066fddda18d015ad31d223cf3b96251e7175c1a772a3af36b438b2a95"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/check-installed.mjs",
+      "before": null,
+      "after": "/home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/after/16-check-installed.mjs",
+      "preSha256": null,
+      "postSha256": "e7a973020cc36e5c65fce92d26e3804659fd54199f9f29157f0e97b6acc0ce2c"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/installed.test.mjs",
+      "before": null,
+      "after": "/home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/after/17-installed.test.mjs",
+      "preSha256": null,
+      "postSha256": "67af669453a15599856d9b46ee85dcf2fa9e4ca24580f5a8d53a51319580e98b"
+    }
+  ]
+}

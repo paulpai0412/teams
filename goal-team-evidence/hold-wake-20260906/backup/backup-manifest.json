@@ -1,0 +1,30 @@
+{
+  "createdAt": "2026-09-06T00:01:05.997Z",
+  "files": {
+    "/home/timmypai/.pi/agent/npm/node_modules/pi-goal-x/extensions/goal-runtime.ts": {
+      "backup": "/home/timmypai/.pi/agent/teams/goal-team-evidence/hold-wake-20260906/backup/goal-runtime.ts",
+      "sha256": "d39fe986fe890758f0b508c49158425dfad4c833f3e571752b64b8c66f2e870c",
+      "bytes": 10323
+    },
+    "/home/timmypai/.pi/agent/npm/node_modules/pi-goal-x/extensions/goal-state.ts": {
+      "backup": "/home/timmypai/.pi/agent/teams/goal-team-evidence/hold-wake-20260906/backup/goal-state.ts",
+      "sha256": "f9df3fb652ae964dcc4c7329630fd294ea042a84a41924e98e741a5e064c6c25",
+      "bytes": 37993
+    },
+    "/home/timmypai/.pi/agent/npm/node_modules/pi-goal-x/extensions/goal-events.ts": {
+      "backup": "/home/timmypai/.pi/agent/teams/goal-team-evidence/hold-wake-20260906/backup/goal-events.ts",
+      "sha256": "fc891b3869f7ed8d449f7050ee157da128f506a74bfb7018dfc1f0f334154c15",
+      "bytes": 25857
+    },
+    "/home/timmypai/.pi/agent/npm/node_modules/pi-goal-x/extensions/goal.ts": {
+      "backup": "/home/timmypai/.pi/agent/teams/goal-team-evidence/hold-wake-20260906/backup/goal.ts",
+      "sha256": "efde77d22ae1dda659aa9f7d57efce954c1df66800d488905e237ef21bb7a3b3",
+      "bytes": 1435
+    },
+    "/home/timmypai/.pi/agent/teams/goal-task-step.js": {
+      "backup": "/home/timmypai/.pi/agent/teams/goal-team-evidence/hold-wake-20260906/backup/goal-task-step.js",
+      "sha256": "4a5f3e2a091aec652ff15a187a46ee41a037ad66eb0ab8c575cb23b882ff0a85",
+      "bytes": 4719
+    }
+  }
+}

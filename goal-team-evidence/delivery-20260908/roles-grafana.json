@@ -1,0 +1,9 @@
+{
+  "status": "PASS",
+  "checks": 11,
+  "cwd": "/home/timmypai/apps/grafana",
+  "modelCalls": 0,
+  "childAgents": 0,
+  "allRoleHealth": "FAIL (missing skill preserved)",
+  "limitation": "Offline preflight behavior only; not live dispatch or product acceptance."
+}

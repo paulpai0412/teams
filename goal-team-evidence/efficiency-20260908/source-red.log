@@ -1,0 +1,37 @@
+✔ work/checks reach the child and summary-only cannot pass a contracted review (2.177939ms)
+✔ renaming phases cannot reset the per-task role admission ceiling (0.904752ms)
+✔ failed execution keeps a captured product report distinct, never accepts it (0.291597ms)
+✔ missing report cannot trigger another same-source launch after clearing active marker (0.299528ms)
+✔ new same-role admission requires a diagnosed reason (0.297918ms)
+✔ missing, foreign, duplicate and unobserved criteria never pass (0.557046ms)
+✖ static review cannot pass on a different final source binding (0.698996ms)
+✔ matched criterion observations can pass without running browser in static role (0.186352ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 7
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 49.693087
+
+✖ failing tests:
+
+test at ../../.pi/agent/teams/goal-team-evidence/efficiency-20260908/step-contract.test.mjs:66:1
+✖ static review cannot pass on a different final source binding (0.698996ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'reported'
+  - 'blocked'
+  
+      at TestContext.<anonymous> (file:///home/timmypai/.pi/agent/teams/goal-team-evidence/efficiency-20260908/step-contract.test.mjs:69:9)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'reported',
+    expected: 'blocked',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

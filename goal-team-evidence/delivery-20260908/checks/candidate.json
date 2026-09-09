@@ -1,0 +1,729 @@
+{
+  "version": "host-check/1",
+  "input": {
+    "cwd": "/home/timmypai",
+    "sourcePaths": [
+      ".pi/agent/teams/host-evidence.mjs",
+      ".pi/agent/teams/check-host-evidence.mjs",
+      ".pi/agent/teams/check-goal-completion.mjs",
+      ".pi/agent/teams/check-goal-hold-wake.mjs",
+      ".pi/agent/teams/patches/goal-team-delivery/verify-runtime.mjs",
+      ".pi/agent/teams/patches/goal-team-delivery/manifest.json",
+      ".pi/agent/teams/patches/goal-team-delivery/preimage",
+      ".pi/agent/teams/patches/goal-team-delivery/postimage",
+      ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions"
+    ],
+    "argv": [
+      "/home/timmypai/.nvm/versions/node/v24.18.0/bin/node",
+      "/home/timmypai/.pi/agent/teams/patches/goal-team-delivery/verify-runtime.mjs",
+      "--source-root",
+      "/home/timmypai/.pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions"
+    ],
+    "timeoutMs": 120000
+  },
+  "runtime": {
+    "node": "v24.18.0",
+    "execPath": "/home/timmypai/.nvm/versions/node/v24.18.0/bin/node",
+    "platform": "linux",
+    "arch": "x64"
+  },
+  "before": {
+    "cwd": "/home/timmypai",
+    "files": [
+      {
+        "path": ".pi/agent/teams/check-goal-completion.mjs",
+        "mode": 420,
+        "sha256": "5900a99b84b2e6431ad7094c87553a4301ed0671b38e12aaa8b061daedbf9f54"
+      },
+      {
+        "path": ".pi/agent/teams/check-goal-hold-wake.mjs",
+        "mode": 420,
+        "sha256": "93027e49926c2ad981e33e09f99aff4a799a20275499affe9ca93c23dabd3d6f"
+      },
+      {
+        "path": ".pi/agent/teams/check-host-evidence.mjs",
+        "mode": 420,
+        "sha256": "17d5598820a999183559a9476bed1894a2c9c6a5f08590656318af91980cc444"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions",
+        "kind": "directory",
+        "mode": 493
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/auditor-selector.ts",
+        "mode": 420,
+        "sha256": "55f1ad0df0d252a36d38a39497f114d47c7eaa1f7c943d3104743b12a4150412"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-accounting.ts",
+        "mode": 420,
+        "sha256": "1015673f5463f2c03c57bbf87118154f2c900655b16283c03c0ac98a95630a16"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-activity.ts",
+        "mode": 420,
+        "sha256": "426ebb79514339166a2ef6925d5729f53396eff9932f5dcfd88ad69aca89a974"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-auditor.ts",
+        "mode": 420,
+        "sha256": "4dad756a4a064749cef803601b55da24b4daaaf31345890850809ea48b892e29"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-commands.ts",
+        "mode": 420,
+        "sha256": "8668387adbb13d5908c7f5e7fa0f5ad521ab6bd9060730ec228df4b068c584c2"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-compaction.ts",
+        "mode": 420,
+        "sha256": "6185fa52fa73ca3348784fd7386d8dbf4411c2dff831cb74420aaf559a581608"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-completion.ts",
+        "mode": 420,
+        "sha256": "d3de66b4606ba9f6aba206f0307032979ada5e0e306f9917076652256a398d1b"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-contract.ts",
+        "mode": 420,
+        "sha256": "96dec73609403c8a1b372551b44b2e1b8aacda7da40d5a590af27b066664743d"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-core-tools.ts",
+        "mode": 420,
+        "sha256": "df465ad0bd17ac6339fc9fb07427887251df153002ee2443b73d0c97c7e673a3"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-core.ts",
+        "mode": 420,
+        "sha256": "104a6c53528a68ea18f41ff6f6e2dca54935d3c9b558f94cb922c20606e736a8"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-draft.ts",
+        "mode": 420,
+        "sha256": "85224b9d4fd5989f45e782dc8fc017c72d80c9e9c282a66f7c5e51556bd074e6"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-drafting.ts",
+        "mode": 420,
+        "sha256": "475e1a459b1fde5399faf8fbc508a469095fa30f4df32d71d1f4973b3f9c51e8"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-events.ts",
+        "mode": 420,
+        "sha256": "787f01915589c11baf06e0f793bcf6129f7a5138f5a158a372bee8639bdea8fe"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-format.ts",
+        "mode": 420,
+        "sha256": "df1919414f3176d05a538721605324403262745c1568ba02ba6f02e197736c8b"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-ledger.ts",
+        "mode": 420,
+        "sha256": "3176a1f61b878579ac4bc2fc8fecb9591d4db384cefb8973b1025894c84342b6"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-oracle.ts",
+        "mode": 420,
+        "sha256": "dc464fd982a5aa641b6b1914771c9dcae31618dc565eb3d299e76f4feb7d4912"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-policy.ts",
+        "mode": 420,
+        "sha256": "3235aa1f7e9f169501bc331c40dada7c2391199a4e8529e848d3d4c055a18dd5"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-pool.ts",
+        "mode": 420,
+        "sha256": "3983886e220bdb52907fe9f477aa566403773a92f83d89ff044089d5d0cf866f"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-questionnaire.ts",
+        "mode": 420,
+        "sha256": "6b37e42ecee7b65c0cd5b054c9654849fdc9314acbfbb309671028a1955dc8ab"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-record.ts",
+        "mode": 420,
+        "sha256": "2809c100082be4889630a536bb833a366888f415d396d65087e02c9e00756067"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-recovery.ts",
+        "mode": 420,
+        "sha256": "e342da30af38e6a42e90721438f77fc7d8c40d4afe208256100881c8f647e85d"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-runtime.ts",
+        "mode": 420,
+        "sha256": "5f052a07b2ec33ec50f99eea8052ef733bf882e610a8922561024d66bc81d20c"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-service.ts",
+        "mode": 420,
+        "sha256": "aa1d482a183fcf44f8592a377824ab49c81cae4f14a93d45bec7b16ad1f4d860"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-session-health.ts",
+        "mode": 420,
+        "sha256": "9d4f5307282d5a6c9c3ba144194d0de0ee62a8a1be6a4e9c6d9127f36c8cadc0"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-settings.ts",
+        "mode": 420,
+        "sha256": "83cc46f670b89a4b54824fbd6aada2684885f508a8543ce15c8944d6c6fec95b"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-state.ts",
+        "mode": 420,
+        "sha256": "f9df3fb652ae964dcc4c7329630fd294ea042a84a41924e98e741a5e064c6c25"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-status.ts",
+        "mode": 420,
+        "sha256": "e843e6f0dfd975844c4efadb4160fb8517406cf2af23cfcfd7762eb07f8839a5"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-task-confirmation.ts",
+        "mode": 420,
+        "sha256": "8f608048c8d3f6136fdacd54d47de1621b2df8cc661888f5f40057e01677f5d6"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-task-count.ts",
+        "mode": 420,
+        "sha256": "5fa9fee6dc1ffa4ed417989e2e8653368490fb038e88aa44dc7fef1e4d2b88d3"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-task-derive.ts",
+        "mode": 420,
+        "sha256": "390450a96b8261bcd01b501f3d07cd8ba41e66b89de96a98cc96f19d92f596ff"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-task-tools.ts",
+        "mode": 420,
+        "sha256": "c283b242dc8f15c46cb0070d0f40d2de2529f0cc8a58326596fa9e8e61b81c2e"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-team-evidence.mjs",
+        "mode": 420,
+        "sha256": "32386d8fe1fd3687841709b6bbf129ca0ea8c9021016f1c7ca17dc36a3cf01dd"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-team-hold.ts",
+        "mode": 420,
+        "sha256": "6380e9f86fba65b62a431ed6e23ec8131dee315ee7a3431ce1bf85cacfa274e2"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-tool-names.ts",
+        "mode": 420,
+        "sha256": "82ae3ee98b798ec57d0477962f025014c2f5a93bc9f22be08fa5be84e51420f0"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-tools.ts",
+        "mode": 420,
+        "sha256": "d2689c965bc406794f300a7524c61d82a98ca8e6d81e8269a2d9fedac6d3ca10"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-widget.ts",
+        "mode": 420,
+        "sha256": "7e75a6a491b40fe6f2e6cbfaae0bd148e31ceea308a68ab2bc8b3d3fab7631e7"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal.ts",
+        "mode": 420,
+        "sha256": "efde77d22ae1dda659aa9f7d57efce954c1df66800d488905e237ef21bb7a3b3"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/network-error-backoff.ts",
+        "mode": 420,
+        "sha256": "b31d9e88584e455ed36a9b83a6bf5d3f2fc4dcdfe4ff48a61012e29c2d1f3717"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/prompts",
+        "kind": "directory",
+        "mode": 493
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/prompts/goal-prompts.ts",
+        "mode": 420,
+        "sha256": "2cb4ba346a778924b9ff2d59979343bcfedc46ad0c6887f8b6c9847d7c168508"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/storage",
+        "kind": "directory",
+        "mode": 493
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/storage/goal-files.ts",
+        "mode": 420,
+        "sha256": "17e55a32ba4630fca95badbbc6de8f0be0cf4e3a27a9a9917c030d943f69d9f2"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/storage/goal-lock.ts",
+        "mode": 420,
+        "sha256": "b698908783925a031393993f2bdcd925acbb274b7e6fa7fcff3c29c695b73ba0"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/widgets",
+        "kind": "directory",
+        "mode": 493
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/widgets/auditor-dashboard-model.ts",
+        "mode": 420,
+        "sha256": "8f2f75e887b2e824db4ca12ff9abe563e73f6493358deeddb1e20a3877b85de8"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/widgets/dialog-scaffold.ts",
+        "mode": 420,
+        "sha256": "a6c7a630461c185f87e62c2799d604f202b36b6d690fe97bf17551bd6b9d95df"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/widgets/goal-dashboard-model.ts",
+        "mode": 420,
+        "sha256": "8b81439ba76a4d46f8ff8f0050f4b24da9d0833978a9cd1f4621683b9ee0f88a"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/widgets/goal-dashboard-renderer.ts",
+        "mode": 420,
+        "sha256": "5d4aa0689bb54893c0ac9f95f7d43277f0249a5afb6bde481e24d1a050c1b3b4"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/widgets/goal-escape-dialog.ts",
+        "mode": 420,
+        "sha256": "8ba2129c3b69c5e0225c7c5763f388f8cc95dca1648de1ad372e4dc1a1967839"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/widgets/goal-notifications.ts",
+        "mode": 420,
+        "sha256": "7be50ce318af5842daf40a6430d2b5dc52269b6f06d790a856e268fe93a88b1a"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/widgets/goal-widget.ts",
+        "mode": 420,
+        "sha256": "ad56f0fdd0ba7ec1cc310a574621b08a7cfafecc0b7de906a8ea50901671e3b6"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/widgets/task-list-overlay.ts",
+        "mode": 420,
+        "sha256": "6e2633b22c376d891a6e52ed8e344ff43afb9bc4ac50cecf9f966be90d5699d0"
+      },
+      {
+        "path": ".pi/agent/teams/host-evidence.mjs",
+        "mode": 420,
+        "sha256": "32386d8fe1fd3687841709b6bbf129ca0ea8c9021016f1c7ca17dc36a3cf01dd"
+      },
+      {
+        "path": ".pi/agent/teams/patches/goal-team-delivery/manifest.json",
+        "mode": 420,
+        "sha256": "794c0e331f4efd79c0d7a9e4e13e4261dcaa496796037340d4df4f55aa50080a"
+      },
+      {
+        "path": ".pi/agent/teams/patches/goal-team-delivery/postimage",
+        "kind": "directory",
+        "mode": 493
+      },
+      {
+        "path": ".pi/agent/teams/patches/goal-team-delivery/postimage/extensions",
+        "kind": "directory",
+        "mode": 493
+      },
+      {
+        "path": ".pi/agent/teams/patches/goal-team-delivery/postimage/extensions/goal-completion.ts.txt",
+        "mode": 420,
+        "sha256": "d3de66b4606ba9f6aba206f0307032979ada5e0e306f9917076652256a398d1b"
+      },
+      {
+        "path": ".pi/agent/teams/patches/goal-team-delivery/postimage/extensions/goal-task-tools.ts.txt",
+        "mode": 420,
+        "sha256": "c283b242dc8f15c46cb0070d0f40d2de2529f0cc8a58326596fa9e8e61b81c2e"
+      },
+      {
+        "path": ".pi/agent/teams/patches/goal-team-delivery/postimage/extensions/goal-team-evidence.mjs.txt",
+        "mode": 420,
+        "sha256": "32386d8fe1fd3687841709b6bbf129ca0ea8c9021016f1c7ca17dc36a3cf01dd"
+      },
+      {
+        "path": ".pi/agent/teams/patches/goal-team-delivery/preimage",
+        "kind": "directory",
+        "mode": 493
+      },
+      {
+        "path": ".pi/agent/teams/patches/goal-team-delivery/preimage/extensions",
+        "kind": "directory",
+        "mode": 493
+      },
+      {
+        "path": ".pi/agent/teams/patches/goal-team-delivery/preimage/extensions/goal-completion.ts.txt",
+        "mode": 420,
+        "sha256": "787fcf7eeebec6f52feaeef2fff1752ded6a0cbbe7cf4b11faace960c1b7b311"
+      },
+      {
+        "path": ".pi/agent/teams/patches/goal-team-delivery/preimage/extensions/goal-task-tools.ts.txt",
+        "mode": 420,
+        "sha256": "02d4c4e855759256d510b1a86b24890f452e73b85816369af23419fa8b9283ec"
+      },
+      {
+        "path": ".pi/agent/teams/patches/goal-team-delivery/verify-runtime.mjs",
+        "mode": 420,
+        "sha256": "8c50043e7f51f0502ea3f8d5cce0d3e7e55320cd6a488f96013f9ab4d700556d"
+      }
+    ],
+    "digest": "84e5d5dea944907c21a904d7ee2e1893d76f0295785d5d7f6ba05881cf2af480"
+  },
+  "after": {
+    "cwd": "/home/timmypai",
+    "files": [
+      {
+        "path": ".pi/agent/teams/check-goal-completion.mjs",
+        "mode": 420,
+        "sha256": "5900a99b84b2e6431ad7094c87553a4301ed0671b38e12aaa8b061daedbf9f54"
+      },
+      {
+        "path": ".pi/agent/teams/check-goal-hold-wake.mjs",
+        "mode": 420,
+        "sha256": "93027e49926c2ad981e33e09f99aff4a799a20275499affe9ca93c23dabd3d6f"
+      },
+      {
+        "path": ".pi/agent/teams/check-host-evidence.mjs",
+        "mode": 420,
+        "sha256": "17d5598820a999183559a9476bed1894a2c9c6a5f08590656318af91980cc444"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions",
+        "kind": "directory",
+        "mode": 493
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/auditor-selector.ts",
+        "mode": 420,
+        "sha256": "55f1ad0df0d252a36d38a39497f114d47c7eaa1f7c943d3104743b12a4150412"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-accounting.ts",
+        "mode": 420,
+        "sha256": "1015673f5463f2c03c57bbf87118154f2c900655b16283c03c0ac98a95630a16"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-activity.ts",
+        "mode": 420,
+        "sha256": "426ebb79514339166a2ef6925d5729f53396eff9932f5dcfd88ad69aca89a974"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-auditor.ts",
+        "mode": 420,
+        "sha256": "4dad756a4a064749cef803601b55da24b4daaaf31345890850809ea48b892e29"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-commands.ts",
+        "mode": 420,
+        "sha256": "8668387adbb13d5908c7f5e7fa0f5ad521ab6bd9060730ec228df4b068c584c2"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-compaction.ts",
+        "mode": 420,
+        "sha256": "6185fa52fa73ca3348784fd7386d8dbf4411c2dff831cb74420aaf559a581608"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-completion.ts",
+        "mode": 420,
+        "sha256": "d3de66b4606ba9f6aba206f0307032979ada5e0e306f9917076652256a398d1b"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-contract.ts",
+        "mode": 420,
+        "sha256": "96dec73609403c8a1b372551b44b2e1b8aacda7da40d5a590af27b066664743d"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-core-tools.ts",
+        "mode": 420,
+        "sha256": "df465ad0bd17ac6339fc9fb07427887251df153002ee2443b73d0c97c7e673a3"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-core.ts",
+        "mode": 420,
+        "sha256": "104a6c53528a68ea18f41ff6f6e2dca54935d3c9b558f94cb922c20606e736a8"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-draft.ts",
+        "mode": 420,
+        "sha256": "85224b9d4fd5989f45e782dc8fc017c72d80c9e9c282a66f7c5e51556bd074e6"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-drafting.ts",
+        "mode": 420,
+        "sha256": "475e1a459b1fde5399faf8fbc508a469095fa30f4df32d71d1f4973b3f9c51e8"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-events.ts",
+        "mode": 420,
+        "sha256": "787f01915589c11baf06e0f793bcf6129f7a5138f5a158a372bee8639bdea8fe"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-format.ts",
+        "mode": 420,
+        "sha256": "df1919414f3176d05a538721605324403262745c1568ba02ba6f02e197736c8b"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-ledger.ts",
+        "mode": 420,
+        "sha256": "3176a1f61b878579ac4bc2fc8fecb9591d4db384cefb8973b1025894c84342b6"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-oracle.ts",
+        "mode": 420,
+        "sha256": "dc464fd982a5aa641b6b1914771c9dcae31618dc565eb3d299e76f4feb7d4912"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-policy.ts",
+        "mode": 420,
+        "sha256": "3235aa1f7e9f169501bc331c40dada7c2391199a4e8529e848d3d4c055a18dd5"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-pool.ts",
+        "mode": 420,
+        "sha256": "3983886e220bdb52907fe9f477aa566403773a92f83d89ff044089d5d0cf866f"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-questionnaire.ts",
+        "mode": 420,
+        "sha256": "6b37e42ecee7b65c0cd5b054c9654849fdc9314acbfbb309671028a1955dc8ab"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-record.ts",
+        "mode": 420,
+        "sha256": "2809c100082be4889630a536bb833a366888f415d396d65087e02c9e00756067"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-recovery.ts",
+        "mode": 420,
+        "sha256": "e342da30af38e6a42e90721438f77fc7d8c40d4afe208256100881c8f647e85d"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-runtime.ts",
+        "mode": 420,
+        "sha256": "5f052a07b2ec33ec50f99eea8052ef733bf882e610a8922561024d66bc81d20c"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-service.ts",
+        "mode": 420,
+        "sha256": "aa1d482a183fcf44f8592a377824ab49c81cae4f14a93d45bec7b16ad1f4d860"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-session-health.ts",
+        "mode": 420,
+        "sha256": "9d4f5307282d5a6c9c3ba144194d0de0ee62a8a1be6a4e9c6d9127f36c8cadc0"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-settings.ts",
+        "mode": 420,
+        "sha256": "83cc46f670b89a4b54824fbd6aada2684885f508a8543ce15c8944d6c6fec95b"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-state.ts",
+        "mode": 420,
+        "sha256": "f9df3fb652ae964dcc4c7329630fd294ea042a84a41924e98e741a5e064c6c25"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-status.ts",
+        "mode": 420,
+        "sha256": "e843e6f0dfd975844c4efadb4160fb8517406cf2af23cfcfd7762eb07f8839a5"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-task-confirmation.ts",
+        "mode": 420,
+        "sha256": "8f608048c8d3f6136fdacd54d47de1621b2df8cc661888f5f40057e01677f5d6"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-task-count.ts",
+        "mode": 420,
+        "sha256": "5fa9fee6dc1ffa4ed417989e2e8653368490fb038e88aa44dc7fef1e4d2b88d3"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-task-derive.ts",
+        "mode": 420,
+        "sha256": "390450a96b8261bcd01b501f3d07cd8ba41e66b89de96a98cc96f19d92f596ff"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-task-tools.ts",
+        "mode": 420,
+        "sha256": "c283b242dc8f15c46cb0070d0f40d2de2529f0cc8a58326596fa9e8e61b81c2e"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-team-evidence.mjs",
+        "mode": 420,
+        "sha256": "32386d8fe1fd3687841709b6bbf129ca0ea8c9021016f1c7ca17dc36a3cf01dd"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-team-hold.ts",
+        "mode": 420,
+        "sha256": "6380e9f86fba65b62a431ed6e23ec8131dee315ee7a3431ce1bf85cacfa274e2"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-tool-names.ts",
+        "mode": 420,
+        "sha256": "82ae3ee98b798ec57d0477962f025014c2f5a93bc9f22be08fa5be84e51420f0"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-tools.ts",
+        "mode": 420,
+        "sha256": "d2689c965bc406794f300a7524c61d82a98ca8e6d81e8269a2d9fedac6d3ca10"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal-widget.ts",
+        "mode": 420,
+        "sha256": "7e75a6a491b40fe6f2e6cbfaae0bd148e31ceea308a68ab2bc8b3d3fab7631e7"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/goal.ts",
+        "mode": 420,
+        "sha256": "efde77d22ae1dda659aa9f7d57efce954c1df66800d488905e237ef21bb7a3b3"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/network-error-backoff.ts",
+        "mode": 420,
+        "sha256": "b31d9e88584e455ed36a9b83a6bf5d3f2fc4dcdfe4ff48a61012e29c2d1f3717"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/prompts",
+        "kind": "directory",
+        "mode": 493
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/prompts/goal-prompts.ts",
+        "mode": 420,
+        "sha256": "2cb4ba346a778924b9ff2d59979343bcfedc46ad0c6887f8b6c9847d7c168508"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/storage",
+        "kind": "directory",
+        "mode": 493
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/storage/goal-files.ts",
+        "mode": 420,
+        "sha256": "17e55a32ba4630fca95badbbc6de8f0be0cf4e3a27a9a9917c030d943f69d9f2"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/storage/goal-lock.ts",
+        "mode": 420,
+        "sha256": "b698908783925a031393993f2bdcd925acbb274b7e6fa7fcff3c29c695b73ba0"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/widgets",
+        "kind": "directory",
+        "mode": 493
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/widgets/auditor-dashboard-model.ts",
+        "mode": 420,
+        "sha256": "8f2f75e887b2e824db4ca12ff9abe563e73f6493358deeddb1e20a3877b85de8"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/widgets/dialog-scaffold.ts",
+        "mode": 420,
+        "sha256": "a6c7a630461c185f87e62c2799d604f202b36b6d690fe97bf17551bd6b9d95df"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/widgets/goal-dashboard-model.ts",
+        "mode": 420,
+        "sha256": "8b81439ba76a4d46f8ff8f0050f4b24da9d0833978a9cd1f4621683b9ee0f88a"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/widgets/goal-dashboard-renderer.ts",
+        "mode": 420,
+        "sha256": "5d4aa0689bb54893c0ac9f95f7d43277f0249a5afb6bde481e24d1a050c1b3b4"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/widgets/goal-escape-dialog.ts",
+        "mode": 420,
+        "sha256": "8ba2129c3b69c5e0225c7c5763f388f8cc95dca1648de1ad372e4dc1a1967839"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/widgets/goal-notifications.ts",
+        "mode": 420,
+        "sha256": "7be50ce318af5842daf40a6430d2b5dc52269b6f06d790a856e268fe93a88b1a"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/widgets/goal-widget.ts",
+        "mode": 420,
+        "sha256": "ad56f0fdd0ba7ec1cc310a574621b08a7cfafecc0b7de906a8ea50901671e3b6"
+      },
+      {
+        "path": ".pi/agent/teams/goal-team-evidence/delivery-20260908/candidate/pi-goal-x/extensions/widgets/task-list-overlay.ts",
+        "mode": 420,
+        "sha256": "6e2633b22c376d891a6e52ed8e344ff43afb9bc4ac50cecf9f966be90d5699d0"
+      },
+      {
+        "path": ".pi/agent/teams/host-evidence.mjs",
+        "mode": 420,
+        "sha256": "32386d8fe1fd3687841709b6bbf129ca0ea8c9021016f1c7ca17dc36a3cf01dd"
+      },
+      {
+        "path": ".pi/agent/teams/patches/goal-team-delivery/manifest.json",
+        "mode": 420,
+        "sha256": "794c0e331f4efd79c0d7a9e4e13e4261dcaa496796037340d4df4f55aa50080a"
+      },
+      {
+        "path": ".pi/agent/teams/patches/goal-team-delivery/postimage",
+        "kind": "directory",
+        "mode": 493
+      },
+      {
+        "path": ".pi/agent/teams/patches/goal-team-delivery/postimage/extensions",
+        "kind": "directory",
+        "mode": 493
+      },
+      {
+        "path": ".pi/agent/teams/patches/goal-team-delivery/postimage/extensions/goal-completion.ts.txt",
+        "mode": 420,
+        "sha256": "d3de66b4606ba9f6aba206f0307032979ada5e0e306f9917076652256a398d1b"
+      },
+      {
+        "path": ".pi/agent/teams/patches/goal-team-delivery/postimage/extensions/goal-task-tools.ts.txt",
+        "mode": 420,
+        "sha256": "c283b242dc8f15c46cb0070d0f40d2de2529f0cc8a58326596fa9e8e61b81c2e"
+      },
+      {
+        "path": ".pi/agent/teams/patches/goal-team-delivery/postimage/extensions/goal-team-evidence.mjs.txt",
+        "mode": 420,
+        "sha256": "32386d8fe1fd3687841709b6bbf129ca0ea8c9021016f1c7ca17dc36a3cf01dd"
+      },
+      {
+        "path": ".pi/agent/teams/patches/goal-team-delivery/preimage",
+        "kind": "directory",
+        "mode": 493
+      },
+      {
+        "path": ".pi/agent/teams/patches/goal-team-delivery/preimage/extensions",
+        "kind": "directory",
+        "mode": 493
+      },
+      {
+        "path": ".pi/agent/teams/patches/goal-team-delivery/preimage/extensions/goal-completion.ts.txt",
+        "mode": 420,
+        "sha256": "787fcf7eeebec6f52feaeef2fff1752ded6a0cbbe7cf4b11faace960c1b7b311"
+      },
+      {
+        "path": ".pi/agent/teams/patches/goal-team-delivery/preimage/extensions/goal-task-tools.ts.txt",
+        "mode": 420,
+        "sha256": "02d4c4e855759256d510b1a86b24890f452e73b85816369af23419fa8b9283ec"
+      },
+      {
+        "path": ".pi/agent/teams/patches/goal-team-delivery/verify-runtime.mjs",
+        "mode": 420,
+        "sha256": "8c50043e7f51f0502ea3f8d5cce0d3e7e55320cd6a488f96013f9ab4d700556d"
+      }
+    ],
+    "digest": "84e5d5dea944907c21a904d7ee2e1893d76f0295785d5d7f6ba05881cf2af480"
+  },
+  "status": "verified",
+  "exitCode": 0,
+  "signal": null,
+  "errorCode": null,
+  "durationMs": 3413,
+  "logSha256": "65eb45e82f1e27d45599a6fc30e82f3126bc69e199dc1584cd5032dd90f5322e",
+  "finishedAt": "2026-09-08T03:39:50.703Z"
+}

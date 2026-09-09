@@ -1,0 +1,18 @@
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Report validation failed/. Input:
+
+'WebSocket error'
+
+    at file:///home/timmypai/.pi/agent/teams/goal-team-evidence/flow-fixes-20260908/check-report.mjs:45:135 {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: 'WebSocket error',
+  expected: /Report validation failed/,
+  operator: 'match',
+  diff: 'simple'
+}
+
+Node.js v24.18.0

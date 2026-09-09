@@ -1,0 +1,54 @@
+[
+  {
+    "path": "/home/timmypai/.pi/agent/AGENTS.md",
+    "sha256": "d50bc5301b130acf5d6a77a376c46d5d151b97f95ce750ffdced0ef800f70b23"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/skills/team-flow/SKILL.md",
+    "sha256": "4b9ee20c7a32db1c44f832aefa349e2a4a9f736ac09d1fee815f1e91fd1e79d1"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/skills/team-member/SKILL.md",
+    "sha256": "37a595e8ac93c64468432b63ddf5a5ed06d1a86e93b6ced7765fb78576c0bb8a"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/prompts/team.md",
+    "sha256": "f5ed165d015e9c15a6ad1bf268f787683708c698c25337f91f085e426965899d"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/OPERATING-MODEL.md",
+    "sha256": "9ad5993c6a8fe7f926c47d2cf839cc1e614430126d03c8ef0d583a6067771f21"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/check-config.mjs",
+    "sha256": "7d8684ecbfb14ab77ec3d1484f2fb683db18b8f98893e1d7499644ebb03254f5"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/pi-goal-x-settings.json",
+    "sha256": "aa56fb60ead4928e6fc5421cc9c2690afea0fb3fba951b5997cb20a293d2b2b2"
+  },
+  {
+    "path": "/home/timmypai/.pi/pi-goal-x-settings.json",
+    "sha256": "e980d14aeda1b7ce62a4ad05198bc14a81be7d08cba9c6bb5cadd31062d57993"
+  },
+  {
+    "path": "/home/timmypai/apps/grafana/.pi/pi-goal-x-settings.json",
+    "sha256": "e980d14aeda1b7ce62a4ad05198bc14a81be7d08cba9c6bb5cadd31062d57993"
+  },
+  {
+    "path": "/home/timmypai/.pi/settings.json",
+    "sha256": "c1495d202e7fe1165823085cbabf5dfef3997e4881a8cdc3b07374e2bc84ff8e"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/GOAL-TEAMS.md",
+    "sha256": "34a0babeadb392c630a064c8a706d72b7cbe1eb8a5934ce219e03d3bea9fdb0c"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/goal-task-step.js",
+    "sha256": "4a5f3e2a091aec652ff15a187a46ee41a037ad66eb0ab8c575cb23b882ff0a85"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/check-goal-team.mjs",
+    "sha256": "048fbad64af89011fb29c8e2ec44f1858d240e836e18c62a366e4f35dcf9e611"
+  }
+]

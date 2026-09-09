@@ -1,0 +1,78 @@
+✔ CLI still prepares valid attempts without launching a child (2544.025281ms)
+✔ CLI rejects out-of-budget attempts before creating dispatch artifacts (350.540869ms)
+✔ existing host verification reuses unaffected evidence without executing the check again (29.088978ms)
+✔ work/checks reach the child and summary-only cannot pass a contracted review (2.27812ms)
+✖ renaming phases cannot reset the per-task role admission ceiling (1.141871ms)
+✔ failed execution keeps a captured product report distinct, never accepts it (0.291211ms)
+✖ missing report cannot trigger another same-source launch after clearing active marker (0.869686ms)
+✖ new same-role admission requires a diagnosed reason (0.802194ms)
+✔ missing, foreign, duplicate and unobserved criteria never pass (0.777934ms)
+✔ static review cannot pass on a different final source binding (0.227107ms)
+✔ declared execution command is retained once in the actual child task (0.334187ms)
+✔ matched criterion observations can pass without running browser in static role (0.192753ms)
+✔ new dispatch requires an explicit responsibility instead of silently dropping work (35.07924ms)
+✔ effective no-shell profile cannot receive an execution command (178.23087ms)
+✔ capable verifier prepares explicit browser checks without executing them (826.452214ms)
+✔ parent-only checks and undeclared browser execution fail before dispatch (62.00263ms)
+✔ browser work cannot be assigned to static QA even with no command declared (33.524725ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 14
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2941.55072
+
+✖ failing tests:
+
+test at ../../.pi/agent/teams/goal-team-evidence/efficiency-20260908/step-contract.test.mjs:22:1
+✖ renaming phases cannot reset the per-task role admission ceiling (1.141871ms)
+  AssertionError [ERR_ASSERTION]: Missing expected rejection.
+      at async TestContext.<anonymous> (file:///home/timmypai/.pi/agent/teams/goal-team-evidence/efficiency-20260908/step-contract.test.mjs:31:2)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /admission limit/,
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at ../../.pi/agent/teams/goal-team-evidence/efficiency-20260908/step-contract.test.mjs:40:1
+✖ missing report cannot trigger another same-source launch after clearing active marker (0.869686ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Repair report only/. Input:
+  
+  'Error: Native terminal receipt and parent recovery required; text retry is not replay authority'
+  
+      at async TestContext.<anonymous> (file:///home/timmypai/.pi/agent/teams/goal-team-evidence/efficiency-20260908/step-contract.test.mjs:47:2)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: Error: Native terminal receipt and parent recovery required; text retry is not replay authority
+        at eval (eval at <anonymous> (file:///home/timmypai/.pi/agent/teams/goal-team-evidence/efficiency-20260908/step-contract.test.mjs:6:15), <anonymous>:123:13)
+        at async waitForActual (node:assert:646:5)
+        at async strict.rejects (node:assert:769:25)
+        at async TestContext.<anonymous> (file:///home/timmypai/.pi/agent/teams/goal-team-evidence/efficiency-20260908/step-contract.test.mjs:47:2)
+        at async Test.run (node:internal/test_runner/test:1332:7)
+        at async Test.processPendingSubtests (node:internal/test_runner/test:911:7),
+    expected: /Repair report only/,
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at ../../.pi/agent/teams/goal-team-evidence/efficiency-20260908/step-contract.test.mjs:50:1
+✖ new same-role admission requires a diagnosed reason (0.802194ms)
+  AssertionError [ERR_ASSERTION]: Missing expected rejection.
+      at async TestContext.<anonymous> (file:///home/timmypai/.pi/agent/teams/goal-team-evidence/efficiency-20260908/step-contract.test.mjs:54:2)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /diagnosed reason/,
+    operator: 'rejects',
+    diff: 'simple'
+  }

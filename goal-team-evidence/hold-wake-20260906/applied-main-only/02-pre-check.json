@@ -1,0 +1,6 @@
+{
+  "status": "COMPATIBLE",
+  "state": "pre",
+  "target": "/home/timmypai/.pi/agent/npm/node_modules/pi-goal-x",
+  "version": "0.30.5"
+}

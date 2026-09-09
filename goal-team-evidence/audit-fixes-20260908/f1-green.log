@@ -1,0 +1,14 @@
+✔ a terminal reconciled throw can be accepted without rewriting its failed history (27.899328ms)
+✔ unreconciled failure with a runId cannot pass merely by clearing the marker (21.758403ms)
+✔ writer self-pass does not authorize another same-role step without parent disposition (22.148601ms)
+✔ host-rejected writer passes consume three repairs, never a fourth (107.723336ms)
+✔ four parent-accepted slices continue without spending repair budget (26.899633ms)
+✔ recovery with a foreign request or child identity cannot settle execution (25.590325ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 333.231377

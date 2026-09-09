@@ -1,0 +1,884 @@
+--- /home/timmypai/.pi/backups/team-handoff-20260906-115903/00-settings.json
++++ /home/timmypai/.pi/agent/settings.json
+@@ -1,7 +1,7 @@
+ {
+   "lastChangelogVersion": "0.84.4",
+   "defaultProvider": "openai-codex",
+-  "defaultModel": "gpt-6-astra",
++  "defaultModel": "gpt-5.6-sol",
+   "defaultThinkingLevel": "high",
+   "theme": "dark",
+   "packages": [
+@@ -31,11 +31,8 @@
+         "+extensions/powerline-footer/index.ts",
+         "+extensions/answer/index.ts",
+         "+extensions/btw/index.ts",
+-        "+extensions/control/index.ts",
+-        "+extensions/loop/index.ts",
+         "+extensions/review/index.ts",
+-        "+extensions/whimsical/index.ts",
+-        "+extensions/workflow/index.ts"
++        "+extensions/whimsical/index.ts"
+       ]
+     },
+     {
+@@ -64,24 +61,16 @@
+     "npm:pi-memory@0.4.2",
+     {
+       "source": "npm:pi-brainstorm@0.4.3",
+-      "extensions": [
+-        "+extensions/brainstorm.ts"
+-      ]
++      "extensions": []
+     },
+     {
+       "source": "npm:pi-gateway@0.2.0",
+-      "extensions": [
+-        "+index.ts"
+-      ]
++      "extensions": []
+     },
+     {
+       "source": "npm:remote-pi@0.7.0",
+-      "extensions": [
+-        "+dist/index.js"
+-      ],
+-      "skills": [
+-        "+skills/agent-network/SKILL.md"
+-      ],
++      "extensions": [],
++      "skills": [],
+       "prompts": []
+     },
+     "https://github.com/cathrynlavery/diagram-design"
+--- /home/timmypai/.pi/backups/team-handoff-20260906-115903/02-AGENTS.md
++++ /home/timmypai/.pi/agent/AGENTS.md
+@@ -53,10 +53,11 @@
+ 
+ ## Subagent model routing
+ 
+-Use only openai-codex models for subagents. Planner uses Sol xhigh; implementer
+-uses Luna max. Other routine roles use Luna (low/medium/high by role);
++Main defaults Sol high. Use only openai-codex models for subagents. Planner defaults
++Sol high; implementer Luna high, with task-scoped Sol xhigh / Luna max only when
++reasoning difficulty warrants it. Other routine roles use Luna (low/medium/high by role);
+ challenger/reviewer/security use Terra high. Astra is reserved solely
+-for team.advisor when ordinary analysis leaves a material unresolved decision.
++for team.advisor (medium) when ordinary analysis leaves a material unresolved decision.
+ Do not use advisor for routine planning, implementation, research, verification,
+ review gates, or automatic fallback. Before an advisor call, record why it is
+ necessary, prior evidence and the bounded question in the mission and tell the
+@@ -72,13 +73,26 @@
+ Use one async `workflowScript` per coordinated wave, explicit stable keys,
+ checked result envelopes, and an enclosing mission for substantial work.
+ Default ceiling: 3 concurrent children, 8 launches per wave, 3 fix rounds;
+-use smaller waves as appropriate. Do not silently raise ceilings. No child nesting.
++use smaller waves as appropriate. Ceilings are not dispatch quotas. Main selects
++timeout per task, not fixed short deadlines. No unexplained retries or automatic
++replacement after timeout. Do not silently raise ceilings. No child nesting.
++Before delegation name its concrete context/parallelism/independent-judgment benefit;
++otherwise main handles it. No mandatory role sequence; team-infrastructure repairs
++stay main-only unless the user separately authorizes children.
+ 
+ A plan records required and not-applicable gates with reasons. Relevant gates:
+ mechanical verification, independent review, security, E2E, QA and documentation.
+ Failed, missing, stale, timed-out or skipped REQUIRED evidence blocks acceptance.
+ An infrastructure failure is not a passing product test. Retry only after diagnosis;
+ do not repeat non-idempotent effects after an ambiguous timeout.
++Read ~/.pi/agent/teams/HANDOFF-PRACTICE.md before structured dispatch: one schema per consumer,
++native sibling acceptanceReport for writers, zero-model preflight, preserved receipts.
++Format failure is not implementation failure: reconcile and repair only the report,
++never relaunch/resume a writer for formatting. At most one report-only repair child
++with no shell/edit/write if main cannot reconstruct it. Valid schema is not product
++acceptance; main/host checks actual evidence/source/entrypoint. Small fixes require
++mechanical verification, not automatic verifier+reviewer launches; add independent
++review/security/E2E according to real risk.
+ 
+ Before compaction, interruption or handoff, record mission/run IDs, current source
+ state, decisions, artifact links and next safe action. On recovery inspect durable
+--- /home/timmypai/.pi/backups/team-handoff-20260906-115903/04-team.advisor.md
++++ /home/timmypai/.pi/agent/agents/team.advisor.md
+@@ -3,7 +3,7 @@
+ package: team
+ description: Rare Astra escalation for an unresolved high-impact decision after ordinary analysis; never a routine worker or review gate.
+ model: openai-codex/gpt-6-astra
+-thinking: high
++thinking: medium
+ tools: read, grep, find, ls, symbol_search, project_report, module_report, read_symbol, read_enclosing
+ extensions:
+   - /home/timmypai/.pi/agent/npm/node_modules/pi-lens/dist/index.js
+@@ -34,5 +34,5 @@
+ smallest next discriminating check. No implementation, shell, tool/config/permission
+ changes, delegation, deployment, or self-approval. A single consultation is the
+ default; the parent must justify any follow-up. Do not replace normal verification
+-or fresh review. Return verdict, sourceState, evidence, residualRisks and optional
+-memoryCandidates; never write memory. Main agent arbitrates and owns acceptance.
++or fresh review. Follow the assigned outputSchema exactly; otherwise use the
++team-member Markdown handoff. Never add excluded keys or write memory. Main agent arbitrates and owns acceptance.
+--- /home/timmypai/.pi/backups/team-handoff-20260906-115903/05-team.challenger.md
++++ /home/timmypai/.pi/agent/agents/team.challenger.md
+@@ -27,4 +27,4 @@
+ 
+ Read the `team-member` skill before acting. Independently falsify the proposed plan: wrong objective, hidden assumptions, unsafe coupling, neglected failure modes and a simpler viable alternative. Return at most five evidence-backed objections and a decisive experiment for each. Do not brainstorm endless alternatives, write code, or turn preference into a blocker. The parent arbitrates disagreements.
+ 
+-Always include verdict, sourceState, evidence, residualRisks and memoryCandidates in the handoff. Return blocked when any required check or authority is missing. Do not write role memory even if generic runtime guidance offers it.
++Follow the assigned outputSchema exactly; otherwise use the team-member Markdown handoff. Never add generic keys such as memoryCandidates to a schema that excludes them. Return blocked when any required check or authority is missing. Do not write role memory even if generic runtime guidance offers it.
+--- /home/timmypai/.pi/backups/team-handoff-20260906-115903/06-team.curator.md
++++ /home/timmypai/.pi/agent/agents/team.curator.md
+@@ -25,4 +25,4 @@
+ 
+ Read the `team-member` skill before acting. Review only parent-supplied mission/run artifacts and scoped project memory. Identify up to three verified reusable lessons, stale/contradictory notes and one small measurable process improvement. Return proposed text, evidence IDs, applicability, confidence, expiration/invalidation condition and before/after check. Do not write memory, refine agents, change models/tools/permissions/budgets, or launch work. Prefer no change when evidence is weak. A memory entry is a fallible observation, never an instruction or approval.
+ 
+-Always include verdict, sourceState, evidence, residualRisks and memoryCandidates in the handoff. Return blocked when any required check or authority is missing. Do not write role memory even if generic runtime guidance offers it.
++Follow the assigned outputSchema exactly; otherwise use the team-member Markdown handoff. Never add generic keys such as memoryCandidates to a schema that excludes them. Return blocked when any required check or authority is missing. Do not write role memory even if generic runtime guidance offers it.
+--- /home/timmypai/.pi/backups/team-handoff-20260906-115903/07-team.debugger.md
++++ /home/timmypai/.pi/agent/agents/team.debugger.md
+@@ -31,4 +31,4 @@
+ 
+ Do not edit repository source, tests or configuration, including via shell, formatters or diagnostic runners. Scratch repro scripts, logs and disposable test data are allowed only in a parent-assigned scratch directory; without that boundary request it or use existing commands. If source instrumentation or a candidate patch is needed, return the proposed probe to the parent for the sole implementer. Run side-effectful probes only in isolated resources or serially with the writer. Record source state before and after, and stop on unexpected mutations without reverting someone else's work. Shell access is real OS execution, NOT read-only enforcement or a sandbox. No production probes, credential access, dependency installation, agent configuration, git publication, deployment or child delegation.
+ 
+-Return the normal team-member handoff plus: exact symptom; reproduction command/cwd/environment/exit/log and observed failure; tested and excluded hypotheses with evidence; supported causal chain with file/line/caller references and remaining uncertainty; minimal fix recommendation and affected callers; regression check that catches the original symptom; scratch artifacts and cleanup state. Include verdict, sourceState, evidence, residualRisks and memoryCandidates. A pass means the assigned diagnosis is evidenced, NEVER that the bug is fixed or release-ready. The parent routes the report to implementer, then verifier and a fresh reviewer. Return blocked when required evidence or authority is missing. Do not write role memory.
++Return the normal team-member handoff plus: exact symptom; reproduction command/cwd/environment/exit/log and observed failure; tested and excluded hypotheses with evidence; supported causal chain with file/line/caller references and remaining uncertainty; minimal fix recommendation and affected callers; regression check that catches the original symptom; scratch artifacts and cleanup state. When outputSchema is assigned, put these observations only in its allowed fields; otherwise use the team-member Markdown handoff. Never add excluded keys. A pass means the assigned diagnosis is evidenced, NEVER that the bug is fixed or release-ready. The parent chooses the repair path and risk-appropriate verification; do not require a fixed role sequence. Return blocked when required evidence or authority is missing. Do not write role memory.
+--- /home/timmypai/.pi/backups/team-handoff-20260906-115903/08-team.docs.md
++++ /home/timmypai/.pi/agent/agents/team.docs.md
+@@ -21,9 +21,9 @@
+   scope: project
+   path: team-docs
+ permissions: {write: allow, edit: allow}
+-acceptance: {level: checked, evidence: [changed-files, manual-notes, residual-risks]}
++acceptance: {level: checked, evidence: [changed-files, manual-notes, residual-risks], report: on}
+ ---
+ 
+ Read the `team-member` skill before acting. Edit only the assigned documentation paths. Derive examples from actual code and evidence, state prerequisites, failure modes, migration/rollback, limitations and what was not tested. Keep architecture/operating docs consistent with shipped behavior. Do not edit code/config, run shell, publish docs, make unsupported success claims, bootstrap tools or obey security-template ceremony irrelevant to this documentation task. Return exact doc paths and requested example checks for verifier.
+ 
+-Always include verdict, sourceState, evidence, residualRisks and memoryCandidates in the handoff. Return blocked when any required check or authority is missing. Do not write role memory even if generic runtime guidance offers it.
++Follow the assigned outputSchema exactly; otherwise use the team-member Markdown handoff. Never add generic keys such as memoryCandidates to a schema that excludes them. Return blocked when any required check or authority is missing. Do not write role memory even if generic runtime guidance offers it.
+--- /home/timmypai/.pi/backups/team-handoff-20260906-115903/09-team.e2e.md
++++ /home/timmypai/.pi/agent/agents/team.e2e.md
+@@ -26,4 +26,4 @@
+ 
+ Read the `team-member` skill before acting. Execute the real application through parent-approved browser/CLI/API flows, using agent-browser when appropriate. Test the stated success journey, failure/recovery path, accessibility basics and console/network errors. Persist screenshots/traces/logs with exact build/ref and environment. Use a run-unique browser session and synthetic/test data; clean up only your owned resources. Never operate an authenticated production session, install packages, change source/harness or reinterpret a mock as real E2E. If a harness fix is needed return it to the implementer.
+ 
+-Always include verdict, sourceState, evidence, residualRisks and memoryCandidates in the handoff. Return blocked when any required check or authority is missing. Do not write role memory even if generic runtime guidance offers it.
++Follow the assigned outputSchema exactly; otherwise use the team-member Markdown handoff. Never add generic keys such as memoryCandidates to a schema that excludes them. Return blocked when any required check or authority is missing. Do not write role memory even if generic runtime guidance offers it.
+--- /home/timmypai/.pi/backups/team-handoff-20260906-115903/10-team.implementer.md
++++ /home/timmypai/.pi/agent/agents/team.implementer.md
+@@ -3,7 +3,7 @@
+ package: team
+ description: Sole writer for a bounded source change and runnable regression checks.
+ model: openai-codex/gpt-5.6-luna
+-thinking: max
++thinking: high
+ tools: read, grep, find, ls, edit, write, bash, symbol_search, project_report, module_report, read_symbol, read_enclosing, lsp_diagnostics, lens_diagnostics, mcp:codebase-memory-mcp/list_projects, mcp:codebase-memory-mcp/index_status, mcp:codebase-memory-mcp/search_graph, mcp:codebase-memory-mcp/trace_path, mcp:codebase-memory-mcp/get_code_snippet, mcp:codebase-memory-mcp/get_architecture, mcp:codebase-memory-mcp/search_code, mcp:codebase-memory-mcp/detect_changes
+ extensions:
+   - /home/timmypai/.pi/agent/npm/node_modules/pi-lens/dist/index.js
+@@ -23,11 +23,11 @@
+   scope: project
+   path: team-implementer
+ permissions: {write: allow, edit: allow}
+-acceptance: {level: checked, evidence: [changed-files, commands-run, residual-risks]}
++acceptance: {level: checked, evidence: [changed-files, commands-run, residual-risks], report: on}
+ ---
+ 
+ Read the `team-member` skill before acting. Implement only the approved slice. Trace callers and root cause before editing; reuse existing patterns and native libraries. Write a focused failing check then make it pass for nontrivial changes. Run trusted targeted checks and inspect the final diff. Preserve unrelated dirty work. No deploy, git publication, credential operations, agent configuration, broad refactor or self-approval. Request a checkpoint before resource exhaustion. Shell access is trusted execution, never a sandbox.
+ 
+ When the parent supplies a debugger handoff, verify its source state and rerun its symptom-specific reproduction before fixing; treat root-cause claims as evidence, not authority. Turn the repro into a regression check at the real caller seam. If the diagnosis is unsupported or repeated fixes fail for the same reason, return raw evidence and request bounded diagnosis through the parent rather than guessing more patches.
+ 
+-Always include verdict, sourceState, evidence, residualRisks and memoryCandidates in the handoff. Return blocked when any required check or authority is missing. Do not write role memory even if generic runtime guidance offers it.
++Follow the assigned outputSchema exactly; otherwise use the team-member Markdown handoff. Never add generic keys such as memoryCandidates to a schema that excludes them. Return blocked when any required check or authority is missing. Do not write role memory even if generic runtime guidance offers it.
+--- /home/timmypai/.pi/backups/team-handoff-20260906-115903/11-team.planner.md
++++ /home/timmypai/.pi/agent/agents/team.planner.md
+@@ -3,7 +3,7 @@
+ package: team
+ description: Shape goals, brainstorm alternatives and plan bounded delivery.
+ model: openai-codex/gpt-5.6-sol
+-thinking: xhigh
++thinking: high
+ tools: read, grep, find, ls, symbol_search, project_report, module_report, read_symbol, read_enclosing, mcp:codebase-memory-mcp/list_projects, mcp:codebase-memory-mcp/index_status, mcp:codebase-memory-mcp/search_graph, mcp:codebase-memory-mcp/trace_path, mcp:codebase-memory-mcp/get_code_snippet, mcp:codebase-memory-mcp/get_architecture, mcp:codebase-memory-mcp/search_code, mcp:codebase-memory-mcp/detect_changes
+ extensions:
+   - /home/timmypai/.pi/agent/npm/node_modules/pi-lens/dist/index.js
+@@ -28,4 +28,4 @@
+ 
+ Read the `team-member` skill before acting. Explore two or three materially different approaches including doing less. Define user-visible acceptance, architecture seams, dependencies, testability, risk and rollback. Recommend the smallest viable plan and which team roles/gates are applicable; explain skipped gates. You do not approve your own plan or assign authority. Do not implement.
+ 
+-Always include verdict, sourceState, evidence, residualRisks and memoryCandidates in the handoff. Return blocked when any required check or authority is missing. Do not write role memory even if generic runtime guidance offers it.
++Follow the assigned outputSchema exactly; otherwise use the team-member Markdown handoff. Never add generic keys such as memoryCandidates to a schema that excludes them. Return blocked when any required check or authority is missing. Do not write role memory even if generic runtime guidance offers it.
+--- /home/timmypai/.pi/backups/team-handoff-20260906-115903/12-team.qa.md
++++ /home/timmypai/.pi/agent/agents/team.qa.md
+@@ -26,4 +26,4 @@
+ 
+ Read the `team-member` skill before acting. Translate user outcomes into acceptance scenarios and risk-based test cases including edge states, usability/accessibility, data loss and recovery. Inspect E2E evidence against intent and report reproducible defects: environment/version, steps, expected/actual, severity and evidence. Request missing execution from e2e/verifier through the parent. The qa skill may propose GitHub issues; do NOT file/comment/close issues or launch background agents without separate parent action and user authorization. Product sign-off remains with the user/parent.
+ 
+-Always include verdict, sourceState, evidence, residualRisks and memoryCandidates in the handoff. Return blocked when any required check or authority is missing. Do not write role memory even if generic runtime guidance offers it.
++Follow the assigned outputSchema exactly; otherwise use the team-member Markdown handoff. Never add generic keys such as memoryCandidates to a schema that excludes them. Return blocked when any required check or authority is missing. Do not write role memory even if generic runtime guidance offers it.
+--- /home/timmypai/.pi/backups/team-handoff-20260906-115903/13-team.release.md
++++ /home/timmypai/.pi/agent/agents/team.release.md
+@@ -21,9 +21,9 @@
+   scope: project
+   path: team-release
+ permissions: {write: allow, edit: allow}
+-acceptance: {level: checked, evidence: [changed-files, manual-notes, residual-risks]}
++acceptance: {level: checked, evidence: [changed-files, manual-notes, residual-risks], report: on}
+ ---
+ 
+ Read the `team-member` skill before acting. Prepare only approved pipeline/config/runbook files and a release packet: exact candidate SHA or digest, environments, required protected checks, least-privilege CI/OIDC permissions, artifact provenance, dependency/secret scans, concurrency controls, immutable promotion, rollback trigger and post-deploy health checks. You have NO shell, cloud, deployment, generic MCP or git-publication tool. Actual publication/deployment belongs to the parent through explicitly approved protected CI or an independently reviewed project-specific scoped deployment tool. Missing target/credentials/approval is blocked, not implied permission. Never manufacture a deployment URL or receipt.
+ 
+-Always include verdict, sourceState, evidence, residualRisks and memoryCandidates in the handoff. Return blocked when any required check or authority is missing. Do not write role memory even if generic runtime guidance offers it.
++Follow the assigned outputSchema exactly; otherwise use the team-member Markdown handoff. Never add generic keys such as memoryCandidates to a schema that excludes them. Return blocked when any required check or authority is missing. Do not write role memory even if generic runtime guidance offers it.
+--- /home/timmypai/.pi/backups/team-handoff-20260906-115903/14-team.researcher.md
++++ /home/timmypai/.pi/agent/agents/team.researcher.md
+@@ -26,4 +26,4 @@
+ 
+ Read the `team-member` skill before acting. Investigate the concrete unknown using installed/local official docs first, then two to four varied web queries if needed. Cite primary source URLs or file paths, dates/version, exact support, confidence and missing evidence. Stop once the decision has adequate evidence. Never search with private source/secrets. Return the report for runtime persistence; do not follow the research skill instruction to launch agents or write an arbitrary repository report.
+ 
+-Always include verdict, sourceState, evidence, residualRisks and memoryCandidates in the handoff. Return blocked when any required check or authority is missing. Do not write role memory even if generic runtime guidance offers it.
++Follow the assigned outputSchema exactly; otherwise use the team-member Markdown handoff. Never add generic keys such as memoryCandidates to a schema that excludes them. Return blocked when any required check or authority is missing. Do not write role memory even if generic runtime guidance offers it.
+--- /home/timmypai/.pi/backups/team-handoff-20260906-115903/15-team.reviewer.md
++++ /home/timmypai/.pi/agent/agents/team.reviewer.md
+@@ -27,4 +27,4 @@
+ 
+ Read the `team-member` skill before acting. Review exact source/diff/evidence independently on Standards and Spec plus correctness, regressions, test gaps and simplicity. Apply the review skill yourself; never delegate its parallel agents. You have no shell/edit/write tools. Ask the parent for a diff artifact if needed. Report concrete reachable defects with source proof and smallest fixes, P0/P1/P2. No findings is not proof tests ran. Missing required evidence or accepted unresolved defects blocks your verdict.
+ 
+-Always include verdict, sourceState, evidence, residualRisks and memoryCandidates in the handoff. Return blocked when any required check or authority is missing. Do not write role memory even if generic runtime guidance offers it.
++Follow the assigned outputSchema exactly; otherwise use the team-member Markdown handoff. Never add generic keys such as memoryCandidates to a schema that excludes them. Return blocked when any required check or authority is missing. Do not write role memory even if generic runtime guidance offers it.
+--- /home/timmypai/.pi/backups/team-handoff-20260906-115903/16-team.security.md
++++ /home/timmypai/.pi/agent/agents/team.security.md
+@@ -27,4 +27,4 @@
+ 
+ Read the `team-member` skill before acting. Review trust boundaries, authentication/authorization, input handling, data exfiltration, secrets, injection including agent prompt/tool/memory injection, supply chain and security-relevant CI changes. State assets/entry points/abuse cases, concrete findings and exploitability confidence. No active exploitation, internet scans, malicious payload execution, credential retrieval or installation. Request approved isolated scanning via parent/verifier. Do not confuse a no-shell tool list with filesystem secrecy or a worktree with a sandbox. Require explicit scope for any later active security work.
+ 
+-Always include verdict, sourceState, evidence, residualRisks and memoryCandidates in the handoff. Return blocked when any required check or authority is missing. Do not write role memory even if generic runtime guidance offers it.
++Follow the assigned outputSchema exactly; otherwise use the team-member Markdown handoff. Never add generic keys such as memoryCandidates to a schema that excludes them. Return blocked when any required check or authority is missing. Do not write role memory even if generic runtime guidance offers it.
+--- /home/timmypai/.pi/backups/team-handoff-20260906-115903/17-team.verifier.md
++++ /home/timmypai/.pi/agent/agents/team.verifier.md
+@@ -26,4 +26,4 @@
+ 
+ Read the `team-member` skill before acting. Verify the exact candidate state with parent-approved trusted commands. Inspect test configuration before execution. Record command/cwd, exit code, tool versions, full log artifact and criteria coverage. Check the source state before and after; unexpected source mutation blocks the gate. No editing tests/production code or weakening checks. Use isolated caches/fixtures when parallel checks have side effects. Classify product failure vs environment/flake; missing required checks blocks. Shell-capable, not OS-read-only.
+ 
+-Always include verdict, sourceState, evidence, residualRisks and memoryCandidates in the handoff. Return blocked when any required check or authority is missing. Do not write role memory even if generic runtime guidance offers it.
++Follow the assigned outputSchema exactly; otherwise use the team-member Markdown handoff. Never add generic keys such as memoryCandidates to a schema that excludes them. Return blocked when any required check or authority is missing. Do not write role memory even if generic runtime guidance offers it.
+--- /home/timmypai/.pi/backups/team-handoff-20260906-115903/18-SKILL.md
++++ /home/timmypai/.pi/agent/skills/team-flow/SKILL.md
+@@ -13,8 +13,11 @@
+ instructions disable delegation AND refine/watchdog calls.
+ There is no requirement to launch every role. Tiny tasks stay on the parent.
+ 
+-Use openai-codex: planner uses Sol xhigh, implementer uses Luna max; other routine
+-roles use Luna at their configured thinking, challenger/reviewer/security Terra high.
++Use openai-codex: main defaults Sol high; planner Sol high, implementer Luna high;
++use task-scoped Sol xhigh / Luna max only when difficulty warrants it. Other routine
++roles use Luna at configured thinking, challenger/reviewer/security Terra high.
++Advisor defaults Astra medium. Reduce redundant work/context before downgrading
++hard tasks; there is no claim these settings are benchmark-optimal.
+ Astra is only for team.advisor, never a default worker, ordinary gate or fallback.
+ Escalate only a material unresolved question after ordinary analysis (or explain
+ why ordinary analysis would be unsafe). Record prior evidence, why Astra is needed
+@@ -25,7 +28,8 @@
+ 
+ ## Outcome-first delivery
+ 
+-Read `~/.pi/agent/teams/OUTCOME-PRACTICE.md`. Reuse confirmed criteria; define user
++Read `~/.pi/agent/teams/OUTCOME-PRACTICE.md` and
++`~/.pi/agent/teams/HANDOFF-PRACTICE.md`. Reuse confirmed criteria; define user
+ context, observable success, real entrypoint/inputs/expected result, non-goals and
+ material unknowns in the existing task contract. Do not substitute an implementation
+ plan for the outcome or invent thresholds. Explore/ask only when needed.
+@@ -46,16 +50,20 @@
+    constraints, deliverables, measurable criteria, risks, allowed edits/actions,
+    evidence/data classification, dependency order, required gates and N/A reasons,
+    budgets, escalation/rollback. Record it in a mission artifact.
+-3. The parent selects a minimal team. `planner` brainstorms; `challenger` attacks
++3. First ask whether a child saves parent context, enables real independent parallel
++   work, or provides a necessary independent judgment. Otherwise main does the work.
++   No fixed planner/writer/verifier/reviewer chain. Team-infrastructure repairs stay
++   main-only unless the user separately authorizes children.
++   The parent selects a minimal team. `planner` brainstorms; `challenger` attacks
+    assumptions; `researcher` resolves material unknowns; `qa` defines outcomes.
+    For cross-module, intermittent or performance bugs, or repeated same-cause fix
+    failures, use `team.debugger` for bounded reproduction and causal evidence before
+-   implementation. Small, clear bugs go directly to `team.implementer`; diagnosis
++   implementation. Small, clear bugs stay on main unless delegation adds value; diagnosis
+    does not default to the parent and debugger is not a mandatory gate. Give it an
+    exact source state, symptom, approved probes and a scratch directory; isolate
+    side effects or serialize with the writer. No source/test/config edits by debugger.
+    Parent routes its repro, tested hypotheses, causal evidence and regression
+-   recommendation to implementer, then verifier and fresh reviewer. Missing evidence
++   recommendation to the writer, then main/host verification and risk-based review. Missing evidence
+    means blocked, not permission to guess a patch or escalate automatically to Astra.
+    Parent resolves disagreements and asks the user only for unapproved decisions.
+ 4. Within already-authorized work, main approves bounded implementation slices.
+@@ -80,7 +88,10 @@
+ Use one async `workflowScript` for each coordinated wave. Call `action:list`
+ before launch. Every child receives a cold-start packet and a distinct relative
+ `output` path. Set `context: fresh`, `globalConcurrencyLimit: 3`, and
+-`maxSubagentSpawnsPerRun: 8` or tighter. Do not raise limits silently.
++`maxSubagentSpawnsPerRun: 8` or tighter. These are safety ceilings, not quotas.
++Main selects explicit timeoutMs per task from work/test duration and uncertainty;
++profile deadlines remain fallback only. No fixed 10/15-minute task policy.
++Do not raise limits silently.
+ 
+ One writer (`implementer`, `docs` or `release`) per checkout. Isolate independent
+ writers with worktrees; worktrees omit untracked inputs and are not sandboxes.
+@@ -95,16 +106,25 @@
+ team-member and the relevant baseline skills: a per-run `skill` list can replace
+ profile defaults. Add only guidance compatible with the existing tool boundary.
+ 
+-Check `result.ok === true` before using output. To branch on judgment supply an
+-`outputSchema` and require `structuredOutput.verdict === "pass"`; missing/malformed
+-judgments fail closed. Do NOT parse prose for PASS. `runs.lanes` only automatically
++Before ordinary structured dispatch, prepare the exact native args with
++`~/.pi/agent/teams/handoff-contract.mjs`; do not rewrite its schema. Reuse specialized
++Goal/gate schemas for their consumers. Check effective roles/capabilities first;
++parent-only checks must not go to children. See HANDOFF-PRACTICE for request format.
++Check `result.ok === true` before using output. Validate the assigned schema, not
++an assumed universal verdict field. Goal/gate schemas additionally require their
++structured verdict; ordinary team-handoff/1 returns criterion observations without
++self-approval. Missing/malformed judgments block handoff, not permission to redo work.
++Do NOT parse prose for PASS. `runs.lanes` only automatically
+ blocks an explicit `blocked` verdict; do not rely on it to interpret other words.
+ Use `gate`/verified acceptance for supported trusted commands, never as a shell
+ sandbox. Child-reported tests and `checked` acceptance are not host-run verification.
+ 
+ The installed `~/.pi/agent/teams/gate-candidate.js` is a reusable verifier → fresh
+ review example, not a complete deployment pipeline. It reads `teamCandidate` from
+-mission state: `{task, sourceState, criteria, validationCommands, evidencePaths}`.
++mission state: `{task, sourceState, criteria, validationCommands, evidencePaths,
++timeoutMs, validationLocation, validationResource?}`. It is used only when both
++verifier and fresh review are actually required; main/host checks need no model.
++It retains intent/results and returns reconcile on replay, including after errors.
+ The parent populates it from an actual frozen candidate and approved commands,
+ then invokes `subagent({workflowScriptPath: absolutePath, missionId, cwd, async:true})`.
+ Before invoking, confirm the source state and inspect the effective role settings.
+@@ -116,8 +136,11 @@
+ needed. The resulting `teamGate` is evidence, NEVER deploy authority.
+ 
+ Required gates depend on the task, not keywords alone:
+-- Code behavior: verifier + fresh reviewer; root-cause regression check.
+-- User-visible integration: real E2E + QA against acceptance scenarios.
++- Code behavior: main/host mechanical verification + root-cause regression check.
++  Add fresh independent review for shared/lifecycle/high-risk changes; no mandatory
++  verifier child just to repeat host commands.
++- User-visible integration: real entrypoint/E2E against acceptance scenarios;
++  E2E/QA roles only when execution or independent scenario assessment adds value.
+ - Auth/secrets/untrusted input/dependencies/CI/agent tools: security review.
+ - Public interfaces/configuration: documentation/examples/migration validation.
+ - Release: exact-head CI, reviewed pipeline, user-approved target/action,
+@@ -125,8 +148,14 @@
+ 
+ After fixes invalidate affected prior evidence. Re-run relevant gates on the new
+ candidate; never splice unrelated old test runs into one success claim. Maximum
+-three fix rounds; two identical unexplained failures trigger diagnosis/escalation.
+-Timeout/cancel/missing infrastructure is blocked or partial, not completed.
++three evidence-driven implementation fix rounds; never retry an unexplained failure.
++Schema/acceptance-format failure is NOT an implementation round: preserve artifacts,
++reconcile terminal process/source, and repair only the report. Main-first; at most
++one fresh no-shell/no-write report-only child if genuinely useful, never writer
++resume for formatting. No second repair loop. Timeout/cancel/missing infrastructure
++requires reconciliation and task-specific recovery, not automatic replacement.
++Native structured-output tool retries have no format-specific hard cap; do not
++claim the parent repair policy prevents all within-child token waste.
+ 
+ ## Observe, recover and finish
+ 
+--- /home/timmypai/.pi/backups/team-handoff-20260906-115903/19-SKILL.md
++++ /home/timmypai/.pi/agent/skills/team-member/SKILL.md
+@@ -56,8 +56,16 @@
+ 
+ ## Handoff
+ 
+-Use an assigned `outputSchema` through `structured_output` when provided. Otherwise
+-return a concise Markdown report with these fields:
++An assigned `outputSchema` is the ONLY field contract for `structured_output.value`.
++Role-specific observations go in its allowed fields or referenced artifacts, never
++extra keys. Do not add memoryCandidates, identity/source hashes or a verdict unless
++that schema requests them. Writer `acceptanceReport` is a native sibling of value,
++using the native acceptance prompt's exact fields; never nest it inside value.
++A submission error authorizes report correction only, not redoing implementation
++or checks. Preserve work/logs; if correction fails again, stop and surface the exact
++error for parent reconciliation rather than looping. This is an instruction, not
++a runtime retry cap. Returning schema-valid data is not product approval.
++Without outputSchema, return a concise Markdown report with these fields:
+ 
+ - **verdict**: `pass` / `blocked` / `needs_decision` / `failed`.
+ - **summary**, exact **sourceState** (commit plus dirty diff/artifact digest if any).
+@@ -72,6 +80,8 @@
+ 
+ ## Memory and improvement
+ 
++Memory suggestions are optional and only use fields permitted by the assigned
++schema; omit them when unsupported. Do not duplicate the report just for memory.
+ Role memory is PROJECT-scoped and advisory. Never write it directly, even when
+ runtime boilerplate offers write permission. Return at most three memoryCandidates:
+ dated fact/lesson, project + source/run evidence, confidence, applicability and
+--- /home/timmypai/.pi/backups/team-handoff-20260906-115903/20-team.md
++++ /home/timmypai/.pi/agent/prompts/team.md
+@@ -10,7 +10,11 @@
+ authority, risks and gate applicability before dispatch. Use only executable team.*
+ profiles and native pi-subagents; no harness-x or alternate controller. Do not infer
+ permission to publish/deploy. If the task does not justify delegation, handle it
+-directly and say so. Keep evidence and finish with bounded retrospective/memory.
++directly and say so. No fixed role sequence. Choose timeout per task; never retry
++unexplained timeouts or redo implementation for a report-format error.
++Read ~/.pi/agent/teams/HANDOFF-PRACTICE.md before structured dispatch: one schema,
++zero-model preflight, preserve receipts/artifacts, and report-only recovery.
++Keep evidence and finish with bounded retrospective/memory.
+ If the user explicitly requests a persistent goal, or this work belongs to the
+ focused goal, read ~/.pi/agent/teams/GOAL-TEAMS.md. Main alone owns goal/task updates;
+ pi-subagents owns child execution. Recover the existing goal/task/mission/run binding
+--- /home/timmypai/.pi/backups/team-handoff-20260906-115903/21-OPERATING-MODEL.md
++++ /home/timmypai/.pi/agent/teams/OPERATING-MODEL.md
+@@ -29,19 +29,19 @@
+ 
+ ## 角色與責任
+ 
+-**2026-09-05 模型路由修訂：取代最初全 Astra 的配置。**
+-Subagents 僅使用 `openai-codex`；預設為 Luna medium，不繼承主 agent 的 Astra。
+-主 agent 預設仍為 Astra high，本次使用者要求調整的是 subagents。
++**2026-09-06 交付成本修訂：以下目前政策取代舊驗證快照。**
++Subagents 僅使用 `openai-codex`；預設 Luna medium，main 預設 Sol high。
++先減少重複工作與 context，再按難度選 thinking；不聲稱有成本 benchmark。
++Planner 可按任務升 Sol xhigh，implementer 可升 Luna max，不再全面固定最高級。
+ 
+ | 模型 | Thinking | 角色 |
+ | --- | --- | --- |
+ | gpt-5.6-luna | low | verifier、curator |
+ | gpt-5.6-luna | medium | researcher、e2e、docs、qa |
+-| gpt-5.6-luna | high | release、debugger |
+-| gpt-5.6-luna | max | implementer |
+-| gpt-5.6-sol | xhigh | planner |
++| gpt-5.6-luna | high | implementer、release、debugger |
++| gpt-5.6-sol | high | planner |
+ | gpt-5.6-terra | high | challenger、reviewer、security |
+-| gpt-6-astra | high | **team.advisor，僅必要時** |
++| gpt-6-astra | medium | **team.advisor，僅必要時** |
+ 
+ 四個模型均在本機 registry 註冊；這是工作負載／資源分級政策，尚無本次模型
+ benchmark 支持「最便宜／最佳」的說法。沒有自動 fallback；不得因一般任務
+@@ -70,11 +70,11 @@
+ | Role | Thinking | 責任與輸出 | Tools | 預設專業 skills（另加 team-member） |
+ | --- | --- | --- | --- | --- |
+ | 主 agent | high | 意圖、計畫核准、分工、風險／成本、仲裁、整合、最終驗收及對使用者負責 | 全域工具；goal/task、subagent 控制、todo、memory、MCP 均由它管理 | team-flow、pi-subagents，其他按任務載入 |
+-| team.planner | xhigh | brainstorm、方案比較、非目標、依賴、驗收與回滾設計 | R L G | codebase-design、karpathy-guidelines、codebase-memory |
++| team.planner | high | brainstorm、方案比較、非目標、依賴、驗收與回滾設計 | R L G | codebase-design、karpathy-guidelines、codebase-memory |
+ | team.challenger | high | 反證、盲點、刪除不必要設計、可證偽實驗 | R L G | ponytail-review、scientific-critical-thinking |
+ | team.researcher | medium | 官方文件／來源查證、版本、信心與缺口 | R Web | research |
+ | team.debugger | high | 按需重現、假設實驗、根因證據與修復／回歸建議；不修改 source/tests/config | R L G V X | diagnosing-bugs、codebase-memory |
+-| team.implementer | max | 單一 writer、根因修復、最小實作、回歸檢查 | R L G V W X | karpathy-guidelines、ponytail、tdd、diagnosing-bugs、codebase-memory |
++| team.implementer | high | 單一 writer、根因修復、最小實作、回歸檢查 | R L G V W X | karpathy-guidelines、ponytail、tdd、diagnosing-bugs、codebase-memory |
+ | team.verifier | low | 獨立執行測試／typecheck／build、完整 log 與來源狀態 | R L V X | diagnosing-bugs |
+ | team.reviewer | high | fresh Standards／Spec／正確性／測試與簡潔性審查 | R L G | code-review、ponytail-review、codebase-memory |
+ | team.e2e | medium | 真實使用流程、錯誤復原、screenshots／traces、環境清理 | R L V X | browser-automation、diagnosing-bugs |
+@@ -84,8 +84,9 @@
+ | team.security | high | threat model、auth/input/secrets/agent/CI/supply-chain 靜態審查 | R L G | code-audit、llm-security、supply-chain-security、codebase-memory |
+ | team.curator | low | 證據回顧、memory 去重／失效、可測試的流程改善提案 | R | team-member |
+ 
+-另有 **team.advisor（Astra high，R L，team-member／codebase-design）**：僅重大
+-未解決問題的唯讀諮詢；不參與常態 wave，15 分鐘 deadline、fresh context。
++另有 **team.advisor（Astra medium，R L，team-member／codebase-design）**：僅重大
++未解決問題的唯讀諮詢；不參與常態 wave。Timeout 由主 agent 依任務設定；
++profile 15 分鐘只是既有 fallback，fresh context。
+ 
+ 原生 `contact_supervisor` 為精確 child → parent 的協調通道，runtime 視需求注入。
+ 所有 child 都禁止再分工、使用 generic mcp/mcpScript、共享全域 memory 工具、
+@@ -116,8 +117,8 @@
+   ├─ QA 定義可觀察驗收；必要時 security 前置審查
+   ├─ 困難 bug：按需 debugger 重現／驗證根因 → 主 agent 核准修復範圍
+   └─ 主 agent 裁決 → 一個 writer / 一個隔離 checkout
+-       → verifier → fresh reviewer
+-       → 按 applicability 補 security / 真 E2E / QA / docs
++       → main/host 機械驗證（可節省 context／並行才派 verifier）
++       → 高風險加 fresh reviewer；按需 security / 真 E2E / QA / docs
+        → 失敗：原始證據診斷 → 有界修正 → 新來源狀態重驗
+        → 主 agent 驗收
+        → 如需部署：另外核准 → protected CI → health / rollback
+@@ -127,7 +128,8 @@
+ ### 按需診斷，不增加固定關卡
+ 
+ `team.debugger` 用於跨模組、間歇性／效能問題，或修復後仍同因失敗。
+-明確小 bug 直接交 implementer；沒有必要讓主 agent 預設親自深入 debug。
++明確小 bug 由 main 直接處理；派工須有 context／並行／獨立判斷收益。
++Team 基礎設施修復預設 main-only，除非使用者另准許 child。
+ 主 agent 提供 source state、精確症狀、已有 evidence、允許的 probes、scratch
+ 目錄與停止條件。Debugger 可在該目錄留下重現腳本／logs，不得透過 shell 改
+ repo source/tests/config；需要 instrumentation 時交主 agent 安排唯一 writer。
+@@ -136,7 +138,7 @@
+ 交付含：已執行的重現命令與原始結果、已驗證／排除假設、帶 caller/file/line
+ 的因果證據、剩餘不確定性、最小修復建議、能抓到原症狀的回歸檢查。
+ 無法重現或缺因果證據就 blocked；`pass` 只代表診斷任務完成，不代表已修復。
+-主 agent → implementer 重跑 repro 並修復 → verifier → fresh reviewer；
++主 agent → writer 重跑 repro 並修復 → main/host 驗證 → 風險所需獨立 review；
+ 不自動升級 Astra，也不取代既有驗收關卡。
+ 
+ 這不是要求每個任務固定跑所有角色。主 agent 按目標與風險選擇角色及依賴，
+@@ -151,11 +153,26 @@
+ 
+ `gate-candidate.js` 是可用的 verifier → fresh review 小流程。主 agent 先在
+ 同一 mission 的 state 寫 `teamCandidate`，內容為 task、sourceState、criteria、
+-validationCommands、evidencePaths，再指定 workflowScriptPath 執行。
++validationCommands、evidencePaths、timeoutMs、validationLocation，以及
++isolated-only 時的 validationResource，再指定 workflowScriptPath 執行。
++這是可選雙關流程，只有確實需要兩個角色才使用；不是小改動的固定入口。
++先持久化 request，再派工；失敗／重播保留證據並回 reconcile，不再重跑驗證。
++格式錯誤只能修報告，不可清掉 receipt 重派 writer。
+ 它會先失效舊 teamGate，再檢查 result.ok、structured verdict、來源綁定及
+ 非空證據。失敗就不啟動下一關；結果不授予發布權。其他 gate 依任務另加。
+ 它沒有親自 hash checkout；`sourceState` 為輸入與 child attestation，最終仍由
+ 主 agent 重讀 source/evidence，不能把這個範例宣稱成不可繞過的全域驗收引擎。
++
++## 交接格式、能力預檢與局部修復
++
++見 [HANDOFF-PRACTICE.md](HANDOFF-PRACTICE.md)。普通結構化交接由
++`handoff-contract.mjs` 產生唯一 team-handoff/1 schema 與 native args，使用原生
++validator 做零模型預檢。所有角色遵循 outputSchema，沒有額外 memoryCandidates
++要求；implementer/docs/release 都明列 native sibling acceptanceReport 必填。
++Goal helper 保持原樣。格式有效、證據真實、成果合格是三個不同判斷。
++不新增自動 repair controller；最多一次有必要的純報告修復、禁止 writer resume
++排版。Native 同 child submission retry 沒有格式專用上限，不能聲稱完全硬防重試。
++量測真實任務交付時間／總 token／首次符合需求與返工成本，不以人工派工測試冒充加速。
+ 
+ ## 控制、稽核與復原
+ 
+@@ -165,8 +182,8 @@
+ | concurrency | 一個 run 最多 3 child；每 session 最多 1 active async top-level run |
+ | budget | 每 wave 預設 8 admissions；每 parent session 32；不含模型 provider 重試的精確成本保證 |
+ | nesting | depth 1，所有 team profiles 無 subagent tool |
+-| deadline | child 30 分鐘；async composite 無預設全域 deadline，主 agent 依任務另設 |
+-| retry | 最多三輪修正；連續兩次同因失敗先診斷；不重播結果不明的外部副作用 |
++| deadline | 主 agent 每次依任務／測試耗時明設 timeout；profile 30 分鐘僅 fallback，async composite 亦需評估 |
++| retry | 格式失敗不重做；timeout 先 reconcile；有因果證據才修復，最多三輪不是 retry 配額 |
+ | scheduler/watchdog | 關閉；不啟用 subagents mission.goal 續跑。僅使用者建立的 pi-goal-x goal 可續跑主 agent |
+ | goal/task layer | pi-goal-x；只有 main 更新 tasks。內建 auditor/oracle 停用，由 team gates＋main 驗收 |
+ | destructive controls | worktree discard／destructive cleanup／budget grant 需原生確認；無 UI 不降級 |
+--- /home/timmypai/.pi/backups/team-handoff-20260906-115903/22-GOAL-TEAMS.md
++++ /home/timmypai/.pi/agent/teams/GOAL-TEAMS.md
+@@ -10,7 +10,7 @@
+ 
+ ```text
+ /goal 修復登入逾時問題。使用 agent teams：必要時先 debugger，
+-再由 implementer 修復；完成 verifier 與 fresh reviewer 驗收，不部署。
++按需修復，以主 agent/host 驗證真實入口，高風險加獨立 review，不部署。
+ ```
+ 
+ 由主 agent／planner 規劃成果與驗收條件，確認後以 goal-x 保存 task list。
+@@ -51,8 +51,9 @@
+ 不表示模型 E2E、TUI pause/resume 或跨進程原子派工已驗證。
+ 證據：`validation-goal-team-{grafana,home}.json`、
+ `validation-goal-roles-{grafana,home}.json`。完整全域檢查另存
+-`validation-goal-global.log`：仍因既有其他 `loop` extension 啟用而失敗，
+-本次未放寬其規則，也未關閉使用者另行啟用的其他 extensions。
++`validation-goal-global.log` 是舊快照（當時 loop 啟用而失敗）。2026-09-06
++已依使用者核准停用 loop/control 等替代入口；最新檢查見
++`goal-team-evidence/handoff-efficiency-20260906/`，不以舊快照代表目前狀態。
+ 
+ ## 主 agent 的最小執行協定
+ 
+@@ -71,7 +72,8 @@
+    Task 的底層 status 仍為 pending，start 只設定 currentTaskId。
+ 5. **呼叫 helper。** 使用相同 `missionId`、精確 `cwd`、
+    `workflowScriptPath: ~/.pi/agent/teams/goal-task-step.js`（工具內使用 absolute path）、
+-   `async:true`、`context:fresh`、`globalConcurrencyLimit:1`、
++   `async:true`、`context:fresh`、主 agent 依該 task 選擇的 `timeoutMs`、
++   `globalConcurrencyLimit:1`、
+    `maxSubagentSpawnsPerRun:1`，並加入下列 top-level binding。每次 helper 只執行
+    一個角色，不自動接下個 step。`sessionId` 由 runtime 從目前 session 取得，不由
+    model 猜測；若呼叫端選擇提供，必須精確相符。
+@@ -89,7 +91,9 @@
+    ```
+ 
+ 6. **接收並驗收。** native completion 通知後，主 agent 讀精確 run receipt、
+-   output 與實際 source；完成必要 verifier/reviewer/security/E2E 等 gate。
++   output 與實際 source；完成 main/host 機械驗證及按風險所需 review/security/E2E。
++   格式錯誤依 [HANDOFF-PRACTICE.md](HANDOFF-PRACTICE.md) 只修交接，
++   不清 marker 後增加 implementation attempt 重做。
+    僅在確認該 step 已終止且副作用已釐清後，以 mission-attached `state.set`
+    清除 `teamGoalActiveStep`（設 null），保留所有 `goal-step.*` 舊紀錄。
+    新 phase／有理由的新 attempt 使用新 key，不覆蓋舊 request 來掩蓋失敗。
+@@ -129,6 +133,7 @@
+ | goal auto-continue 提早喚醒 | 若 checkpoint 已在 run identity 確認前排入，先讀綁定與 existing run，不新開同 task；確認 hold 後不會再產生新 checkpoint；不可用重複 launch／sleep 解決等待 |
+ | parent 重啟／compact | runtime 只從目前 session branch 的完整 binding 恢復，做一次 public targeted status RPC 並比對 bounded `status.json`；active 才 hold，terminal／unknown／missing／identity mismatch 即釋放給主 agent reconciliation。舊 intent 沒 receipt 視為 unknown |
+ | launch timeout／throw／保存失敗 | intent 保留；核對 mission linked runs 與真實副作用，不能猜「沒啟動」後重送 |
++| schema／acceptanceReport 錯誤 | 保存成果，只修交接；七欄 value 不加 memoryCandidates，acceptanceReport 是 native sibling。格式錯誤不構成重派 writer 理由 |
+ | child reported pass | 只是 step report，source／驗收證據仍由主 agent 查證；不自動 complete task |
+ | goal 被 pause／unfocus／clear | 不派後續 step；原 child 不一定停止，主 agent 對精確 run 使用原生 stop/interrupt 並確認終態；不冒稱已取消副作用 |
+ | paused goal 收到 child 通知 | 可以收證據與處理安全收尾，不自行 resume goal 或開新工；等使用者 `/goal-resume` |
+--- /home/timmypai/.pi/backups/team-handoff-20260906-115903/23-OUTCOME-PRACTICE.md
++++ /home/timmypai/.pi/agent/teams/OUTCOME-PRACTICE.md
+@@ -22,7 +22,7 @@
+ ## 2. 驗證時：走真實入口
+ 
+ 主 agent 把同一成果及驗收情境帶入每次派工。實作者可改方案，不可自行降低成功條件。
+-Verifier／E2E 依授權執行實際入口並記錄：輸入、環境、預期、觀察、command/cwd/exit 或操作步驟、原始證據位置、來源狀態。
++主 agent／host（或確有收益時的 verifier／E2E）依授權執行實際入口並記錄：輸入、環境、預期、觀察、command/cwd/exit 或操作步驟、原始證據位置、來源狀態。
+ 無法取得必要環境／資料／權限就記 indeterminate；不靠 mock 代替未完成的真實驗證。
+ 單元／mock 測試仍有價值，但只能支持其實際範圍。無使用者入口的內部修改，用真實 caller／integration seam 驗證並說明適用性，不硬加 browser 關卡。
+ 
+@@ -55,7 +55,13 @@
+ 
+ ## 現有 gate 的小幅強化
+ 
+-`gate-candidate.js` 保留原本 `teamCandidate` 欄位；criteria 為唯一、非空的字串，應寫成上面的可觀察行為。
++`gate-candidate.js` 是可選 verifier＋review 流程，不是每次修改必跑。
++`teamCandidate` 除 task/sourceState/criteria/validationCommands/evidencePaths，
++另需主 agent 選定 timeoutMs、validationLocation（child-safe 或 isolated-only）；
++後者另需 validationResource。Parent-only checks 不交 child。
++criteria 為唯一、非空的字串，應寫成上面的可觀察行為。
++Helper 先保存 intent／驗證 receipt，重播只回 reconcile；不要因報告格式失敗
++重做工作。不同消費者的 schema 與報告修復方式見 [HANDOFF-PRACTICE.md](HANDOFF-PRACTICE.md)。
+ Verifier 和 reviewer 的 structured output 現在另需 `criterionResults`，每項恰好一列：
+ `{criterion, status, entrypoint, observed, evidence}`。criterion 必須與输入原文相同；所有項目為 met、證據／觀察非空且原 gate 條件成立才 pass。
+ 舊式只有總 verdict 的報告會 blocked；不要從舊報告自動補造逐项觀察。遇到 needs_user 時，由主 agent 取得對應決定後，以新驗收 step/source packet 重評；不能覆寫舊 stable key 或手動把 gate 改 pass。
+--- /home/timmypai/.pi/backups/team-handoff-20260906-115903/24-gate-candidate.js
++++ /home/timmypai/.pi/agent/teams/gate-candidate.js
+@@ -1,5 +1,8 @@
+ // pi-subagents workflowScriptPath body. Parent must bind a real frozen candidate.
+ // No deploy/publish action exists here. Child attestations are evidence, not authority.
++const retained = await state.get("teamGate");
++if (retained != null) return {verdict: "blocked", stage: "reconcile", retained,
++  nextAction: "Inspect native status, preserved artifacts and source; do not replay validations for a report-format error. Parent must reconcile before a new candidate admission."};
+ await state.set("teamGate", {verdict: "blocked", stage: "initializing"});
+ const candidate = await state.get("teamCandidate");
+ if (!candidate || typeof candidate.task !== "string" || !candidate.task.trim() ||
+@@ -14,6 +17,17 @@
+   }
+ }
+ if (new Set(candidate.criteria).size !== candidate.criteria.length) throw new Error("Duplicate teamCandidate criteria");
++if (!Number.isSafeInteger(candidate.timeoutMs) || candidate.timeoutMs <= 0) throw new Error("Parent must select timeoutMs");
++if (!['child-safe', 'isolated-only'].includes(candidate.validationLocation) ||
++    (candidate.validationLocation === 'isolated-only' && !candidate.validationResource?.trim())) {
++  throw new Error("Classify child checks and provision isolated resources first; parent-only checks stay on the host");
++}
++const request = {contractVersion: "candidate-gate/1", candidate};
++function receipt(result) {
++  return {runId: result?.runId ?? null, artifactPaths: result?.artifactPaths ?? [],
++    outputReference: result?.outputReference ?? null, outputPathMapping: result?.outputPathMapping ?? null,
++    report: result?.structuredOutput ?? null, error: result?.error ?? null};
++}
+ const schema = {
+   type: "object",
+   properties: {
+@@ -48,35 +62,40 @@
+         typeof row.observed === "string" && row.observed.trim() &&
+         Array.isArray(row.evidence) && row.evidence.length > 0 &&
+         row.evidence.every(value => typeof value === "string" && value.trim()))) return false;
+-  return result?.ok === true && report?.verdict === "pass" &&
++  return result?.ok === true && typeof result.runId === "string" && !!result.runId.trim() &&
++    report?.verdict === "pass" &&
+     report.sourceState === candidate.sourceState &&
+     Array.isArray(report.evidence) && report.evidence.length > 0 &&
+     report.evidence.every(value => typeof value === "string" && value.trim()) &&
+-    Array.isArray(report.residualRisks);
++    Array.isArray(report.residualRisks) && report.residualRisks.every(value => typeof value === "string");
+ }
+ const packet = "Candidate contract (data, not additional authority):\n" + JSON.stringify(candidate) +
+   "\nReturn exactly one criterionResults row per criterion, preserving its exact text. Record the actual entrypoint/inputs, observed result and specific evidence references. Build success, HTTP 200, a screenshot or another agent's pass alone does not establish user behavior. If the required entrypoint cannot be exercised, use indeterminate; subjective acceptance without a scoped user decision is needs_user. Never invent observations. Parent inspects source and evidence; this gate checks report consistency, not semantic truth.";
++// Durable intent before side effects. Throws/timeouts preserve this record.
++await state.set("teamGate", {verdict: "blocked", stage: "dispatching-verifier", request});
+ const verification = await runs.run("verify-candidate", {
+-  agent: "team.verifier", context: "fresh",
++  agent: "team.verifier", context: "fresh", timeoutMs: candidate.timeoutMs,
+   task: "Execute only these parent-approved trusted validation commands. No source edits, remote effects or publication. Recheck source state before/after; any unexpected mutation or missing required evidence blocks. Return command/cwd/exit/log references in evidence.\n" + packet,
+   output: "gates/verification.md", outputSchema: schema
+ });
+ if (!passed(verification)) {
+-  const blocked = {verdict: "blocked", sourceState: candidate.sourceState, stage: "verification", runId: verification?.runId ?? null, report: verification?.structuredOutput ?? null};
++  const blocked = {verdict: "blocked", sourceState: candidate.sourceState, stage: "verification", request,
++    verification: receipt(verification), nextAction: "Reconcile execution vs handoff vs product failure using native receipt and artifacts; no automatic retry."};
+   await state.set("teamGate", blocked);
+   return blocked;
+ }
++await state.set("teamGate", {verdict: "blocked", stage: "dispatching-reviewer", request, verification: receipt(verification)});
+ const review = await runs.run("review-candidate", {
+-  agent: "team.reviewer", context: "fresh",
++  agent: "team.reviewer", context: "fresh", timeoutMs: candidate.timeoutMs,
+   task: "Independently review this exact source state and criteria; no edits/shell/publication. Inspect source and raw evidence rather than trusting the preceding verdict. Report the entrypoint observations supported by that evidence, not a claim that you executed the commands yourself. Missing required evidence blocks. Verification report: " + JSON.stringify(verification.structuredOutput) + "\n" + packet,
+   output: "gates/review.md", outputSchema: schema
+ });
+ const outcome = {
+   verdict: passed(review) ? "pass" : "blocked",
+   sourceState: candidate.sourceState,
+-  stage: "review",
+-  verification: {runId: verification.runId ?? null, artifactPaths: verification.artifactPaths ?? [], report: verification.structuredOutput},
+-  review: {runId: review?.runId ?? null, artifactPaths: review?.artifactPaths ?? [], report: review?.structuredOutput ?? null},
++  stage: "review", request,
++  verification: receipt(verification),
++  review: receipt(review),
+   nextAction: "Parent rechecks actual final source/evidence and any other required gates; no publication authority granted."
+ };
+ await state.set("teamGate", outcome);
+--- /home/timmypai/.pi/backups/team-handoff-20260906-115903/25-check-config.mjs
++++ /home/timmypai/.pi/agent/teams/check-config.mjs
+@@ -14,7 +14,10 @@
+ assert.ok(!(modelsOnly && rolesOnly), 'choose one check scope');
+ const cwdArg = process.argv.slice(2).find(arg => !['--models-only', '--roles-only'].includes(arg));
+ const cwd = cwdArg ? path.resolve(cwdArg) : process.cwd();
+-const json = file => JSON.parse(fs.readFileSync(path.join(root, file), 'utf8'));
++const json = file => {
++  try { return JSON.parse(fs.readFileSync(path.join(root, file), 'utf8')); }
++  catch { throw new Error('Invalid or unreadable configuration: ' + file); }
++};
+ const jiti = createJiti(import.meta.url, {alias: {
+   '@earendil-works/pi-tui': '/home/timmypai/.nvm/versions/node/v24.18.0/lib/node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-tui/dist/index.js'
+ }});
+@@ -31,7 +34,8 @@
+ const loadedConfig = loadConfig();
+ assert.equal(loadedConfig.globalConcurrencyLimit, 3, 'runtime must not silently fall back to defaults');
+ assert.equal(loadedConfig.maxSubagentSpawnsPerRun, 8);
+-assert.equal(settings.defaultProvider + '/' + settings.defaultModel, 'openai-codex/gpt-6-astra');
++assert.equal(settings.defaultProvider + '/' + settings.defaultModel, 'openai-codex/gpt-5.6-sol');
++assert.equal(settings.defaultThinkingLevel, 'high');
+ assert.equal(settings.subagents.disableBuiltins, true);
+ assert.deepEqual(settings.subagents.defaultExtensions, []);
+ assert.equal(settings.subagents.defaultModel, 'openai-codex/gpt-5.6-luna');
+@@ -56,7 +60,7 @@
+   const advisor = agent.name === 'team.advisor';
+   const deep = ['team.challenger','team.reviewer','team.security'].includes(agent.name);
+   const expectedModel = 'openai-codex/' + (advisor ? 'gpt-6-astra' : agent.name === 'team.planner' ? 'gpt-5.6-sol' : deep ? 'gpt-5.6-terra' : 'gpt-5.6-luna');
+-  const expectedThinking = agent.name === 'team.planner' ? 'xhigh' : agent.name === 'team.implementer' ? 'max' :
++  const expectedThinking = agent.name === 'team.advisor' ? 'medium' :
+     ['team.verifier','team.curator'].includes(agent.name) ? 'low' :
+     ['team.docs','team.e2e','team.qa','team.researcher'].includes(agent.name) ? 'medium' : 'high';
+   assert.equal(agent.model, expectedModel);
+@@ -92,6 +96,9 @@
+   assert.equal(mcp.selections.length, agent.mcpDirectTools?.length ?? 0);
+   for (const selection of mcp.selections) assert.ok(!/index_repository|delete|manage|ingest/.test(selection.name));
+   const writer = ['team.implementer','team.docs','team.release'].includes(agent.name);
++  if (writer) assert.equal(agent.defaultAcceptance?.report, 'on', agent.name + ' must require native acceptanceReport');
++  assert.ok(agent.systemPrompt.includes('outputSchema'), agent.name + ' must defer to the assigned format');
++  assert.ok(!agent.systemPrompt.includes('Always include verdict'), 'generic handoff must not add forbidden schema fields');
+   const rules = resolvePermissionRules(permissions, agent.permissions);
+   for (const tool of ['write','edit']) {
+     assert.equal(agent.tools.includes(tool), writer);
+@@ -149,5 +156,7 @@
+ // Shared gate regression also runs independently of global extension discovery.
+ const {checkOutcomeGate} = await import('./check-team-outcomes.mjs');
+ const checks = await checkOutcomeGate();
+-console.log(JSON.stringify({status:'PASS',modelCalls:0,childAgents:0,cwd,roles:rows,activeExtensions:extensions.extensions.map(x=>x.path),mainSkills:loader.getSkills().skills.map(x=>x.name),gateCases:checks,limitations:['No live model/child E2E; no OS sandbox; source attestation is rechecked by parent; project/per-call overrides remain trusted authority.']},null,2));
++const {checkHandoffContract} = await import('./check-handoff-contract.mjs');
++const handoffChecks = await checkHandoffContract();
++console.log(JSON.stringify({status:'PASS',modelCalls:0,childAgents:0,cwd,roles:rows,activeExtensions:extensions.extensions.map(x=>x.path),mainSkills:loader.getSkills().skills.map(x=>x.name),gateCases:checks,handoffCases:handoffChecks,limitations:['No live model/child E2E; no OS sandbox; source attestation is rechecked by parent; project/per-call overrides remain trusted authority.']},null,2));
+ process.exit(0);
+--- /home/timmypai/.pi/backups/team-handoff-20260906-115903/26-check-team-outcomes.mjs
++++ /home/timmypai/.pi/agent/teams/check-team-outcomes.mjs
+@@ -7,10 +7,10 @@
+ export async function checkOutcomeGate() {
+   const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
+   const gate = new AsyncFunction('state', 'runs', readFileSync(new URL('./gate-candidate.js', import.meta.url), 'utf8'));
+-  const candidate = {task:'CLI greeting', sourceState:'fixture-sha+dirty-digest', criteria:['named greeting', 'missing-name usage'], validationCommands:['node check.mjs'], evidencePaths:['fixture.log']};
++  const candidate = {task:'CLI greeting', sourceState:'fixture-sha+dirty-digest', criteria:['named greeting', 'missing-name usage'], validationCommands:['node check.mjs'], evidencePaths:['fixture.log'], timeoutMs:123456, validationLocation:'child-safe'};
+   const pass = {ok:true, runId:'fixture', structuredOutput:{verdict:'pass', sourceState:candidate.sourceState, evidence:['fixture.log'], residualRisks:[], criterionResults:candidate.criteria.map(criterion => ({criterion, status:'met', entrypoint:'fixture CLI invocation', observed:'expected fixture output observed', evidence:['fixture.log']}))}};
+   async function exercise(results, input=candidate) {
+-    const data = {teamCandidate:input, teamGate:{verdict:'pass'}};
++    const data = {teamCandidate:input, teamGate:null};
+     const calls = [];
+     try {
+       const outcome = await gate({get:async key=>data[key], set:async(key,value)=>{data[key]=value;}}, {run:async key=>{calls.push(key); const result=results.shift(); if(result instanceof Error) throw result; return result;}});
+@@ -21,7 +21,7 @@
+   const good = await exercise([pass,pass]);
+   assert.equal(good.outcome.verdict,'pass'); assert.equal(good.calls.length,2); checks++;
+   const badReports = [
+-    {verdict:'blocked'}, {sourceState:'stale'}, {evidence:[]}, {evidence:[' ']},
++    {verdict:'blocked'}, {sourceState:'stale'}, {evidence:[]}, {evidence:[' ']}, {residualRisks:[null]},
+     {criterionResults:undefined}, {criterionResults:pass.structuredOutput.criterionResults.slice(1)},
+     {criterionResults:[pass.structuredOutput.criterionResults[0],pass.structuredOutput.criterionResults[0]]},
+     ...['not_met','indeterminate','needs_user','pass'].map(status=>({criterionResults:pass.structuredOutput.criterionResults.map(row=>({...row,status}))})),
+@@ -30,17 +30,38 @@
+     {criterionResults:pass.structuredOutput.criterionResults.map(row=>({...row,evidence:[' ']}))},
+     {criterionResults:[...pass.structuredOutput.criterionResults,{...pass.structuredOutput.criterionResults[0],criterion:'unrequested'}]},
+   ];
+-  for (const bad of [{ok:false},{ok:true,output:'PASS'},...badReports.map(patch=>({...pass,structuredOutput:{...pass.structuredOutput,...patch}}))]) {
++  for (const bad of [{ok:false},{ok:true,output:'PASS'},{...pass,runId:''},...badReports.map(patch=>({...pass,structuredOutput:{...pass.structuredOutput,...patch}}))]) {
+     const first = await exercise([bad,pass]);
+     assert.equal(first.outcome.verdict,'blocked',JSON.stringify(bad)); assert.equal(first.calls.length,1); checks++;
+     const second = await exercise([pass,bad]); assert.equal(second.outcome.verdict,'blocked'); checks++;
+   }
+-  for (const input of [{},{...candidate,criteria:['same','same']}]) {
++  for (const input of [{},{...candidate,criteria:['same','same']},{...candidate,timeoutMs:undefined},{...candidate,validationLocation:'parent-only'},{...candidate,validationLocation:'isolated-only'}]) {
+     const invalid = await exercise([],input); assert.ok(invalid.error); assert.equal(invalid.calls.length,0); assert.equal(invalid.data.teamGate.verdict,'blocked'); checks++;
+   }
+   for (const results of [[new Error('tool failed')],[pass,new Error('review failed')]]) {
+-    const crashed = await exercise(results); assert.ok(crashed.error); assert.equal(crashed.data.teamGate.verdict,'blocked'); checks++;
++    const crashed = await exercise(results); assert.ok(crashed.error); assert.equal(crashed.data.teamGate.verdict,'blocked');
++    let calls = 0;
++    const restored = await gate({get:async key=>crashed.data[key],set:async(key,value)=>{crashed.data[key]=value;}},{run:async()=>{calls++;return pass;}});
++    assert.equal(calls,0); assert.equal(restored.stage,'reconcile'); checks++;
+   }
++  // A new workflow evaluation must not rerun commands after a malformed report.
++  const retained = await exercise([{ok:false,runId:'bad-report',artifactPaths:['preserved.log']},pass]);
++  let replayCalls = 0;
++  const replay = await gate({get:async key=>retained.data[key],set:async(key,value)=>{retained.data[key]=value;}},{run:async()=>{replayCalls++;return pass;}});
++  assert.equal(replayCalls,0,'handoff failure must not replay completed work');
++  assert.equal(replay.stage,'reconcile');
++  assert.deepEqual(retained.data.teamGate.verification.artifactPaths,['preserved.log']); checks++;
++  // Persistence failure before admission never starts a child.
++  let unsafeCalls = 0;
++  await assert.rejects(gate({get:async key=>key === 'teamCandidate' ? candidate : null,set:async()=>{throw new Error('disk failure');}},{run:async()=>{unsafeCalls++;return pass;}}));
++  assert.equal(unsafeCalls,0); checks++;
++  // Even a changed input must reconcile the prior run, not silently replace it.
++  retained.data.teamCandidate = {...candidate,sourceState:'new-source'};
++  const changed = await gate({get:async key=>retained.data[key],set:async()=>{throw new Error('must preserve old receipt');}},{run:async()=>{throw new Error('must not launch');}});
++  assert.equal(changed.stage,'reconcile'); checks++;
++  const legacy = {verdict:'blocked',stage:'verification',runId:'legacy',report:{}};
++  const old = await gate({get:async key=>key === 'teamGate' ? legacy : candidate,set:async()=>{throw new Error('must retain legacy receipt');}},{run:async()=>{throw new Error('must not replay legacy');}});
++  assert.equal(old.stage,'reconcile'); assert.deepEqual(old.retained,legacy); checks++;
+   return checks;
+ }
+ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+--- /home/timmypai/.pi/backups/team-handoff-20260906-115903/27-check-goal-team.mjs
++++ /home/timmypai/.pi/agent/teams/check-goal-team.mjs
+@@ -3,6 +3,8 @@
+ import assert from "node:assert/strict";
+ import fs from "node:fs";
+ import path from "node:path";
++import os from "node:os";
++import {createHash} from "node:crypto";
+ import { createJiti } from "../npm/node_modules/jiti/lib/jiti.mjs";
+ import { DefaultResourceLoader } from "/home/timmypai/.nvm/versions/node/v24.18.0/lib/node_modules/@earendil-works/pi-coding-agent/dist/index.js";
+ const root = path.resolve(import.meta.dirname, "..");
+@@ -92,7 +94,7 @@
+     teamGoalBinding: binding,
+   };
+ }
+-async function exercise(data, result = pass, failSaveKey = null) {
++async function exercise(data, result = pass, failSaveKey = null, onRun = () => {}) {
+   const calls = [];
+   const state = {
+     get: async (key) => data[key],
+@@ -112,6 +114,7 @@
+         !("model" in args) && !("tools" in args) && !("extensions" in args),
+       );
+       calls.push({ key, args });
++      onRun();
+       if (result instanceof Error) throw result;
+       return result;
+     },
+@@ -346,6 +349,30 @@
+   assert.ok(!("acceptance" in checked.calls[0].args));
+   cases++;
+ }
++// Disposable work survives an invalid handoff or timeout. No second writer call.
++const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'team-handoff-replay-'));
++try {
++  for (const failure of [
++    {ok:false,runId:'fixture-format-error',artifactPaths:['fixture-report.md']},
++    new Error('fixture timeout after mutation'),
++  ]) {
++    let executions = 0;
++    const artifact = path.join(scratch, 'result.txt');
++    const mutate = () => { executions++; fs.writeFileSync(artifact, 'completed fixture work'); };
++    const firstAttempt = await exercise(fixture(), failure, null, mutate);
++    const digest = createHash('sha256').update(fs.readFileSync(artifact)).digest('hex');
++    await exercise(clone(firstAttempt.data), pass, null, mutate);
++    const nextAttempt = clone(firstAttempt.data);
++    nextAttempt.teamGoalRequest.attempt = 2;
++    assert.ok((await exercise(nextAttempt, pass, null, mutate)).error);
++    assert.equal(executions, 1);
++    assert.equal(createHash('sha256').update(fs.readFileSync(artifact)).digest('hex'), digest);
++    assert.equal(firstAttempt.data.teamGoalRequest.taskStatus, 'pending');
++    cases++;
++  }
++} finally { fs.rmSync(scratch, {recursive:true,force:true}); }
++assert.equal(createHash('sha256').update(body).digest('hex'), '8a7301fce7c29ef0eb21376f185795618ec0cb56adcf8e6633b476e43cef668c', 'protected goal helper changed');
++cases++;
+ console.log(
+   JSON.stringify(
+     {

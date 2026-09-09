@@ -1,0 +1,858 @@
+--- before/goal-task-step.js
++++ after/goal-task-step.js
+@@ -27,13 +27,23 @@
+   attempt: input.attempt, agent: input.agent, task: input.task, cwd: input.cwd, sourceState: input.sourceState};
+ const existing = await state.get(recordKey);
+ if (existing) {
+-  if (JSON.stringify(existing.request) !== JSON.stringify(request)) throw new Error("Step key reused with a different contract");
++  const same = existing.version === 2
++    ? existing.requestDigest === input.requestDigest
++    : JSON.stringify(existing.request) === JSON.stringify(request);
++  if (!same) throw new Error("Step key reused with a different contract");
+   return {status: "reconcile", key, record: existing, nextAction: "Inspect the existing receipt; never redispatch this key."};
+ }
+ if (await state.get("teamGoalActiveStep")) throw new Error("Unreconciled active step; inspect its native status/receipt before new work");
+-// Persist intent BEFORE launching. A crash/throw is unknown, not permission to retry.
++if (!/^[a-f0-9]{64}$/.test(input.requestDigest ?? "") || typeof input.requestRef !== "string" || !input.requestRef.startsWith("/")) {
++  throw new Error("Prepare the saved packet with parent-only goal-request.mjs before dispatch");
++}
++// The sandbox has no filesystem/crypto. Parent prepares and preserves the exact
++// packet; this digest is correlation, not native source/evidence attestation.
++const identity = {version: 2, requestDigest: input.requestDigest, requestRef: input.requestRef};
++// Save the bounded intent first: storage failure cannot orphan an active marker.
++// A later crash/throw still retains intent; never blindly replay a different key.
++await state.set(recordKey, {...identity, status: "dispatching"});
+ await state.set("teamGoalActiveStep", recordKey);
+-await state.set(recordKey, {status: "dispatching", request});
+ const schema = {
+   type: "object",
+   properties: {
+@@ -62,10 +72,14 @@
+   report.inputSourceState === request.sourceState && typeof report.sourceState === "string" && !!report.sourceState.trim() &&
+   Array.isArray(report.evidence) && report.evidence.length > 0 && report.evidence.every(x => typeof x === "string" && !!x.trim()) &&
+   Array.isArray(report.residualRisks) && report.residualRisks.every(x => typeof x === "string");
+-const record = {status: passed ? "reported" : "blocked", request, runId: result?.runId ?? null,
+-  artifactPaths: result?.artifactPaths ?? [], report: report ?? null,
+-  nextAction: "Parent verifies terminal native receipt, actual source and required gates before updating the goal task."};
++const record = {...identity, status: passed ? "reported" : "blocked", runId: result?.runId ?? null,
++  outputReference: result?.outputReference ?? result?.outputPathMapping?.savedPath ?? null,
++  verdict: report?.verdict ?? null};
+ await state.set(recordKey, record);
+ // Even a returned error envelope can leave ambiguous external effects: keep the
+ // active marker until the parent reconciles native status, not just this report.
+-return {status: record.status, key, record};
++// Full report/artifact data lives in native workflow output, not the 256 KiB state.
++return {status: record.status, key, record, report: report ?? null,
++  artifactPaths: result?.artifactPaths ?? [], outputReference: record.outputReference,
++  error: result?.error ?? null,
++  nextAction: "Parent verifies terminal native receipt, actual source and required gates before updating the goal task."};
+--- before/goal-request.mjs
++++ after/goal-request.mjs
+@@ -0,0 +1,30 @@
++// Parent-only packet preparation. No launches, mission/Goal writes or new tools.
++import assert from 'node:assert/strict';
++import { createHash } from 'node:crypto';
++import fs from 'node:fs';
++import path from 'node:path';
++
++export function prepareGoalRequest(input, requestRef) {
++  assert.ok(input && typeof input === 'object' && !Array.isArray(input), 'request required');
++  assert.ok(path.isAbsolute(requestRef), 'absolute saved packet path required');
++  const request = Object.fromEntries(['goalId', 'taskId', 'phase', 'attempt', 'agent', 'task', 'cwd', 'sourceState'].map(key => [key, input[key]]));
++  for (const [key, value] of Object.entries(request)) {
++    if (key !== 'attempt') assert.ok(typeof value === 'string' && value.trim(), 'missing ' + key);
++  }
++  assert.ok(Buffer.byteLength(JSON.stringify(request)) <= 64 * 1024, 'packet must be at most 64 KiB');
++  const requestDigest = createHash('sha256').update(JSON.stringify(request)).digest('hex');
++  return { ...request, goalStatus: input.goalStatus, taskStatus: input.taskStatus, requestDigest, requestRef };
++}
++
++if (process.argv[1] === import.meta.filename) {
++  try {
++    assert.equal(process.argv.length, 3, 'usage: node goal-request.mjs /absolute/saved-request.json');
++    const file = fs.realpathSync(process.argv[2]);
++    const stat = fs.statSync(file);
++    assert.ok(stat.isFile() && stat.size <= 70 * 1024, 'bounded regular packet file required');
++    console.log(JSON.stringify(prepareGoalRequest(JSON.parse(fs.readFileSync(file, 'utf8')), file), null, 2));
++  } catch (error) {
++    console.error(error.message);
++    process.exitCode = 1;
++  }
++}
+--- before/check-config.mjs
++++ after/check-config.mjs
+@@ -138,7 +138,9 @@
+ }
+ const agentsToCheck = discovered.agents.filter((agent) => !selectedRoles || selectedRoles.includes(agent.name));
+ const rows = [];
++const failures = [];
+ for (const agent of agentsToCheck) {
++  try {
+   const advisor = agent.name === "team.advisor";
+   const deep = ["team.challenger", "team.reviewer", "team.security"].includes(
+     agent.name,
+@@ -302,6 +304,17 @@
+     extensions: agent.extensions,
+     skills: skills.resolved.map((x) => ({ name: x.name, path: x.path })),
+   });
++  } catch (error) {
++    failures.push({name: agent.name, message: error.message});
++  }
++}
++if (failures.length) {
++  console.log(JSON.stringify({status: 'FAIL', scope: modelsOnly ? 'model-routing-only' : selectedRoles ? 'selected-role-contracts-only' : 'role-contracts-only',
++    requestedRoles: selectedRoles, cwd, modelCalls: 0, childAgents: 0, roles: rows, failures,
++    uncheckedRoles: discovered.agents.filter(agent => !agentsToCheck.includes(agent)).map(agent => agent.name),
++    limitations: ['Every selected role was inspected; failed roles are not launch-ready. Global extension loading and live environment readiness are not certified.']}, null, 2));
++  console.error(failures.map(failure => failure.message).join('\n'));
++  process.exit(1);
+ }
+ if (modelsOnly) {
+   console.log(
+--- before/check-goal-team.mjs
++++ after/check-goal-team.mjs
+@@ -5,12 +5,13 @@
+ import path from "node:path";
+ import os from "node:os";
+ import { createHash } from "node:crypto";
++import { prepareGoalRequest } from "./goal-request.mjs";
+ import { createJiti } from "../npm/node_modules/jiti/lib/jiti.mjs";
+ import { DefaultResourceLoader } from "/home/timmypai/.nvm/versions/node/v24.18.0/lib/node_modules/@earendil-works/pi-coding-agent/dist/index.js";
+ const root = path.resolve(import.meta.dirname, "..");
+ const cwd = path.resolve(process.argv[2] ?? process.cwd());
+ const jiti = createJiti(import.meta.url);
+-const { loadSettingsSnapshot, loadGoalSettingsFileConfig } = await jiti.import(
++const { loadSettingsSnapshot } = await jiti.import(
+   path.join(root, "npm/node_modules/pi-goal-x/extensions/goal-settings.ts"),
+ );
+ const settings = loadSettingsSnapshot(cwd);
+@@ -22,13 +23,8 @@
+ assert.equal(settings.value.auditorProjectResources, false);
+ assert.equal(settings.value.oracle.enabled, false);
+ assert.equal(settings.value.oracle.projectResources, false);
+-// Installed completion code reads the PROJECT layer directly; global defaults
+-// alone are insufficient. Fail closed on a newly onboarded project until set.
+-assert.equal(
+-  loadGoalSettingsFileConfig(cwd).disabled,
+-  true,
+-  "project must explicitly disable the built-in auditor",
+-);
++// Effective settings are checked here. The reliability patch --check verifies
++// source compatibility; check-goal-completion.mjs tests the actual completion path.
+ const loader = new DefaultResourceLoader({ cwd, agentDir: root });
+ await loader.reload();
+ const extensions = loader.getExtensions();
+@@ -90,7 +86,7 @@
+ const clone = (value) => structuredClone(value);
+ function fixture(overrides = {}) {
+   return {
+-    teamGoalRequest: { ...request, ...overrides },
++    teamGoalRequest: { ...prepareGoalRequest(request, '/fixture/packet.json'), ...overrides },
+     teamGoalBinding: binding,
+   };
+ }
+@@ -146,7 +142,7 @@
+ assert.equal(recovered.calls.length, 0);
+ cases++;
+ const changed = clone(first.data);
+-changed.teamGoalRequest.task = "Different work";
++changed.teamGoalRequest = prepareGoalRequest({ ...changed.teamGoalRequest, task: 'Different work' }, '/fixture/changed.json');
+ assert.ok((await exercise(changed)).error);
+ cases++;
+ for (const overrides of [
+@@ -213,7 +209,7 @@
+ const noSave = await exercise(fixture(), pass, recordKey);
+ assert.ok(noSave.error);
+ assert.equal(noSave.calls.length, 0);
+-assert.equal(noSave.data.teamGoalActiveStep, recordKey);
++assert.equal(noSave.data.teamGoalActiveStep, undefined);
+ cases++;
+ // The script neither marks a task complete nor clears active ownership on return.
+ assert.equal(first.data.teamGoalActiveStep, recordKey);
+@@ -390,11 +386,18 @@
+ } finally {
+   fs.rmSync(scratch, { recursive: true, force: true });
+ }
+-assert.equal(
+-  createHash("sha256").update(body).digest("hex"),
+-  "8a7301fce7c29ef0eb21376f185795618ec0cb56adcf8e6633b476e43cef668c",
+-  "protected goal helper changed",
+-);
++// Version-1 history remains readable and never replays its work.
++const legacy = fixture();
++legacy[recordKey] = { status: 'reported', request: {
++  goalId: request.goalId, taskId: request.taskId, phase: request.phase,
++  attempt: request.attempt, agent: request.agent, task: request.task,
++  cwd: request.cwd, sourceState: request.sourceState,
++} };
++assert.equal((await exercise(legacy)).value.status, 'reconcile');
++assert.equal((await exercise(legacy)).calls.length, 0);
++cases++;
++const { validateWorkflowScript } = await jiti.import(path.join(root, 'npm/node_modules/pi-subagents/src/workflows/scripted-workflow.ts'));
++assert.deepEqual(validateWorkflowScript(body).errors, [], 'native workflow syntax must remain valid');
+ cases++;
+ console.log(
+   JSON.stringify(
+--- before/check-goal-hold-wake.mjs
++++ after/check-goal-hold-wake.mjs
+@@ -636,6 +636,41 @@
+ );
+ cases++;
+ 
++// A missed/unreadable completion observation must not strand the next parent run.
++for (const restoredState of ['complete', null, 'running']) {
++  const run = makeRun('running', { toolCallId: 'reconcile-' + restoredState });
++  const saved = [];
++  const hold = new GoalTeamHold({
++    sessionId: () => sessionId, cwd: () => cwd, goal: () => goal,
++    append: entry => saved.push(entry), readStatus: inspectGoalTeamRunStatus,
++    helperPath,
++  });
++  assert.equal(hold.beginToolCall(launchEvent(run.toolCallId)), true);
++  assert.equal(await hold.completeToolResult({ toolName: 'subagent', toolCallId: run.toolCallId, details: run }), true);
++  fs.unlinkSync(path.join(run.asyncDir, 'status.json'));
++  assert.equal(await hold.onNativeCompletion({ ...run.status, state: 'complete' }), false);
++  if (restoredState) writeState(run, restoredState);
++  const observed = await hold.reconcile();
++  assert.equal(observed.kind, restoredState === 'complete' ? 'terminal' : restoredState === 'running' ? 'active' : 'unknown');
++  assert.equal(hold.shouldHold(ctx, goal), restoredState === 'running');
++  if (!restoredState) {
++    assert.equal(observed.runId, run.runId);
++    assert.equal(saved.at(-1).reason, 'reconcile-required-unknown');
++  }
++  if (restoredState !== 'running') assert.equal(await hold.reconcile(), null);
++  cases++;
++}
++// Actual tool_result integration: explicit status inspection reconciles, even
++// when native completion was lost. It never clears mission ownership or wakes.
++const statusRun = makeRun('running', { toolCallId: 'status-reconcile' });
++await handlers.get('tool_call')(launchEvent(statusRun.toolCallId), ctx);
++await handlers.get('tool_result')({ toolName: 'subagent', toolCallId: statusRun.toolCallId, details: statusRun }, ctx);
++writeState(statusRun, 'complete');
++await handlers.get('tool_result')({ toolName: 'subagent', toolCallId: 'inspect-status', input: { action: 'status', id: statusRun.runId }, details: {} }, ctx);
++assert.equal(entries.at(-1).data.reason, 'reconcile-terminal');
++assert.equal(nativeMessages.length, 2);
++cases++;
++
+ const runtimeSource = fs.readFileSync(
+   path.join(sourceRoot, "goal-runtime.ts"),
+   "utf8",
+--- before/check-goal-completion.mjs
++++ after/check-goal-completion.mjs
+@@ -0,0 +1,108 @@
++// Completion entrypoint/settings regression; fake auditor and in-memory mutations.
++import assert from 'node:assert/strict';
++import fs from 'node:fs';
++import os from 'node:os';
++import path from 'node:path';
++import { createJiti } from '../npm/node_modules/jiti/lib/jiti.mjs';
++const sourceRoot = path.resolve(process.argv[2] ?? new URL('../npm/node_modules/pi-goal-x/extensions', import.meta.url).pathname);
++const modules = new URL('../npm/node_modules/', import.meta.url).pathname;
++const jiti = createJiti(import.meta.url, { alias: {
++  '@earendil-works/pi-ai': path.join(modules, '@earendil-works/pi-ai'),
++  '@earendil-works/pi-coding-agent': path.join(modules, '@earendil-works/pi-coding-agent'),
++  '@earendil-works/pi-tui': path.join(modules, '@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-tui'),
++  typebox: path.join(modules, 'typebox'),
++} });
++const { runGoalCompletionFlow } = await jiti.import(path.join(sourceRoot, 'goal-completion.ts'));
++const { registerTaskTools } = await jiti.import(path.join(sourceRoot, 'goal-task-tools.ts'));
++const { invalidateGoalSettingsCache } = await jiti.import(path.join(sourceRoot, 'goal-settings.ts'));
++const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'goal-completion-check-'));
++process.env.PI_GOAL_GLOBAL_SETTINGS_FILE = path.join(scratch, 'global.json');
++process.env.PI_GOAL_SETTINGS_FILE = path.join(scratch, 'project.json');
++process.env.PI_SUBAGENTS_TEMP_ROOT = scratch;
++let cases = 0;
++async function exercise(projectSettings, options = {}) {
++  fs.writeFileSync(process.env.PI_GOAL_GLOBAL_SETTINGS_FILE, JSON.stringify({ disabled: true }));
++  fs.writeFileSync(process.env.PI_GOAL_SETTINGS_FILE, JSON.stringify(projectSettings));
++  invalidateGoalSettingsCache();
++  let auditCalls = 0;
++  let commits = 0;
++  const events = [];
++  const tools = new Map();
++  const goal = { id: 'fixture-goal', objective: 'Completion fixture', status: 'active', autoContinue: true,
++    createdAt: '2026-09-08T00:00:00Z', updatedAt: '2026-09-08T00:00:00Z',
++    usage: { tokensUsed: 0, activeSeconds: 0 }, ...options.goal };
++  const core = {
++    state: { goal }, runningGoalId: goal.id, goalWidgetComponentRef: { current: null },
++    pi: { sendMessage: () => {}, registerTool: tool => tools.set(tool.name, tool) },
++    reconcileFocusedGoalFromDisk: () => {}, focusedOperationToken: id => ({ goalId: id, revision: 1 }),
++    isFocusedOperationCurrent: token => core.state.goal?.id === token.goalId,
++    focusedOperationCancelledResult: () => ({ content: [{ type: 'text', text: 'fixture focus changed' }] }),
++    accountProgress: () => {}, updateUI: () => {}, setAuditResult: () => {},
++    goalService: { appendEvents: (_ctx, added) => events.push(...added), apply: (_ctx, args) => { commits++; core.state.goal = args.mutate(); return { ok: true, goal: core.state.goal }; },
++      updateTask: (_ctx, args) => { const task = core.state.goal.taskList.tasks[0]; const valid = args.validate(task); if (!valid.ok) return valid; commits++; core.state.goal.taskList.tasks[0] = args.update(task); return { ok: true, goal: core.state.goal }; } },
++    runtime: { markTurnStopped: () => {} },
++    stopAuditAnimation: () => { clearInterval(core.auditAnimationTimer); },
++    dependencies: { runCompletionAuditor: async () => { auditCalls++; return { approved: true, output: 'fixture approval only' }; } },
++  };
++  const ctx = { cwd: scratch, sessionManager: { getBranch: () => {
++    if (options.duringObservation) core.state.goal.status = options.duringObservation;
++    if (options.switchFocus) core.state.goal.id = 'foreign-goal';
++    return options.entries ?? [];
++  } } };
++  registerTaskTools(core);
++  const result = options.task
++    ? await tools.get('update_goal_task').execute('fixture-tool', { task_id: 't1', status: 'complete', evidence: 'fixture evidence only' }, undefined, undefined, ctx)
++    : await runGoalCompletionFlow(core, ctx, 'Untrusted fixture claim');
++  return { auditCalls, commits, events, result, goal: core.state.goal };
++}
++try {
++  const inherited = await exercise({});
++  assert.equal(inherited.auditCalls, 0, 'global disabled must govern the real completion entrypoint');
++  assert.equal(inherited.commits, 1);
++  assert.ok(inherited.events.some(event => event.type === 'audit_skipped'));
++  cases++;
++  assert.equal((await exercise({ disabled: false })).auditCalls, 1, 'explicit project opt-in must win');
++  cases++;
++  assert.equal((await exercise({ disabled: false }, { goal: { skipAuditor: true } })).auditCalls, 0, 'existing per-goal user choice remains honored');
++  cases++;
++  const pending = await exercise({}, { goal: { taskList: { blockCompletion: true, tasks: [{ id: 't1', title: 'unfinished', status: 'pending' }] } } });
++  assert.equal(pending.commits, 0);
++  assert.equal(pending.auditCalls, 0);
++  cases++;
++
++  for (const race of [{ duringObservation: 'paused' }, { switchFocus: true }]) {
++    const raced = await exercise({}, { ...race, task: true, goal: { taskList: { tasks: [{ id: 't1', title: 'fixture', status: 'pending' }] } } });
++    assert.equal(raced.commits, 0, 'task lifecycle/focus must be rechecked after awaiting native observation');
++    cases++;
++  }
++
++  const binding = { version: 1, goalId: 'fixture-goal', taskId: 't1', sessionId: 'fixture-session', cwd: scratch, toolCallId: 'fixture-call', runId: 'fixture-run', completionOwnerId: 'fixture-owner', asyncDir: path.join(scratch, 'async-subagent-runs/fixture-run') };
++  fs.mkdirSync(binding.asyncDir, { recursive: true });
++  const entry = { customType: 'pi-goal-team-hold', data: { version: 1, state: 'bound', binding, at: Date.now() } };
++  for (const state of ['running', null, 'complete']) {
++    const file = path.join(binding.asyncDir, 'status.json');
++    if (state) fs.writeFileSync(file, JSON.stringify({ ...binding, state }));
++    else fs.rmSync(file, { force: true });
++    const checked = await exercise({}, { entries: [entry] });
++    assert.equal(checked.commits, state === 'complete' ? 1 : 0, 'native team run must be quiescent before completion');
++    assert.equal(checked.auditCalls, 0);
++    cases++;
++    const task = await exercise({}, { entries: [entry], task: true, goal: { taskList: { blockCompletion: true, tasks: [{ id: 't1', title: 'fixture task', status: 'pending' }] } } });
++    assert.equal(task.commits, state === 'complete' ? 1 : 0, 'task completion must also reject active/unknown native runs');
++    cases++;
++  }
++  fs.writeFileSync(path.join(binding.asyncDir, 'status.json'), JSON.stringify({ ...binding, state: 'complete', completionOwnerId: 'foreign-owner' }));
++  assert.equal((await exercise({}, { entries: [entry] })).commits, 0, 'terminal with a different completion owner is not proof');
++  cases++;
++  const unrelated = { ...entry, data: { ...entry.data, binding: { ...binding, goalId: 'different-goal' } } };
++  assert.equal((await exercise({}, { entries: [unrelated] })).commits, 1, 'unrelated Goal history does not change ordinary completion');
++  cases++;
++  fs.rmSync(path.join(binding.asyncDir, 'status.json'));
++  const terminal = { ...entry, data: { ...entry.data, state: 'released', reason: 'native-completion' } };
++  assert.equal((await exercise({}, { entries: [entry, terminal] })).commits, 1, 'persisted host terminal observation survives artifact cleanup');
++  cases++;
++  const unknown = { ...terminal, data: { ...terminal.data, reason: 'reconcile-required-unknown' } };
++  assert.equal((await exercise({}, { entries: [entry, unknown] })).commits, 0, 'unknown-release is never terminal proof');
++  cases++;
++  console.log(JSON.stringify({ status: 'PASS', cases, sourceRoot, modelCalls: 0, childAgents: 0, limitation: 'Real completion function with fake auditor/mutations and disposable settings/status; no real Goal or live model.' }));
++} finally { fs.rmSync(scratch, { recursive: true, force: true }); }
+--- before/check-goal-step-storage.mjs
++++ after/check-goal-step-storage.mjs
+@@ -0,0 +1,78 @@
++// Real helper + native state store, fake launches, disposable filesystem only.
++import assert from 'node:assert/strict';
++import fs from 'node:fs';
++import os from 'node:os';
++import path from 'node:path';
++import { spawnSync } from 'node:child_process';
++import { createJiti } from '../npm/node_modules/jiti/lib/jiti.mjs';
++import { prepareGoalRequest } from './goal-request.mjs';
++const jiti = createJiti(import.meta.url);
++const { createMissionWorkflowState } = await jiti.import('../npm/node_modules/pi-subagents/src/missions/workflow-state.ts');
++const body = fs.readFileSync(new URL('./goal-task-step.js', import.meta.url), 'utf8');
++const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor;
++const helper = new AsyncFunction('state', 'runs', body);
++const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'goal-step-storage-'));
++let launches = 0;
++try {
++  const state = createMissionWorkflowState({ missionDir: scratch }, 'fixture');
++  state.set('teamGoalBinding', { goalId: 'fixture', cwd: scratch });
++  const runs = { run: async () => {
++    launches++;
++    const input = state.get('teamGoalRequest');
++    return { ok: true, runId: 'fixture-child-' + launches, outputReference: '/fixture/report.md', artifactPaths: ['/fixture/report.md'], structuredOutput: { verdict: 'pass', goalId: input.goalId, taskId: input.taskId, inputSourceState: input.sourceState, sourceState: input.sourceState, evidence: ['x'.repeat(8192)], residualRisks: [] } };
++  } };
++  let previous;
++  for (let n = 1; n <= 50; n++) {
++    const packet = { goalId: 'fixture', taskId: 't' + n, phase: 'review', attempt: 1, agent: 'team.reviewer', task: 'task-' + n + ':' + 'x'.repeat(8192), cwd: scratch, sourceState: 'fixture-source', goalStatus: 'active', taskStatus: 'pending' };
++    const file = path.join(scratch, 'packet-' + n + '.json');
++    fs.writeFileSync(file, JSON.stringify(packet));
++    const input = prepareGoalRequest(packet, file);
++    if (n === 1) {
++      const cli = spawnSync(process.execPath, [new URL('./goal-request.mjs', import.meta.url).pathname, file], { encoding: 'utf8', timeout: 10000 });
++      assert.ifError(cli.error);
++      assert.equal(cli.status, 0, cli.stderr);
++      assert.deepEqual(JSON.parse(cli.stdout), input, 'real packet CLI must match the imported preparation contract');
++    }
++    state.set('teamGoalRequest', input);
++    const result = await helper(state, runs);
++    assert.equal(result.status, 'reported');
++    state.set('teamGoalActiveStep', null); // simulated parent terminal reconciliation
++    previous = input;
++  }
++  assert.equal(launches, 50);
++  assert.ok(fs.statSync(state.path).size < 80 * 1024, 'step history must retain references, not packets/reports');
++  const stateBytes = fs.statSync(state.path).size;
++  const replay = await helper(state, runs);
++  assert.equal(replay.status, 'reconcile');
++  assert.equal(launches, 50);
++  state.set('teamGoalRequest', prepareGoalRequest({ ...previous, task: 'changed contract' }, previous.requestRef));
++  await assert.rejects(helper(state, runs), /different contract/);
++  assert.equal(launches, 50);
++
++  // Fail saving the first intent: no child and no orphan active marker.
++  const next = prepareGoalRequest({ ...previous, taskId: 't51' }, previous.requestRef);
++  state.set('teamGoalRequest', next);
++  const noSave = { get: key => state.get(key), set: (key, value) => {
++    if (key === 'goal-step.t51.review.1') throw new Error('fixture persistence failure');
++    return state.set(key, value);
++  } };
++  await assert.rejects(helper(noSave, runs), /persistence failure/);
++  assert.equal(state.get('teamGoalActiveStep'), null);
++  assert.equal(launches, 50);
++
++  // Exercise real store exhaustion before dispatch, not just an injected failure.
++  const remaining = 262144 - fs.statSync(state.path).size;
++  state.set('fixturePadding', 'x'.repeat(remaining - 128));
++  await assert.rejects(helper(state, runs), /Mission state exceeds/);
++  assert.equal(state.get('teamGoalActiveStep'), null);
++  assert.equal(launches, 50);
++  const bad = path.join(scratch, 'invalid-packet.json');
++  for (const text of ['{', JSON.stringify({ ...previous, task: 'x'.repeat(72 * 1024) })]) {
++    fs.writeFileSync(bad, text);
++    const cli = spawnSync(process.execPath, [new URL('./goal-request.mjs', import.meta.url).pathname, bad], { encoding: 'utf8', timeout: 10000 });
++    assert.ifError(cli.error);
++    assert.notEqual(cli.status, 0);
++    assert.equal(cli.stdout, '');
++  }
++  console.log(JSON.stringify({ status: 'PASS', cases: 8, steps: launches, stateBytes, modelCalls: 0, childAgents: 0, limitation: 'Synthetic packets and fake launches; actual packet CLI/helper/native state persistence, including real capacity rejection.' }));
++} finally { fs.rmSync(scratch, { recursive: true, force: true }); }
+--- before/check-selected-role-preflight.mjs
++++ after/check-selected-role-preflight.mjs
+@@ -5,6 +5,10 @@
+ const checker = fileURLToPath(new URL('./check-config.mjs', import.meta.url));
+ const cwd = process.argv[2] || process.cwd();
+ let checks = 0;
++function parseReceipt(result) {
++  try { return JSON.parse(result.stdout); }
++  catch (cause) { throw new Error('Role checker did not return a JSON receipt', { cause }); }
++}
+ function run(args) {
+   const result = spawnSync(process.execPath, [checker, ...args, cwd], {
+     encoding: 'utf8', timeout: 120000,
+@@ -29,7 +33,7 @@
+ }
+ const selected = run(['--roles-only', '--roles=team.debugger,team.reviewer']);
+ assert.equal(selected.status, 0, selected.stderr);
+-const receipt = JSON.parse(selected.stdout);
++const receipt = parseReceipt(selected);
+ assert.equal(receipt.scope, 'selected-role-contracts-only');
+ assert.deepEqual(receipt.roles.map((r) => r.name).sort(), ['team.debugger', 'team.reviewer']);
+ assert.ok(receipt.uncheckedRoles.includes('team.docs'));
+@@ -38,11 +42,16 @@
+ checks++;
+ const all = run(['--roles-only']);
+ if (all.status === 0) {
+-  const full = JSON.parse(all.stdout);
++  const full = parseReceipt(all);
+   assert.equal(full.scope, 'role-contracts-only');
+   assert.equal(full.roles.length, 14);
+   assert.deepEqual(full.uncheckedRoles, []);
+ } else {
++  const health = parseReceipt(all);
++  assert.equal(health.status, 'FAIL');
++  assert.equal(health.roles.length + health.failures.length, 14, 'health must inspect every role, not stop at the first failure');
++  assert.equal(new Set([...health.roles, ...health.failures].map(row => row.name)).size, 14);
++  checks++;
+   // When the real installation has a missing skill, it must still fail when
+   // that role is selected. Other global failures are not silently accepted.
+   const match = all.stderr.match(/(team\.[a-z]+) missing skill/);
+--- before/check-reliability-patch.mjs
++++ after/check-reliability-patch.mjs
+@@ -0,0 +1,75 @@
++// Real patch CLI, disposable package; no live Goal, model, child or reload.
++import assert from 'node:assert/strict';
++import fs from 'node:fs';
++import os from 'node:os';
++import path from 'node:path';
++import crypto from 'node:crypto';
++import { spawnSync } from 'node:child_process';
++const bundle = new URL('./patches/goal-team-reliability/', import.meta.url).pathname;
++const installed = new URL('../npm/node_modules/pi-goal-x/', import.meta.url).pathname;
++function parseReceipt(text) {
++  try { return JSON.parse(text); }
++  catch (cause) { throw new Error('Invalid patch-check manifest or CLI receipt', { cause }); }
++}
++const manifest = parseReceipt(fs.readFileSync(path.join(bundle, 'manifest.json'), 'utf8'));
++const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'team-reliability-package-'));
++const target = path.join(scratch, 'pi-goal-x');
++const sha = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
++const liveBefore = manifest.files.map(item => sha(path.join(installed, item.path)));
++let cases = 0;
++function run(args, env = {}) {
++  const result = spawnSync(process.execPath, [path.join(bundle, 'apply.mjs'), '--target', target, ...args], {
++    encoding: 'utf8', timeout: 150000, env: { ...process.env, PI_OFFLINE: '1', PI_MEMORY_EXIT_SUMMARY: 'off', ...env },
++  });
++  assert.ifError(result.error);
++  return result;
++}
++function success(args, status) {
++  const result = run(args);
++  assert.equal(result.status, 0, result.stdout + result.stderr);
++  const receipt = parseReceipt(result.stdout);
++  assert.equal(receipt.status, status);
++  cases++;
++  return receipt;
++}
++function assertPre() { for (const item of manifest.files) assert.equal(sha(path.join(target, item.path)), item.preSha256); }
++try {
++  fs.cpSync(installed, target, { recursive: true });
++  for (const item of manifest.files) fs.copyFileSync(path.join(bundle, item.preimage), path.join(target, item.path));
++  assert.equal(success(['--check'], 'COMPATIBLE').state, 'pre');
++  const prerequisite = path.join(target, manifest.requiredFiles[0].path);
++  const prerequisiteBytes = fs.readFileSync(prerequisite);
++  fs.appendFileSync(prerequisite, '\n// fixture tamper\n');
++  assert.match(run(['--check']).stderr, /Required base patch hash mismatch/);
++  fs.writeFileSync(prerequisite, prerequisiteBytes);
++  cases++;
++  const first = manifest.files[0];
++  fs.appendFileSync(path.join(target, first.path), '\n// fixture tamper\n');
++  const badHash = sha(path.join(target, first.path));
++  assert.match(run([]).stderr, /Unsupported source; no files changed/);
++  assert.equal(sha(path.join(target, first.path)), badHash);
++  fs.copyFileSync(path.join(bundle, first.preimage), path.join(target, first.path));
++  cases++;
++  const failure = run([], { PI_GOAL_HOLD_TEST_FAIL_VALIDATION: '1' });
++  assert.notEqual(failure.status, 0);
++  assert.match(failure.stderr, /Forced validation failure/);
++  assertPre();
++  cases++;
++  const applied = success([], 'APPLIED');
++  success([], 'ALREADY_APPLIED');
++  success(['--verify'], 'VERIFIED');
++  fs.copyFileSync(path.join(bundle, first.preimage), path.join(target, first.path));
++  assert.match(run(['--check']).stderr, /Mixed pre\/post/);
++  cases++;
++  success(['--revert', applied.backup], 'REVERTED');
++  assertPre();
++  assert.notEqual(run(['--revert', applied.backup]).status, 0, 'revert cannot consume the same receipt twice');
++  cases++;
++  const packageFile = path.join(target, 'package.json');
++  const metadata = parseReceipt(fs.readFileSync(packageFile, 'utf8'));
++  fs.writeFileSync(packageFile, JSON.stringify({ ...metadata, version: '0.0.0-fixture' }));
++  assert.match(run(['--check']).stderr, /Unsupported target/);
++  cases++;
++  assert.deepEqual(manifest.files.map(item => sha(path.join(installed, item.path))), liveBefore);
++  console.log(JSON.stringify({ status: 'PASS', cases, modelCalls: 0, childAgents: 0, limitation: 'Disposable target only; retained test backup manifests are not live installation receipts.' }));
++} finally { fs.rmSync(scratch, { recursive: true, force: true }); }
+--- before/GOAL-TEAMS.md
++++ after/GOAL-TEAMS.md
+@@ -16,6 +16,7 @@
+ 由主 agent／planner 規劃成果與驗收條件，確認後以 goal-x 保存 task list。
+ 如已有 goal，使用 `/goal-focus` 選取；不要另建同一目標。
+ `set_goal_tasks` 的確認會結束當前 turn，等續跑後才派工。
++新建 team-backed task list 時明設 `block_completion:true`；不追改既有 Goal／task 選擇。
+ 
+ 普通 `/team` 仍可不使用 goal；Sisyphus 僅在使用者指定時啟用，依確認的順序執行。
+ Task 是成果，不是一個 agent：例如「修復登入」可歷經 debugger、implementer、
+@@ -30,10 +31,11 @@
+   `disableTasks: false`、`disableContracts: false`、`autoSelectSingleGoal: false`、
+   `auditorProjectResources: false`、`oracle.enabled: false`、`oracle.projectResources: false`。
+ - 保留原本 model/provider/thinking 欄位，因 auditor 停用而不使用；不改其他 team 模型。
+-- **新專案需預檢與授權設定：**已安裝版 completion 路徑直接呼叫
+-  `loadGoalSettingsFileConfig(cwd)`，只讀 project layer。全域 `disabled: true`
+-  不足以保證該路徑停用 auditor；必須在該專案明列 `disabled: true`。
+-  不直接修改 goal files、不偷偷切換使用者現有 per-goal 選擇；不合規就先停下。
++- **新專案仍需預檢：**2026-09-08 reliability patch 使 completion 使用
++  `loadGoalSettings(cwd)` 的有效合併設定，包含全域預設；不再強迫每個新專案
++  重抄 `disabled:true`。明確 project override 與既有 per-goal skip 選擇仍保留。
++  須先確認 patch hash 與 runtime 已 reload；未套用版仍有 project-only 缺口。
++  不修改既有 Goal／設定來繞過不合規的有效值。
+ - Child 不載入 goal-x、不取得 goal tools，也不得透過 shell 改 `.pi/goals/`。
+   保持明列 extensions 與 `defaultExtensions: []`，禁止 per-run 擴權或繼承 goal runtime。
+ - 不啟用 subagents mission 的 `goal:true`、watchdog、schedule 或其他續跑器。
+@@ -43,6 +45,8 @@
+ PI_OFFLINE=1 PI_MEMORY_EXIT_SUMMARY=off node ~/.pi/agent/teams/check-config.mjs --roles-only "$PWD"
+ PI_OFFLINE=1 PI_MEMORY_EXIT_SUMMARY=off node ~/.pi/agent/teams/check-goal-team.mjs "$PWD"
+ node ~/.pi/agent/teams/check-goal-hold-wake.mjs
++node ~/.pi/agent/teams/patches/goal-team-reliability/apply.mjs --check
++node ~/.pi/agent/teams/check-goal-completion.mjs
+ ```
+ 
+ 第二個檢查驗證目前設定／工具註冊與實際 helper 的 mock replay/failure 行為；
+@@ -108,7 +112,15 @@
+ 
+ ### `teamGoalRequest` 欄位
+ 
+-由主 agent 以 `state.set("teamGoalRequest", request)` 保存 JSON；不是 child 輸入權限。
++主 agent 先把下列 raw packet 存在核准的 durable evidence directory，再執行：
++
++```bash
++node ~/.pi/agent/teams/goal-request.mjs /absolute/evidence/packet.json > /absolute/evidence/prepared.json
++```
++
++將 prepared JSON **原樣**交 `state.set("teamGoalRequest", prepared)`；不可改 task/source
++卻沿用舊 digest。CLI 不派工、不修改 Goal/mission；normalized contract 上限 64 KiB。
++這是 parent-only 準備，不是 child 輸入權限。
+ 
+ | 欄位 | 來源／限制 |
+ | --- | --- |
+@@ -118,12 +130,17 @@
+ | agent | 已檢查的普通 `team.*` 角色；advisor 另走必要性核准，不走此 helper |
+ | cwd、sourceState | 唯一綁定 cwd 與實際 commit＋dirty diff／artifact digest |
+ | task | 完整 cold-start packet：目標／非目標、allowed files/actions、criteria、驗證命令、證據路徑、stop rules；debugger 必含 scratch 範圍 |
++| requestDigest、requestRef | CLI 產生的 SHA-256 correlation 與 raw packet realpath；不由模型手算 |
+ 
+-Helper 先寫 `teamGoalActiveStep` 與 `goal-step.<taskId>.<phase>.<attempt>` intent，
+-才執行 `runs.run`，之後記原生 child run ID、artifact references 與 structured report。
+-原生 mission linked runs 補上 top-level workflow run ID，terminal
+-`workflow-receipt.json` 保留 stable key 對應。相同 step key 再呼叫只回傳舊 record；
+-contract 不同就拒絕。保留 active marker，直到主 agent 明確 reconcile。
++Helper v2 先保存 `goal-step.<taskId>.<phase>.<attempt>` 的 compact intent，成功後
++才設 `teamGoalActiveStep`，兩者皆成功才 `runs.run`。首筆持久化失敗不留 orphan
++active marker、不啟動 child；其餘保存／launch 失敗仍需 reconcile，不能盲重派。
++歷史僅留 digest、packet/原生 output reference、run ID、verdict/status；完整
++request/report 不逐步累積進 256 KiB mission state。當前 packet、native workflow
++output、`workflow-receipt.json` 與 durable archive 保存詳情；歸檔前勿刪 packet。
++相同 key 只回 reconcile；準備後的 digest 不同就拒絕。舊 v1 record 仍可讀且不重派，
++不自動搬移或刪除舊 mission 歷史。sandbox 無 filesystem/crypto，不能驗證 parent
++是否原樣使用 prepared packet；digest 是 correlation，不是來源／驗收 attestation。
+ 
+ ## 續跑、暫停與異常
+ 
+@@ -152,6 +169,14 @@
+   送出唯一 wake，bridge 不再送 message、不派 child、不 complete Goal/task，也不自動
+   清 `teamGoalActiveStep`。pause／stop／unfocus／task change 會讓 binding 永久失效；
+   之後 resume 不會復活舊 hold。
++- completion event 的 status observation 暫時失敗時，下一次 parent boundary 或
++  明確 `subagent action=status` 後再觀察一次精確 binding；active 繼續 hold，
++  terminal 釋放，unknown 只解除 checkpoint 抑制並要求 reconciliation。
++  不 poll、不新增 wake、不清 mission ownership、不授予 retry／completion。
++- Goal/task completion 現在檢查目前 branch 的對應 native bindings，阻擋 active／unknown
++  run。host 已持久化的 exact terminal observation 可跨 native artifact 清理保留；
++  unknown-release 不是 terminal proof。這不是 REQUIRED product evidence／source
++  freshness gate，也不能看見其他 session 或未綁定的工作；這些仍由 main/host 驗收。
+ - run identity 確認前已排入的 checkpoint 無法撤回，可能造成一次 reconciliation
+   turn；確認後的 fixture 量測為 checkpoint 0、每個 success／failure run 各 native
+   wake 1、bridge wake 0。檢查載入真實 `pi-subagents` notifier，但 session/status/event
+--- before/HANDOFF-PRACTICE.md
++++ after/HANDOFF-PRACTICE.md
+@@ -16,6 +16,9 @@
+ 專用 schema，不能把普通 schema 塞進它們的消費者。
+ 
+ 派工前在目標 cwd 執行 `check-config.mjs --roles-only --roles=team.debugger,team.reviewer <cwd>`（角色清單換成實際選用者），檢查有效 profiles、skills、MCP selectors／工具與模型 scopes；配置、角色選擇或 cwd 改變後重查。省略 `--roles` 的 `--roles-only` 仍是全角色健檢，完整健檢仍用 `check-config.mjs <cwd>`。選用範圍的成功不得宣稱全域健康；輸出的 uncheckedRoles 明列未檢角色。共用安全設定及 discovery diagnostics 仍會阻擋；選用角色缺 skill／工具／模型仍 fail closed，不自動換角色或擴權。
++2026-09-08：role 檢查會一次彙總所有選用角色的失敗；FAIL receipt 的 `roles` 是
++通過項、`failures` 是阻塞項，不因列出成功角色就允許失敗角色啟動。缺 skills
++不自動安裝、刪除要求或換成其他角色；完整環境 readiness 仍須按任務檢查。
+ 所有 checks 標示 `parent-only`、`child-safe` 或 `isolated-only`。
+ 前者留在 main/host；後者先由主 agent 配好隔離資源，再交給有 shell 的角色。
+ 這是能力／操作預檢，不是 sandbox 或對任意命令的安全證明。
+@@ -85,8 +88,10 @@
+ 
+ ## 重播與原生 retry 的範圍
+ 
+-`goal-task-step.js` 保持原 SHA；active intent 與相同 key 已阻止重送，新 attempt
+-也不能越過未 reconcile 的 active step。格式失敗不能被當作 implementation retry。
++`goal-task-step.js` v2 使用 `goal-request.mjs` 準備的 saved-packet digest/reference，
++不把每一步完整 request/report 累積到 mission state；先保存 compact intent，成功後
++才寫 active marker 並派工。舊 v1 歷史仍只 reconcile；新 attempt 不能越過未
++reconcile 的 active step。格式失敗不能被當作 implementation retry。詳見 GOAL-TEAMS.md。
+ `gate-candidate.js` 現在先保存 request intent，再執行驗證；失敗保存 artifacts，
+ review 開始前保存 verification。再次執行只回 reconcile，不重跑命令。
+ 主 agent 完成 native/source reconciliation 並保存舊證據後，才可清除舊 teamGate
+--- before/OPERATING-MODEL.md
++++ after/OPERATING-MODEL.md
+@@ -29,6 +29,13 @@
+ 
+ 2026-09-07 修訂：派工可用 `check-config.mjs --roles-only --roles=team.debugger,team.reviewer <cwd>`（換成本次選用角色）；不因未選角色缺 skill 阻擋派工，但不代表全角色健康。省略 `--roles` 仍檢查全部角色，共用安全設定／discovery 錯誤及選用角色缺能力仍阻擋。開始實作前確認本次驗收環境；降級 main-only 不取消必要 review／E2E，缺證據只能交付 partial。細則見 HANDOFF-PRACTICE.md、OUTCOME-PRACTICE.md；不新增固定角色流程或自動安裝。
+ 
++2026-09-08 reliability 修訂：role 預檢一次彙總所有缺口，不降低 fail-closed 要求；
++Goal helper 改存 compact references，hold 於 parent boundary 補觀察，completion
++使用有效 settings 並阻擋對應 active／unknown native run。仍非產品證據／來源
++新鮮度自動 gate，亦未取得本輪獨立 review 或 live canary。當前 docs/e2e/release/security
++四個角色仍缺必要 skill，不可把先前健康快照當成目前 PASS。細節見 GOAL-TEAMS.md
++與 `goal-team-evidence/reliability-20260908/report.md`。
++
+ ## 角色與責任
+ 
+ **2026-09-06 交付成本修訂：以下目前政策取代舊驗證快照。**
+@@ -182,7 +189,8 @@
+ `handoff-contract.mjs` 產生唯一 team-handoff/1 schema 與 native args，使用原生
+ validator 做零模型預檢。所有角色遵循 outputSchema，沒有額外 memoryCandidates
+ 要求；implementer/docs/release 都明列 native sibling acceptanceReport 必填。
+-Goal helper 保持原樣。格式有效、證據真實、成果合格是三個不同判斷。
++Goal helper v2 僅調整 parent packet preparation／state persistence，不改 child schema。
++格式有效、證據真實、成果合格是三個不同判斷。
+ 不新增自動 repair controller；最多一次有必要的純報告修復、禁止 writer resume
+ 排版。Native 同 child submission retry 沒有格式專用上限，不能聲稱完全硬防重試。
+ 量測真實任務交付時間／總 token／首次符合需求與返工成本，不以人工派工測試冒充加速。
+--- before/extensions/goal-team-hold.ts
++++ after/extensions/goal-team-hold.ts
+@@ -123,6 +123,27 @@
+ 	};
+ }
+ 
++/** Native execution gate only; terminal state never proves product acceptance. */
++export async function goalTeamRunBlockReason(entries: readonly unknown[], goalId: string, cwd: string, taskId?: string): Promise<string | null> {
++	const latest = new Map<string, GoalTeamHoldEntry>();
++	for (const value of entries) {
++		const entry = normalizeEntry(value);
++		if (!entry || entry.binding.goalId !== goalId || entry.binding.cwd !== cwd
++			|| (taskId !== undefined && entry.binding.taskId !== taskId)) continue;
++		latest.set(entry.binding.runId, entry);
++	}
++	for (const entry of latest.values()) {
++		// These entries are written by the host only after exact terminal status
++		// validation. They survive native artifact cleanup, not an unknown release.
++		if (entry.state === "released" && (entry.reason === "native-completion" || entry.reason === "reconcile-terminal")) continue;
++		const observed = await inspectGoalTeamRunStatus(entry.binding);
++		if (observed.kind !== "terminal" || observed.completionOwnerId !== entry.binding.completionOwnerId) {
++			return `Team run ${entry.binding.runId} is ${observed.kind === "active" ? "still active" : "unknown"}; inspect native status and retained mission intent before completion.`;
++		}
++	}
++	return null;
++}
++
+ function currentMatches(
+ 	binding: Pick<GoalTeamRunBinding, "goalId" | "taskId" | "sessionId" | "cwd">,
+ 	goal: GoalRecord | null,
+@@ -353,6 +374,38 @@
+ 		return true;
+ 	}
+ 
++	/** One parent-boundary observation, not a timer or permission to redispatch. */
++	async reconcile(): Promise<GoalTeamRunObservation | null> {
++		const binding = this.binding;
++		if (!binding) return null;
++		if (!currentMatches(binding, this.deps.goal(), this.deps.sessionId(), this.deps.cwd())) {
++			this.clear("reconcile-context-mismatch");
++			return null;
++		}
++		let observed: GoalTeamRunObservation;
++		try {
++			observed = await this.deps.readStatus(binding);
++		} catch {
++			observed = { kind: "unknown" };
++		}
++		// Context/ownership may change while the observation is in flight.
++		if (!this.binding || !sameBinding(this.binding, binding)) return null;
++		if (!currentMatches(binding, this.deps.goal(), this.deps.sessionId(), this.deps.cwd())) {
++			this.clear("reconcile-context-mismatch");
++			return null;
++		}
++		if (observed.completionOwnerId !== binding.completionOwnerId
++			|| observed.runId !== binding.runId || observed.sessionId !== binding.sessionId
++			|| observed.cwd !== binding.cwd || observed.toolCallId !== binding.toolCallId) {
++			observed = { kind: "unknown" };
++		}
++		if (observed.kind !== "active") {
++			this.release(binding, observed.kind === "terminal" ? "reconcile-terminal" : "reconcile-required-unknown");
++		}
++		// Unknown releases checkpoint suppression only; mission intent stays owned.
++		return { ...observed, runId: binding.runId };
++	}
++
+ 	async recover(entries: readonly unknown[]): Promise<boolean> {
+ 		this.pending = null;
+ 		this.binding = null;
+--- before/extensions/goal-events.ts
++++ after/extensions/goal-events.ts
+@@ -216,6 +216,12 @@
+ 	pi.on("tool_result", async (event, ctx) => {
+ 		currentContext = ctx;
+ 		await teamHold.completeToolResult(event);
++		if (event.toolName === "subagent" && asRecord(event.input)?.action === "status") {
++			const observed = await teamHold.reconcile();
++			if (observed?.kind === "unknown") {
++				return { content: [...event.content, { type: "text", text: `Team run ${observed.runId}: reconciliation required; status is unknown. Inspect retained mission intent and native receipt before any redispatch or completion.` }] };
++			}
++		}
+ 	});
+ 
+ 	pi.on("turn_end", async (event, ctx) => {
+@@ -426,7 +432,9 @@
+ 			if (!core.isActionableContinuationGoal(incomingGoalId)) {
+ 				try {
+ 					ctx.abort?.();
+-				} catch {}
++				} catch {
++					// Best-effort abort; the stale-checkpoint tool guard and prompt still apply.
++				}
+ 				core.updateUI(ctx);
+ 				return {
+ 					systemPrompt: `${currentSystemPrompt()}\n\n${staleContinuationPrompt(incomingGoalId, core.state.goal)}`,
+@@ -501,9 +509,17 @@
+ 				systemPrompt: `${currentSystemPrompt()}\n\n[PI GOAL BUDGET LIMITED goalId=${limitedGoal.id}]\n${untrustedObjectiveBlock(limitedGoal)}${budgetText ? `\n${budgetText}` : ""}${reminder}`,
+ 			};
+ 		}
++		// Recheck once at a parent-run boundary, including a missed completion event.
++		// No timer, child launch, mission mutation or second wake path is introduced.
++		currentContext = ctx;
++		const teamObservation = await teamHold.reconcile();
+ 		const activeGoal = core.state.goal;
++		if (!activeGoal || activeGoal.status !== "active") return;
+ 		const settings = loadGoalSettings(ctx.cwd);
+ 		let prompt = goalPrompt(activeGoal, settings);
++		if (teamObservation?.kind === "unknown") {
++			prompt += `\n\n[TEAM RUN RECONCILIATION REQUIRED runId=${teamObservation.runId}]\nNative status is unknown. Inspect preserved mission intent and exact native receipts; do not redispatch or complete the task from this observation.`;
++		}
+ 		// F5: [GOAL STALLED] steering note when the detector fired.
+ 		const stalledNote = core.checkStall(ctx);
+ 		if (stalledNote) prompt += stalledNote;
+--- before/extensions/goal-completion.ts
++++ after/extensions/goal-completion.ts
+@@ -6,7 +6,8 @@
+ 	taskCompletionBlockWarning,
+ 	validateGoalCompletion,
+ } from "./goal-policy.ts";
+-import { loadGoalSettings, loadGoalSettingsFileConfig } from "./goal-settings.ts";
++import { loadGoalSettings } from "./goal-settings.ts";
++import { goalTeamRunBlockReason } from "./goal-team-hold.ts";
+ import { runGoalCompletionAuditor } from "./goal-auditor.ts";
+ import { nowIso, type GoalRecord } from "./goal-record.ts";
+ import { latestEventsForGoal, readGoalLedger } from "./goal-ledger.ts";
+@@ -49,6 +50,9 @@
+ 
+ 	const auditTarget = mergeGoalPromptFromDisk(ctx, core.state.goal);
+ 	const completionFocus = core.focusedOperationToken(auditTarget.id);
++	const teamBlock = await goalTeamRunBlockReason(ctx.sessionManager.getBranch(), auditTarget.id, ctx.cwd);
++	if (!core.isFocusedOperationCurrent(completionFocus)) return core.focusedOperationCancelledResult("Goal completion", completionFocus);
++	if (teamBlock) return { content: [{ type: "text", text: teamBlock }], details: goalDetails(core.state.goal) };
+ 	// Append ledger: completion requested
+ 	try {
+ 		core.goalService.appendEvents(ctx, [{
+@@ -59,7 +63,7 @@
+ 	} catch {
+ 		// Ledger append failure should not block completion
+ 	}
+-	const settings = loadGoalSettingsFileConfig(ctx.cwd);
++	const settings = loadGoalSettings(ctx.cwd);
+ 	const auditorLabel = settings.provider || settings.model || settings.thinkingLevel
+ 		? `${settings.provider ?? "default"}/${settings.model ?? "default"}${settings.thinkingLevel ? `:${settings.thinkingLevel}` : ""}`
+ 		: "default";
+--- before/extensions/goal-task-tools.ts
++++ after/extensions/goal-task-tools.ts
+@@ -14,6 +14,7 @@
+ import { goalDetails, renderGoalResult } from "./goal-format.ts";
+ import { statusLabel, truncateText } from "./goal-core.ts";
+ import { loadGoalSettings } from "./goal-settings.ts";
++import { goalTeamRunBlockReason } from "./goal-team-hold.ts";
+ import { buildTaskSummary, checkSubtasksComplete, findSubtaskDepthViolation, findTaskInTree, skipAllSubtasks } from "./goal-policy.ts";
+ import { showTaskConfirmation, type TaskConfirmationResult } from "./goal-task-confirmation.ts";
+ import {
+@@ -433,6 +434,13 @@
+ 		}
+ 
+ 		if (params.status === "complete") {
++			const teamBlock = await goalTeamRunBlockReason(ctx.sessionManager.getBranch(), core.state.goal.id, ctx.cwd, params.task_id);
++			core.reconcileFocusedGoalFromDisk(ctx);
++			if (!core.isFocusedOperationCurrent(taskFocus)) return core.focusedOperationCancelledResult("Task completion", taskFocus);
++			if (core.state.goal?.status !== "active") {
++				return { content: [{ type: "text", text: "Task completion cancelled because the goal is no longer active." }], details: goalDetails(core.state.goal) };
++			}
++			if (teamBlock) return { content: [{ type: "text", text: teamBlock }], details: goalDetails(core.state.goal) };
+ 			const evidence = params.evidence?.trim().slice(0, 200) || undefined;
+ 			const result = core.goalService.updateTask(ctx, {
+ 				focusToken: taskFocus,

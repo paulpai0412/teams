@@ -1,0 +1,50 @@
+[
+  {
+    "file": "/home/timmypai/.pi/agent/teams/goal-task-step.js",
+    "before": "8a7301fce7c29ef0eb21376f185795618ec0cb56adcf8e6633b476e43cef668c",
+    "after": "75e18512df8502aee1ea8249f17bcf838c4d02966a9574c18b09a1eec1bdcba2",
+    "changed": true
+  },
+  {
+    "file": "/home/timmypai/.pi/agent/teams/gate-candidate.js",
+    "before": "5bcc8b989e8ce468fa1307f6c82bf46bc9275f0453bbea3b9fa79e5bdda60ef3",
+    "after": "5bcc8b989e8ce468fa1307f6c82bf46bc9275f0453bbea3b9fa79e5bdda60ef3",
+    "changed": false
+  },
+  {
+    "file": "/home/timmypai/.pi/agent/teams/handoff-contract.mjs",
+    "before": "4fbd6067a772e9c18393f19926ac4c368ba7afcd4d5b789e06131d2399882346",
+    "after": "4fbd6067a772e9c18393f19926ac4c368ba7afcd4d5b789e06131d2399882346",
+    "changed": false
+  },
+  {
+    "file": "/home/timmypai/.pi/agent/teams/check-config.mjs",
+    "before": "c103befc5628751e0f70129c7a8b97fb3e4780565f8969dd9282d3787a0fc21c",
+    "after": "400eedeeeeae23a08df6b7ff5993ae1514af28834dc25cbcf8c1169b0fe9e5e6",
+    "changed": true
+  },
+  {
+    "file": "/home/timmypai/.pi/agent/npm/node_modules/pi-goal-x/extensions/goal-team-hold.ts",
+    "before": "c61c1a9628e2f68f08174c4ac441ea6363f6a788a85e1937b9f59ca596ba8531",
+    "after": "6380e9f86fba65b62a431ed6e23ec8131dee315ee7a3431ce1bf85cacfa274e2",
+    "changed": true
+  },
+  {
+    "file": "/home/timmypai/.pi/agent/npm/node_modules/pi-goal-x/extensions/goal-events.ts",
+    "before": "1d2d6c4fe30bbc8ca0badaa81db83cffacb22d1c957849467bba857b6ccfe2ff",
+    "after": "787f01915589c11baf06e0f793bcf6129f7a5138f5a158a372bee8639bdea8fe",
+    "changed": true
+  },
+  {
+    "file": "/home/timmypai/.pi/agent/npm/node_modules/pi-goal-x/extensions/goal-completion.ts",
+    "before": "9832c7d85ad2b8f2503c5b08a2d5f514c1bb06afd0aeb5e449423f30b04e479f",
+    "after": "787fcf7eeebec6f52feaeef2fff1752ded6a0cbbe7cf4b11faace960c1b7b311",
+    "changed": true
+  },
+  {
+    "file": "/home/timmypai/.pi/agent/npm/node_modules/pi-subagents/src/missions/workflow-state.ts",
+    "before": "7c2187d9f529e3a58dca2beaf51b36f5ccf43d660dfb98ebf7ab916e1e67f360",
+    "after": "7c2187d9f529e3a58dca2beaf51b36f5ccf43d660dfb98ebf7ab916e1e67f360",
+    "changed": false
+  }
+]

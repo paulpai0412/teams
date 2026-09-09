@@ -1,0 +1,8 @@
+file:///home/timmypai/.pi/agent/teams/check-goal-hold-wake.mjs:653
+  const observed = await hold.reconcile();
+                              ^
+
+TypeError: hold.reconcile is not a function
+    at file:///home/timmypai/.pi/agent/teams/check-goal-hold-wake.mjs:653:31
+
+Node.js v24.18.0

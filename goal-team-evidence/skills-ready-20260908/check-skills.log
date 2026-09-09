@@ -1,0 +1,8 @@
+{
+  "status": "PASS",
+  "roles": 14,
+  "cases": 8,
+  "realChildren": 0,
+  "browserRuns": 0,
+  "scope": "resolver and public preparation only; no model-behavior certification"
+}

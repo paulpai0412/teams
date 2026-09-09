@@ -1,0 +1,32 @@
+{
+  "files": [
+    {
+      "path": "/home/timmypai/.pi/agent/npm/node_modules/pi-goal-x/extensions/goal-team-hold.ts",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/flow-fixes-20260908/before/goal-team-hold.ts",
+      "after": "/home/timmypai/.pi/agent/teams/goal-team-evidence/flow-fixes-20260908/after/goal-team-hold.ts",
+      "preSha256": "6380e9f86fba65b62a431ed6e23ec8131dee315ee7a3431ce1bf85cacfa274e2",
+      "postSha256": "b72bb6c9e623f76a15fbcf40f501e5f99369ac89a0939062c91b41d2bbde3b06"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/npm/node_modules/pi-subagents/src/runs/shared/subagent-prompt-runtime.ts",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/flow-fixes-20260908/before/subagent-prompt-runtime.ts",
+      "after": "/home/timmypai/.pi/agent/teams/goal-team-evidence/flow-fixes-20260908/after/subagent-prompt-runtime.ts",
+      "preSha256": "6663586836d19b565fe7bc4ea94c0bde5562de81d6af34342551639a69a89b5d",
+      "postSha256": "a4c7ab2c7ace064f77c53efb26c8fb96358fbefe8bb81ca5ac7fb38c68870556"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/npm/node_modules/pi-subagents/src/runs/background/subagent-runner.ts",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/flow-fixes-20260908/before/subagent-runner.ts",
+      "after": "/home/timmypai/.pi/agent/teams/goal-team-evidence/flow-fixes-20260908/after/subagent-runner.ts",
+      "preSha256": "498eda9daed4c5ce20d9616641bbd6f6189737d4b03841e99b161f9c492b9206",
+      "postSha256": "5a995040cb415f897688f93cdbe1db05d359e4ffd63897adbaecdbac0752535b"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/npm/node_modules/pi-subagents/src/runs/foreground/execution.ts",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/flow-fixes-20260908/before/execution.ts",
+      "after": "/home/timmypai/.pi/agent/teams/goal-team-evidence/flow-fixes-20260908/after/execution.ts",
+      "preSha256": "25fba51e1fb258d1e505afc2e754e06b188e5fa9ff6dcd272aeac81fa344db0b",
+      "postSha256": "83539762b37da66f0267eba1ee95400ffd7fb04f70714b0edcb0369c204d83a2"
+    }
+  ]
+}

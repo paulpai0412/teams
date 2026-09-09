@@ -1,0 +1,178 @@
+{
+  "env": {
+    "node": "v24.18.0",
+    "cwd": "/home/timmypai"
+  },
+  "cases": [
+    {
+      "id": "C1-continuation",
+      "seam": "real installed pi-goal-x GoalRuntime.queueContinuation/sendQueuedContinuation; mocked ExtensionContext idle state",
+      "elapsedMs": 25,
+      "followUpCount": 1,
+      "followUps": [
+        {
+          "at": 1788651396822,
+          "content": "<pi_goal_continuation goal_id=\"goal-probe\" kind=\"checkpoint\" v=\"2\"/>",
+          "details": {
+            "version": 2,
+            "kind": "checkpoint",
+            "goalId": "goal-probe",
+            "status": "active",
+            "revision": 7,
+            "checkpointSeq": 1,
+            "timestamp": 1788651396822
+          }
+        }
+      ],
+      "expected": "bound active child should hold auto continuation; current runtime has no child binding input",
+      "observed": "empty-goal guard absent: checkpoint follow-up emitted while simulated child is active"
+    },
+    {
+      "id": "goal-native-event-subscription",
+      "seam": "real installed pi-goal-x registerGoalEvents; event bus payload is a native completion-shaped payload",
+      "registeredLifecycleEvents": [
+        "context",
+        "turn_start",
+        "tool_call",
+        "tool_execution_end",
+        "turn_end",
+        "message_end",
+        "session_start",
+        "session_before_compact",
+        "session_compact",
+        "session_tree",
+        "before_agent_start",
+        "agent_end",
+        "agent_settled",
+        "session_shutdown"
+      ],
+      "includesNativeAsyncComplete": false,
+      "sentMessagesAfterBareNativeEvent": 0,
+      "observed": "goal-events registers Pi lifecycle hooks only; bare subagent:async-complete has no Goal handler"
+    },
+    {
+      "id": "native-notification-delivery",
+      "seam": "real installed pi-subagents registerSubagentNotify on the same process-local event bus; sendMessage mocked",
+      "successAndFailureMessages": [
+        {
+          "content": "Background task failed: **workflow**\n\nnative failure\n\nWorkflow run: run-fail",
+          "triggerTurn": true,
+          "display": true
+        }
+      ],
+      "totalMessages": 2,
+      "duplicateDelta": 0,
+      "rejectedForeignMessageCount": 0,
+      "observed": "success and failure notifications are accepted by notifier; duplicate success is deduped; this does not invoke Goal reconciliation because Goal has no listener"
+    },
+    {
+      "id": "C2-result-watcher-native-order",
+      "seam": "real installed createResultWatcher on disposable result file; notifier mocked only to acknowledge delivery",
+      "notifierCount": 1,
+      "nativeEventCount": 1,
+      "nativeEventRunId": "run-file",
+      "resultFilesAfterProcessing": [
+        "completion-replay",
+        "output-archives",
+        "result-index",
+        "result-pending"
+      ],
+      "observed": "result watcher invokes notifier before emitting subagent:async-complete; acknowledged result file is removed, while Goal remains uninvolved"
+    },
+    {
+      "id": "public-rpc-status",
+      "seam": "real installed pi-subagents registerSubagentRpcBridge; in-memory state projection (no worker)",
+      "reply": {
+        "version": 1,
+        "requestId": "req-status",
+        "method": "status",
+        "success": true,
+        "data": {
+          "text": "In-memory subagent status: 1 active child.",
+          "details": {
+            "mode": "management",
+            "results": []
+          },
+          "fleet": {
+            "version": 1,
+            "entries": [
+              {
+                "key": "fleet-1",
+                "agent": "worker",
+                "startedAt": 1788651396963,
+                "tokens": {
+                  "input": 0,
+                  "output": 0,
+                  "total": 0
+                }
+              }
+            ],
+            "totalActive": 1,
+            "topLevelAsyncCapacity": {
+              "used": 0,
+              "limit": 0
+            },
+            "omitted": 0
+          },
+          "asyncSnapshot": {
+            "kind": "pi-subagents.async-status-snapshot",
+            "version": 1,
+            "generatedAt": 1788651396964,
+            "caps": {
+              "maxRuns": 20,
+              "maxChildrenPerNode": 8,
+              "maxDepth": 3,
+              "maxStringLength": 160,
+              "maxSerializedBytes": 32768
+            },
+            "omitted": {
+              "runs": 0,
+              "children": 0,
+              "byteLimitExceeded": false
+            },
+            "runs": [
+              {
+                "id": "run-rpc",
+                "kind": "subagent",
+                "label": "worker",
+                "state": "running",
+                "startedAt": 1788651396963,
+                "updatedAt": 1788651396963
+              }
+            ]
+          }
+        }
+      },
+      "authoritativeIdentity": {
+        "sessionId": "session-main",
+        "completionOwnerId": "owner-main",
+        "runId": "run-rpc",
+        "state": "running"
+      },
+      "observed": "untargeted public status exposes current-session active run projection; caller must match session/run identities"
+    },
+    {
+      "id": "status-marker-process-proof",
+      "seam": "real installed pi-subagents listAsyncRuns/status reader on disposable synthetic status + active marker",
+      "running": [
+        {
+          "id": "run-status",
+          "asyncDir": "/home/timmypai/.pi/agent/teams/goal-team-evidence/hold-wake-20260906/diagnose/status-probe/run-status",
+          "sessionId": "session-main",
+          "state": "running",
+          "mode": "workflow",
+          "cwd": "/home/timmypai/.pi/agent/teams/goal-team-evidence/hold-wake-20260906/diagnose/status-probe",
+          "startedAt": 1788651396975,
+          "lastUpdate": 1788651396975,
+          "steps": []
+        }
+      ],
+      "completedWithoutProof": [],
+      "completedWithReconcile": [],
+      "markerFilesAfterTerminal": [
+        ".active-runs"
+      ],
+      "observed": "a terminal-looking status write alone does not yield a completed listing while the active marker remains; normal reconcile does not invent process-terminal proof"
+    }
+  ]
+}

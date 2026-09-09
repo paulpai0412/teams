@@ -1,0 +1,21 @@
+{
+  "status": "PASS",
+  "cases": 24,
+  "check": "pre",
+  "apply": "APPLIED",
+  "idempotent": "ALREADY_APPLIED",
+  "verify": "VERIFIED",
+  "revert": "REVERTED",
+  "revertedState": "pre",
+  "crashRecovery": "REVERTED",
+  "crashRecoveredState": "pre",
+  "symlinkRejectExit": 1,
+  "incompatibleRejectExit": 1,
+  "forcedFailureExit": 1,
+  "forcedFailureState": "pre",
+  "testBackups": [
+    "2026-09-06T03-17-28-771Z-6ef41d3f",
+    "2026-09-06T03-17-32-905Z-a56aa447",
+    "2026-09-06T03-17-34-785Z-3a8e2804"
+  ]
+}

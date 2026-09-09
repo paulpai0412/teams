@@ -1,0 +1,425 @@
+{
+  "status": "FAIL",
+  "scope": "role-contracts-only",
+  "requestedRoles": null,
+  "cwd": "/home/timmypai/apps/vocab-agent",
+  "modelCalls": 0,
+  "childAgents": 0,
+  "roles": [
+    {
+      "name": "team.advisor",
+      "model": "openai-codex/gpt-6-astra",
+      "thinking": "medium",
+      "tools": [
+        "read",
+        "grep",
+        "find",
+        "ls",
+        "symbol_search",
+        "project_report",
+        "module_report",
+        "read_symbol",
+        "read_enclosing"
+      ],
+      "extensions": [
+        "/home/timmypai/.pi/agent/npm/node_modules/pi-lens/dist/index.js"
+      ],
+      "skills": [
+        {
+          "name": "team-member",
+          "path": "/home/timmypai/.pi/agent/skills/team-member/SKILL.md"
+        },
+        {
+          "name": "codebase-design",
+          "path": "/home/timmypai/.pi/agent/skills/codebase-design/SKILL.md"
+        }
+      ]
+    },
+    {
+      "name": "team.challenger",
+      "model": "openai-codex/gpt-5.6-terra",
+      "thinking": "high",
+      "tools": [
+        "read",
+        "grep",
+        "find",
+        "ls",
+        "symbol_search",
+        "project_report",
+        "module_report",
+        "read_symbol",
+        "read_enclosing",
+        "codebase-memory-mcp_search_graph",
+        "codebase-memory-mcp_trace_path",
+        "codebase-memory-mcp_get_code_snippet",
+        "codebase-memory-mcp_get_architecture",
+        "codebase-memory-mcp_search_code",
+        "codebase-memory-mcp_list_projects",
+        "codebase-memory-mcp_index_status",
+        "codebase-memory-mcp_detect_changes"
+      ],
+      "extensions": [
+        "/home/timmypai/.pi/agent/npm/node_modules/pi-lens/dist/index.js",
+        "/home/timmypai/.pi/agent/npm/node_modules/pi-mcp-adapter/index.ts"
+      ],
+      "skills": [
+        {
+          "name": "team-member",
+          "path": "/home/timmypai/.pi/agent/skills/team-member/SKILL.md"
+        },
+        {
+          "name": "ponytail-review",
+          "path": "/home/timmypai/.pi/agent/git/github.com/DietrichGebert/ponytail/skills/ponytail-review/SKILL.md"
+        },
+        {
+          "name": "scientific-critical-thinking",
+          "path": "/home/timmypai/.agents/skills/scientific-critical-thinking/SKILL.md"
+        }
+      ]
+    },
+    {
+      "name": "team.curator",
+      "model": "openai-codex/gpt-5.6-luna",
+      "thinking": "low",
+      "tools": [
+        "read",
+        "grep",
+        "find",
+        "ls"
+      ],
+      "extensions": [],
+      "skills": [
+        {
+          "name": "team-member",
+          "path": "/home/timmypai/.pi/agent/skills/team-member/SKILL.md"
+        }
+      ]
+    },
+    {
+      "name": "team.debugger",
+      "model": "openai-codex/gpt-5.6-luna",
+      "thinking": "high",
+      "tools": [
+        "read",
+        "grep",
+        "find",
+        "ls",
+        "bash",
+        "symbol_search",
+        "project_report",
+        "module_report",
+        "read_symbol",
+        "read_enclosing",
+        "lsp_diagnostics",
+        "lens_diagnostics",
+        "codebase-memory-mcp_search_graph",
+        "codebase-memory-mcp_trace_path",
+        "codebase-memory-mcp_get_code_snippet",
+        "codebase-memory-mcp_get_architecture",
+        "codebase-memory-mcp_search_code",
+        "codebase-memory-mcp_list_projects",
+        "codebase-memory-mcp_index_status",
+        "codebase-memory-mcp_detect_changes"
+      ],
+      "extensions": [
+        "/home/timmypai/.pi/agent/npm/node_modules/pi-lens/dist/index.js",
+        "/home/timmypai/.pi/agent/npm/node_modules/pi-mcp-adapter/index.ts"
+      ],
+      "skills": [
+        {
+          "name": "team-member",
+          "path": "/home/timmypai/.pi/agent/skills/team-member/SKILL.md"
+        },
+        {
+          "name": "diagnosing-bugs",
+          "path": "/home/timmypai/.pi/agent/skills/diagnosing-bugs/SKILL.md"
+        },
+        {
+          "name": "codebase-memory",
+          "path": "/home/timmypai/.pi/agent/skills/codebase-memory/SKILL.md"
+        }
+      ]
+    },
+    {
+      "name": "team.implementer",
+      "model": "openai-codex/gpt-5.6-luna",
+      "thinking": "high",
+      "tools": [
+        "read",
+        "grep",
+        "find",
+        "ls",
+        "edit",
+        "write",
+        "bash",
+        "symbol_search",
+        "project_report",
+        "module_report",
+        "read_symbol",
+        "read_enclosing",
+        "lsp_diagnostics",
+        "lens_diagnostics",
+        "codebase-memory-mcp_search_graph",
+        "codebase-memory-mcp_trace_path",
+        "codebase-memory-mcp_get_code_snippet",
+        "codebase-memory-mcp_get_architecture",
+        "codebase-memory-mcp_search_code",
+        "codebase-memory-mcp_list_projects",
+        "codebase-memory-mcp_index_status",
+        "codebase-memory-mcp_detect_changes"
+      ],
+      "extensions": [
+        "/home/timmypai/.pi/agent/npm/node_modules/pi-lens/dist/index.js",
+        "/home/timmypai/.pi/agent/npm/node_modules/pi-mcp-adapter/index.ts"
+      ],
+      "skills": [
+        {
+          "name": "team-member",
+          "path": "/home/timmypai/.pi/agent/skills/team-member/SKILL.md"
+        },
+        {
+          "name": "karpathy-guidelines",
+          "path": "/home/timmypai/.pi/agent/git/github.com/multica-ai/andrej-karpathy-skills/skills/karpathy-guidelines/SKILL.md"
+        },
+        {
+          "name": "ponytail",
+          "path": "/home/timmypai/.pi/agent/git/github.com/DietrichGebert/ponytail/skills/ponytail/SKILL.md"
+        },
+        {
+          "name": "tdd",
+          "path": "/home/timmypai/.pi/agent/skills/tdd/SKILL.md"
+        },
+        {
+          "name": "diagnosing-bugs",
+          "path": "/home/timmypai/.pi/agent/skills/diagnosing-bugs/SKILL.md"
+        },
+        {
+          "name": "codebase-memory",
+          "path": "/home/timmypai/.pi/agent/skills/codebase-memory/SKILL.md"
+        }
+      ]
+    },
+    {
+      "name": "team.planner",
+      "model": "openai-codex/gpt-5.6-sol",
+      "thinking": "high",
+      "tools": [
+        "read",
+        "grep",
+        "find",
+        "ls",
+        "symbol_search",
+        "project_report",
+        "module_report",
+        "read_symbol",
+        "read_enclosing",
+        "codebase-memory-mcp_search_graph",
+        "codebase-memory-mcp_trace_path",
+        "codebase-memory-mcp_get_code_snippet",
+        "codebase-memory-mcp_get_architecture",
+        "codebase-memory-mcp_search_code",
+        "codebase-memory-mcp_list_projects",
+        "codebase-memory-mcp_index_status",
+        "codebase-memory-mcp_detect_changes"
+      ],
+      "extensions": [
+        "/home/timmypai/.pi/agent/npm/node_modules/pi-lens/dist/index.js",
+        "/home/timmypai/.pi/agent/npm/node_modules/pi-mcp-adapter/index.ts"
+      ],
+      "skills": [
+        {
+          "name": "team-member",
+          "path": "/home/timmypai/.pi/agent/skills/team-member/SKILL.md"
+        },
+        {
+          "name": "codebase-design",
+          "path": "/home/timmypai/.pi/agent/skills/codebase-design/SKILL.md"
+        },
+        {
+          "name": "karpathy-guidelines",
+          "path": "/home/timmypai/.pi/agent/git/github.com/multica-ai/andrej-karpathy-skills/skills/karpathy-guidelines/SKILL.md"
+        },
+        {
+          "name": "codebase-memory",
+          "path": "/home/timmypai/.pi/agent/skills/codebase-memory/SKILL.md"
+        }
+      ]
+    },
+    {
+      "name": "team.qa",
+      "model": "openai-codex/gpt-5.6-luna",
+      "thinking": "medium",
+      "tools": [
+        "read",
+        "grep",
+        "find",
+        "ls",
+        "symbol_search",
+        "project_report",
+        "module_report",
+        "read_symbol",
+        "read_enclosing"
+      ],
+      "extensions": [
+        "/home/timmypai/.pi/agent/npm/node_modules/pi-lens/dist/index.js"
+      ],
+      "skills": [
+        {
+          "name": "team-member",
+          "path": "/home/timmypai/.pi/agent/skills/team-member/SKILL.md"
+        },
+        {
+          "name": "qa",
+          "path": "/home/timmypai/.pi/agent/skills/qa/SKILL.md"
+        }
+      ]
+    },
+    {
+      "name": "team.researcher",
+      "model": "openai-codex/gpt-5.6-luna",
+      "thinking": "medium",
+      "tools": [
+        "read",
+        "grep",
+        "find",
+        "ls",
+        "web_search",
+        "fetch_content",
+        "get_search_content",
+        "source_check"
+      ],
+      "extensions": [
+        "/home/timmypai/.pi/agent/npm/node_modules/pi-web-access/index.ts"
+      ],
+      "skills": [
+        {
+          "name": "team-member",
+          "path": "/home/timmypai/.pi/agent/skills/team-member/SKILL.md"
+        },
+        {
+          "name": "research",
+          "path": "/home/timmypai/.pi/agent/skills/research/SKILL.md"
+        }
+      ]
+    },
+    {
+      "name": "team.reviewer",
+      "model": "openai-codex/gpt-5.6-terra",
+      "thinking": "high",
+      "tools": [
+        "read",
+        "grep",
+        "find",
+        "ls",
+        "symbol_search",
+        "project_report",
+        "module_report",
+        "read_symbol",
+        "read_enclosing",
+        "codebase-memory-mcp_search_graph",
+        "codebase-memory-mcp_trace_path",
+        "codebase-memory-mcp_get_code_snippet",
+        "codebase-memory-mcp_get_architecture",
+        "codebase-memory-mcp_search_code",
+        "codebase-memory-mcp_list_projects",
+        "codebase-memory-mcp_index_status",
+        "codebase-memory-mcp_detect_changes"
+      ],
+      "extensions": [
+        "/home/timmypai/.pi/agent/npm/node_modules/pi-lens/dist/index.js",
+        "/home/timmypai/.pi/agent/npm/node_modules/pi-mcp-adapter/index.ts"
+      ],
+      "skills": [
+        {
+          "name": "team-member",
+          "path": "/home/timmypai/.pi/agent/skills/team-member/SKILL.md"
+        },
+        {
+          "name": "code-review",
+          "path": "/home/timmypai/.pi/agent/skills/code-review/SKILL.md"
+        },
+        {
+          "name": "ponytail-review",
+          "path": "/home/timmypai/.pi/agent/git/github.com/DietrichGebert/ponytail/skills/ponytail-review/SKILL.md"
+        },
+        {
+          "name": "codebase-memory",
+          "path": "/home/timmypai/.pi/agent/skills/codebase-memory/SKILL.md"
+        }
+      ]
+    },
+    {
+      "name": "team.verifier",
+      "model": "openai-codex/gpt-5.6-luna",
+      "thinking": "low",
+      "tools": [
+        "read",
+        "grep",
+        "find",
+        "ls",
+        "bash",
+        "symbol_search",
+        "project_report",
+        "module_report",
+        "read_symbol",
+        "read_enclosing",
+        "lsp_diagnostics",
+        "lens_diagnostics"
+      ],
+      "extensions": [
+        "/home/timmypai/.pi/agent/npm/node_modules/pi-lens/dist/index.js"
+      ],
+      "skills": [
+        {
+          "name": "team-member",
+          "path": "/home/timmypai/.pi/agent/skills/team-member/SKILL.md"
+        },
+        {
+          "name": "diagnosing-bugs",
+          "path": "/home/timmypai/.pi/agent/skills/diagnosing-bugs/SKILL.md"
+        }
+      ]
+    }
+  ],
+  "failures": [
+    {
+      "name": "team.docs",
+      "message": "team.docs missing skill: docs-generator",
+      "kind": "missing-declared-skill",
+      "missingSkills": [
+        "docs-generator"
+      ]
+    },
+    {
+      "name": "team.e2e",
+      "message": "team.e2e missing skill: browser-automation",
+      "kind": "missing-declared-skill",
+      "missingSkills": [
+        "browser-automation"
+      ]
+    },
+    {
+      "name": "team.release",
+      "message": "team.release missing skill: supply-chain-security",
+      "kind": "missing-declared-skill",
+      "missingSkills": [
+        "supply-chain-security"
+      ]
+    },
+    {
+      "name": "team.security",
+      "message": "team.security missing skill: code-audit, llm-security, supply-chain-security",
+      "kind": "missing-declared-skill",
+      "missingSkills": [
+        "code-audit",
+        "llm-security",
+        "supply-chain-security"
+      ]
+    }
+  ],
+  "uncheckedRoles": [],
+  "limitations": [
+    "Every selected role was inspected; failed roles are not launch-ready. Global extension loading and live environment readiness are not certified.",
+    "Missing declared guidance is distinct from a missing executable. Parent must review remediation; never install capabilities or remove requirements automatically. Checks after the failure remain unverified."
+  ]
+}

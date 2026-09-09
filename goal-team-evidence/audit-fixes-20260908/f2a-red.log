@@ -1,0 +1,29 @@
+✖ a terminal reconciled throw can be accepted without rewriting its failed history (26.275171ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 127.894888
+
+✖ failing tests:
+
+test at ../../.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/reconciliation.test.mjs:51:1
+✖ a terminal reconciled throw can be accepted without rewriting its failed history (26.275171ms)
+  AssertionError [ERR_ASSERTION]: unresolved retained step: goal-step.task.work.1
+      at missionSettled (file:///home/timmypai/.pi/agent/teams/host-evidence.mjs:461:14)
+      at prove (file:///home/timmypai/.pi/agent/teams/host-evidence.mjs:472:3)
+      at sealAcceptance (file:///home/timmypai/.pi/agent/teams/host-evidence.mjs:564:17)
+      at Object.seal (file:///home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/reconciliation.test.mjs:47:10)
+      at TestContext.<anonymous> (file:///home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/reconciliation.test.mjs:60:17)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }

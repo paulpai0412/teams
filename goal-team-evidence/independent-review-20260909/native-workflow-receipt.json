@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "workflowRunId": "878636f9-7309-468b-8557-6912e5e16d17",
+  "state": "complete",
+  "createdAt": 1788924142231,
+  "entries": {
+    "correctness-v1": {
+      "key": "correctness-v1",
+      "agent": "team.reviewer",
+      "requestedContext": "fresh",
+      "resolvedContext": "fresh",
+      "outputReference": "/home/timmypai/.pi/agent/sessions/--home-timmypai-apps-vocab-agent--/subagent-artifacts/outputs/878636f9-7309-468b-8557-6912e5e16d17/reviews/correctness.md",
+      "continuation": {
+        "runIds": [
+          "b17e0be8-ad75-42e3-ae67-9a673c3fdc1b"
+        ]
+      },
+      "latestRunId": "b17e0be8-ad75-42e3-ae67-9a673c3fdc1b",
+      "resumability": {
+        "state": "resumable"
+      }
+    },
+    "security-v1": {
+      "key": "security-v1",
+      "agent": "team.security",
+      "requestedContext": "fresh",
+      "resolvedContext": "fresh",
+      "outputReference": "/home/timmypai/.pi/agent/sessions/--home-timmypai-apps-vocab-agent--/subagent-artifacts/outputs/878636f9-7309-468b-8557-6912e5e16d17/reviews/security.md",
+      "continuation": {
+        "runIds": [
+          "969a8f8a-f5d4-4340-9435-08437c0e7a9a"
+        ]
+      },
+      "latestRunId": "969a8f8a-f5d4-4340-9435-08437c0e7a9a",
+      "resumability": {
+        "state": "resumable"
+      }
+    }
+  },
+  "workflowChildren": {
+    "version": 1,
+    "parentToolCallId": "call_GSHmwF1a9gtlEyIT2CAczTE3|fc_0fbe1265921012d3016aa0cf996cc487d083f6755760eeb2db",
+    "workflowRunId": "878636f9-7309-468b-8557-6912e5e16d17",
+    "inventoryComplete": true,
+    "workflowState": "completed",
+    "children": [
+      {
+        "childId": "correctness-v1",
+        "state": "completed",
+        "runId": "b17e0be8-ad75-42e3-ae67-9a673c3fdc1b",
+        "agent": "team.reviewer",
+        "sessionName": "team.reviewer: User authorized independent STATIC review only. Do not ch...",
+        "model": "openai-codex/gpt-5.6-terra:high",
+        "thinking": "high"
+      },
+      {
+        "childId": "security-v1",
+        "state": "completed",
+        "runId": "969a8f8a-f5d4-4340-9435-08437c0e7a9a",
+        "agent": "team.security",
+        "sessionName": "team.security: User authorized independent STATIC review only. Do not ch...",
+        "model": "openai-codex/gpt-5.6-terra:high",
+        "thinking": "high"
+      }
+    ]
+  }
+}

@@ -1,0 +1,541 @@
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/efficiency-20260908/goal-request.mjs.before
++++ /home/timmypai/.pi/agent/teams/goal-request.mjs
+@@ -3,6 +3,7 @@
+ import { createHash } from "node:crypto";
+ import fs from "node:fs";
+ import path from "node:path";
++import { validateWork } from "./work-contract.mjs";
+ import {
+   snapshot,
+   acceptanceReference,
+@@ -15,6 +16,10 @@
+     "request required",
+   );
+   assert.ok(path.isAbsolute(requestRef), "absolute saved packet path required");
++  assert.ok(
++    Number.isInteger(input.attempt) && input.attempt >= 1 && input.attempt <= 3,
++    "Attempt must be 1..3",
++  );
+   const request = Object.fromEntries(
+     [
+       "goalId",
+@@ -27,6 +32,18 @@
+       "sourceState",
+     ].map((key) => [key, input[key]]),
+   );
++  if (input.work !== undefined) request.work = validateWork(input.agent, input.work);
++  if (input.retry !== undefined) {
++    assert.ok(input.retry && typeof input.retry === 'object', 'retry explanation required');
++    assert.deepEqual(Object.keys(input.retry).sort(), ['evidence', 'reason'], 'retry needs reason and evidence');
++    for (const field of ['reason', 'evidence'])
++      assert.ok(typeof input.retry[field] === 'string' && input.retry[field].trim() && input.retry[field].length <= 1024, 'bounded retry ' + field + ' required');
++    request.retry = input.retry;
++  }
++  if (input.checks !== undefined) {
++    assert.ok(input.work, 'legacy checks must be moved into work.checks');
++    assert.deepEqual(input.checks, input.work.checks, 'conflicting checks');
++  }
+   if (input.timeoutMs !== undefined) {
+     assert.ok(
+       Number.isSafeInteger(input.timeoutMs) &&
+@@ -37,7 +54,7 @@
+     request.timeoutMs = input.timeoutMs;
+   }
+   for (const [key, value] of Object.entries(request)) {
+-    if (key !== "attempt" && key !== "timeoutMs")
++    if (key !== "attempt" && key !== "timeoutMs" && key !== "work" && key !== "retry")
+       assert.ok(typeof value === "string" && value.trim(), "missing " + key);
+   }
+   assert.ok(
+@@ -158,6 +175,15 @@
+     if (dispatch) {
+       const { packet, packetPath, setupScript, setupPath, ...prepared } =
+         prepareGoalDispatch(input, file);
++      validateWork(input.agent, input.work);
++      // Reuse the native effective-profile and check-capability preflight. No child.
++      const { prepareHandoff } = await import('./handoff-contract.mjs');
++      await prepareHandoff({
++        agent: input.agent, cwd: input.cwd, task: input.task,
++        sourceState: 'sha256:' + prepared.sourceDigest,
++        output: 'goal-steps/preflight.md', timeoutMs: input.timeoutMs,
++        criteria: input.work.criteria, checks: input.work.checks, work: input.work,
++      });
+       try {
+         saveEvidenceJson(packetPath, packet);
+       } catch (error) {
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/efficiency-20260908/before/goal-task-step.js
++++ /home/timmypai/.pi/agent/teams/goal-task-step.js
+@@ -54,6 +54,14 @@
+   cwd: input.cwd,
+   sourceState: input.sourceState,
+ };
++if (input.work !== undefined) {
++  if (!input.work || !Array.isArray(input.work.criteria) || !input.work.criteria.length ||
++      input.work.criteria.length > 30 || !input.work.criteria.every(x => typeof x === 'string' && x.trim()) ||
++      new Set(input.work.criteria).size !== input.work.criteria.length || !Array.isArray(input.work.checks))
++    throw new Error('Invalid work contract; prepare with goal-request CLI');
++  request.work = input.work;
++}
++if (input.retry !== undefined) request.retry = input.retry;
+ if (input.timeoutMs !== undefined) {
+   if (
+     !Number.isSafeInteger(input.timeoutMs) ||
+@@ -97,9 +105,26 @@
+   requestDigest: input.requestDigest,
+   requestRef: input.requestRef,
+ };
++// Same task + role shares a ceiling across all phase names and source changes.
++// Parent-owned mission state, not a cross-session lock or native global limit.
++const budgetKey = 'goal-admissions.' + request.taskId + '.' + request.agent;
++const budget = (await state.get(budgetKey)) ?? { count: 0 };
++if (!Number.isInteger(budget.count) || budget.count < 0 || budget.count >= 3)
++  throw new Error('Task/role admission limit reached; do not rename phase or change role to retry');
++if (budget.count > 0) {
++  if (!request.retry || !['reason', 'evidence'].every(field =>
++    typeof request.retry[field] === 'string' && request.retry[field].trim() && request.retry[field].length <= 1024))
++    throw new Error('New admission requires diagnosed reason and evidence');
++  const previous = await state.get(budget.lastRecord);
++  if (!previous || previous.status === 'dispatching')
++    throw new Error('Previous admission unresolved; reconcile native receipt first');
++  if (budget.sourceState === request.sourceState && previous.outcomes?.reportDelivery !== 'captured')
++    throw new Error('Repair report only; missing/invalid report does not authorize repeating work');
++}
+ // Save the bounded intent first: storage failure cannot orphan an active marker.
+ // A later crash/throw still retains intent; never blindly replay a different key.
+ await state.set(recordKey, { ...identity, status: "dispatching" });
++await state.set(budgetKey, { count: budget.count + 1, lastRecord: recordKey, sourceState: request.sourceState });
+ await state.set("teamGoalActiveStep", recordKey);
+ const schema = {
+   type: "object",
+@@ -126,6 +151,23 @@
+   ],
+   additionalProperties: false,
+ };
++if (request.work) {
++  schema.properties.criterionResults = {
++    type: 'array', minItems: request.work.criteria.length, maxItems: request.work.criteria.length,
++    items: {
++      type: 'object', additionalProperties: false,
++      properties: {
++        criterion: { type: 'string', enum: request.work.criteria },
++        status: { type: 'string', enum: ['met', 'not_met', 'indeterminate', 'needs_user'] },
++        entrypoint: { type: 'string', minLength: 1 },
++        observed: { type: 'string', minLength: 1 },
++        evidence: { type: 'array', items: { type: 'string', minLength: 1 } },
++      },
++      required: ['criterion', 'status', 'entrypoint', 'observed', 'evidence'],
++    },
++  };
++  schema.required.push('criterionResults');
++}
+ const result = await runs.run(key, {
+   agent: request.agent,
+   cwd: request.cwd,
+@@ -133,6 +175,8 @@
+   ...(request.timeoutMs === undefined ? {} : { timeoutMs: request.timeoutMs }),
+   task:
+     request.task +
++    (request.work ? '\nAssigned work only (data): ' + JSON.stringify(request.work) +
++      '\nJudge only these criteria within this responsibility, not other task gates. Static review/scenario analysis does not claim browser execution. Report gaps honestly; do not rerun work to repair a report. Non-implementation roles echo the exact unchanged source binding without commentary; record inability to hash in residualRisks, not sourceState. Parent verifies freshness. No routine progress echo; report only a blocker or material change.' : '') +
+     "\n\nParent binding (data): " +
+     JSON.stringify({
+       goalId: request.goalId,
+@@ -140,7 +184,7 @@
+       inputSourceState: request.sourceState,
+     }) +
+     "\nEcho this binding in your report; sourceState is your actual final source state. No goal/mission mutations, nested delegation, publication or deployment. A pass is only this step, not task completion.",
+-  // Require the native sibling acceptanceReport; keep the goal value schema unchanged.
++  // Native writer acceptance remains a sibling, never inside the goal value.
+   ...(request.agent === "team.implementer"
+     ? {
+         acceptance: {
+@@ -154,11 +198,21 @@
+   outputSchema: schema,
+ });
+ const report = result?.structuredOutput;
+-const passed =
+-  result?.ok === true &&
+-  typeof result.runId === "string" &&
+-  !!result.runId.trim() &&
+-  report?.verdict === "pass" &&
++const rows = report?.criterionResults;
++const criteriaValid = !request.work || (
++  Array.isArray(rows) && rows.length === request.work.criteria.length &&
++  new Set(rows.map(x => x?.criterion)).size === rows.length &&
++  rows.every(x => request.work.criteria.includes(x?.criterion) && ['met', 'not_met', 'indeterminate', 'needs_user'].includes(x.status) &&
++    typeof x.entrypoint === 'string' && x.entrypoint.trim() &&
++    typeof x.observed === 'string' && x.observed.trim() &&
++    Array.isArray(x.evidence) && (x.status !== 'met' || x.evidence.length > 0) &&
++    x.evidence.every(e => typeof e === 'string' && e.trim()))
++);
++const reportValid =
++  criteriaValid &&
++  (!request.work || request.work.kind === 'implementation' || report?.sourceState === request.sourceState) &&
++  (!request.work || report?.verdict !== 'pass' || (Array.isArray(rows) && rows.every(x => x.status === 'met'))) &&
++  ['pass', 'blocked', 'needs_decision', 'failed'].includes(report?.verdict) &&
+   report.goalId === request.goalId &&
+   report.taskId === request.taskId &&
+   report.inputSourceState === request.sourceState &&
+@@ -169,8 +223,15 @@
+   report.evidence.every((x) => typeof x === "string" && !!x.trim()) &&
+   Array.isArray(report.residualRisks) &&
+   report.residualRisks.every((x) => typeof x === "string");
++const passed = result?.ok === true && typeof result.runId === 'string' && !!result.runId.trim() &&
++  reportValid && report.verdict === 'pass' && (!request.work || rows.every(x => x.status === 'met'));
+ const record = {
+   ...identity,
++  outcomes: {
++    execution: result?.ok === true ? 'completed' : result?.ok === false ? 'failed' : 'unknown',
++    reportDelivery: !report ? 'missing' : reportValid ? 'captured' : 'invalid',
++    product: reportValid ? report.verdict : 'unknown',
++  },
+   status: passed ? "reported" : "blocked",
+   runId: result?.runId ?? null,
+   outputReference:
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/efficiency-20260908/before/handoff-contract.mjs
++++ /home/timmypai/.pi/agent/teams/handoff-contract.mjs
+@@ -3,6 +3,7 @@
+ import fs from "node:fs";
+ import path from "node:path";
+ import { createHash } from "node:crypto";
++import { validateWork } from './work-contract.mjs';
+ import { createJiti } from "../npm/node_modules/jiti/lib/jiti.mjs";
+ 
+ const jiti = createJiti(import.meta.url);
+@@ -41,6 +42,7 @@
+         "output",
+         "timeoutMs",
+         "checks",
++        "work",
+         "model",
+       ].includes(key),
+       "unsupported request field: " + key,
+@@ -77,6 +79,11 @@
+     Array.isArray(input.checks),
+     "checks must be explicitly classified, [] for no child commands",
+   );
++  if (input.work !== undefined) {
++    validateWork(input.agent, input.work);
++    assert.deepEqual(input.work.criteria, input.criteria, 'conflicting criteria');
++    assert.deepEqual(input.work.checks, input.checks, 'conflicting checks');
++  }
+   const discovered = discoverAgents(input.cwd, "both");
+   assert.deepEqual(
+     discovered.agentDiagnostics,
+@@ -176,6 +183,7 @@
+         sourceState: input.sourceState,
+         criteria: input.criteria,
+         checks: input.checks,
++        ...(input.work ? { responsibility: input.work.kind } : {}),
+       }) +
+       "\nUse structured_output exactly as its schema specifies. Each criterion appears once. Report observations, not self-approval; missing evidence is indeterminate. Do not add identity, source hashes, memoryCandidates or native acceptanceReport inside value. Report-format errors do not authorize repeating implementation or checks. Preserve work and raw logs. Parent owns final verification.",
+     outputSchema,
+--- /dev/null
++++ /home/timmypai/.pi/agent/teams/work-contract.mjs
+@@ -0,0 +1,30 @@
++// Shared declared responsibilities; not a prose classifier or an OS permission gate.
++import assert from 'node:assert/strict';
++const roles = {
++  review: ['team.reviewer', 'team.security'],
++  scenarios: ['team.qa'],
++  browser: ['team.verifier', 'team.e2e'],
++  mechanical: ['team.verifier'],
++  implementation: ['team.implementer', 'team.docs', 'team.release'],
++  analysis: ['team.planner', 'team.challenger', 'team.researcher', 'team.debugger', 'team.curator'],
++};
++export function validateWork(agent, work) {
++  assert.ok(work && typeof work === 'object' && !Array.isArray(work), 'explicit work contract required');
++  assert.deepEqual(Object.keys(work).sort(), ['checks', 'criteria', 'kind'], 'work fields: kind, criteria, checks only');
++  assert.ok(Object.hasOwn(roles, work.kind) && roles[work.kind].includes(agent), 'role responsibility mismatch: ' + work.kind);
++  assert.ok(Array.isArray(work.criteria) && work.criteria.length > 0 && work.criteria.length <= 30 &&
++    work.criteria.every(x => typeof x === 'string' && x.trim()), '1..30 fixed criteria required');
++  assert.equal(new Set(work.criteria).size, work.criteria.length, 'duplicate criterion');
++  assert.ok(Array.isArray(work.checks), 'explicit checks required');
++  if (['browser', 'mechanical'].includes(work.kind))
++    assert.ok(work.checks.length > 0, 'execution responsibility requires a check');
++  if (['review', 'scenarios'].includes(work.kind))
++    assert.equal(work.checks.length, 0, 'static responsibility cannot own execution checks');
++  for (const check of work.checks) {
++    assert.ok(check && typeof check.command === 'string' && check.command.trim(), 'check command required');
++    assert.ok(['child-safe', 'isolated-only'].includes(check.location), 'parent-only/unknown check cannot go to child');
++    if (check.location === 'isolated-only')
++      assert.ok(typeof check.resource === 'string' && check.resource.trim(), 'isolated-only requires resource');
++  }
++  return work;
++}
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/efficiency-20260908/before/check-goal-dispatch.mjs
++++ /home/timmypai/.pi/agent/teams/check-goal-dispatch.mjs
+@@ -18,6 +18,7 @@
+   phase: "review",
+   attempt: 1,
+   agent: "team.reviewer",
++  work: { kind: 'review', criteria: ['C1: fixture source reviewed'], checks: [] },
+   task: 'Fixture with quotes: "; throw new Error("not executable");',
+   cwd: scratch,
+   goalStatus: "active",
+@@ -87,6 +88,7 @@
+           sourceState: effective.sourceState,
+           evidence: ["fixture only"],
+           residualRisks: [],
++          criterionResults: [{criterion: input.work.criteria[0], status: 'met', entrypoint: 'fixture', observed: 'fixture only', evidence: ['fixture only']}],
+         },
+       };
+     },
+--- /dev/null
++++ /home/timmypai/.pi/agent/teams/EFFICIENCY-CONTRACT.md
+@@ -0,0 +1,135 @@
++# Team efficiency contract — 2026-09-08
++
++Scope: parent-owned dispatch/helpers, not a new controller or an OS security gate.
++Models/tools/permissions, native limits and REQUIRED gates are unchanged.
++
++## Select work, not a ritual sequence
++
++| Responsibility (`work.kind`) | Owner | Evidence owed |
++| --- | --- | --- |
++| `implementation` | implementer; docs/release within their actual tools | Minimal change and regression evidence; never self-acceptance |
++| `review` | reviewer/security | Independent source/spec findings for the assigned criteria; not browser execution |
++| `scenarios` | qa | User scenarios or evaluation of provided runtime artifacts; not a second full source review and not a browser pass |
++| `browser` | verifier/e2e with existing capability and environment | Actual real-entrypoint interactions, raw logs/screenshots as required, cleanup |
++| `mechanical` | verifier only when independence/context savings justify a child | Exact commands and raw results; prefer parent host runner for fixed checks |
++| `analysis` | planner/challenger/researcher/debugger/curator | Only the material question; debugger may probe approved scratch resources |
++
++No-shell QA remains no-shell. Do not promise browser execution from that role.
++"No product-source writes" does not mean "no scratch/browser/cache writes" for a
++shell-capable verifier. The parent provisions/authorizes these resources separately.
++Do not change role/tools just to bypass a failed capability check.
++
++Default small change: main + host checks. Larger work: one writer + host checks,
++plus the independent judgment/real-entrypoint gates actually required. QA is useful
++before implementation to define scenarios or to examine actual UX evidence. Do not
++launch both reviewer and static QA to reread the same tree without distinct questions.
++
++## New Goal dispatch contract
++
++`goal-request.mjs --dispatch` requires `work` and validates it before saving launch
++artifacts. Existing saved packets remain readable via the non-dispatch CLI; no live
++Goal/mission is automatically migrated. New work is not prepared from an old packet
++until the parent supplies the missing scope. The synchronous preparation export is
++only packet construction; it is not a substitute for CLI effective-role preflight.
++
++```json
++{
++  "work": {
++    "kind": "review",
++    "criteria": ["C2: reject malformed CSV without changing saved data"],
++    "checks": []
++  }
++}
++```
++
++Keep criterion IDs/text from the approved task. Assign only the subset this role can
++observe. Parent acceptance must still cover ALL original criteria and required gates;
++subsetting a dispatch is not authorization to remove a criterion.
++
++Execution work (`browser`/`mechanical`) needs explicit nonempty checks. Each check is
++`{command, location:"child-safe"}` or `isolated-only` with `resource`. Parent-only
++checks stay on the host. Legacy top-level `checks` without `work` are rejected rather
++than silently discarded. Conflicting copies are rejected. Effective role shell
++capability is checked by existing `prepareHandoff`, including project overrides.
++Selected-role skill/model/environment readiness checks remain separately REQUIRED;
++this does not install skills or prove arbitrary shell safety.
++
++The work contract is hashed into request identity and carried to the child once.
++Goal outputSchema requires exact unique `criterionResults` rows for contracted work.
++Summary-only, foreign/duplicate criteria, empty met-evidence, contradictory pass,
++or a changed read-only source binding cannot pass. A digest echo is correlation,
++not independent host source attestation. Ordinary handoffs optionally accept the same
++`work`, consistent with their existing `criteria`/`checks`.
++
++## Bounded admissions and recovery
++
++The helper retains `goal-admissions.<taskId>.<agent>` in the EXISTING mission state.
++Maximum three admissions per task/role, including initial work; phase renaming or
++source changes do not reset it. This is a conservative dispatch ceiling, not a quota.
++A later admission requires bounded `retry:{reason,evidence}` documenting diagnosed
++need. Same-key replay still reconciles without dispatch. An unresolved prior intent
++blocks new work even if someone cleared the active marker.
++
++Missing/invalid reports at unchanged source block another same-role work admission;
++main repairs only the report from existing evidence. No automatic repair child is
++introduced. Stop at the ceiling; never change role/task/mission identity to bypass it.
++User-approved scope/budget changes require explicit reconciliation, not a hidden reset.
++Legacy steps predating this counter are NOT retroactively counted. When recovering an
++old mission the parent must inspect its history before any new admission. Direct native
++calls and parent edits to state are not intercepted. Single owner only, not a CAS lock.
++
++Records distinguish:
++- `outcomes.execution`: completed / failed / unknown.
++- `outcomes.reportDelivery`: captured / missing / invalid.
++- `outcomes.product`: the well-formed report's verdict or unknown; NOT final acceptance.
++
++A failed execution with a captured pass stays blocked. A child `blocked` stays blocked;
++never infer a wrapper defect from prose. Throws preserve dispatch intent for native
++status/artifact reconciliation. No fabricated root-cause attribution, automatic pass,
++relaunch, or automatic marker cleanup. Keep raw reports and original statuses intact;
++parent acceptance decisions cite actual evidence separately.
++
++## Shortest valid verification path
++
++1. Finish formatting; freeze explicit source/test/config scopes. Include scripts,
++   fixtures, dependencies and configuration affecting the check.
++2. Use an existing deterministic check, not newly improvised browser code per run.
++   Browser tests own one strict server/process, readiness, browser context and cleanup.
++   Preflight environment before spending a child run. Preserve scripts/logs in durable
++   evidence paths, not only `/tmp`. Never identify a floating-point/animation artifact
++   as P1 without a stable reproduction and user impact.
++3. Before rerunning a check, use `host-evidence.mjs verify input.json receipt.json`.
++   Unchanged valid scope/log/runtime means reuse with ZERO command re-executions.
++   Changed relevant scope means a new receipt. Missing dependency/unknown impact means
++   invalidate; never shrink a historical receipt's scope to make it fresh.
++4. For a source change, record affected criteria and checks. Re-run relevant mechanical
++   checks and required independent review of the changed slice plus the prior findings.
++   Do not ask every role to rediscover the whole app. Required final browser scenarios
++   must still have valid evidence for the candidate. Static review is never a replacement.
++5. Main inspects actual evidence and final source; duplicate complete test runs are not
++   an automatic ritual when valid exact-scope host receipts already exist.
++
++## Context and progress
++
++- Cold packet: exact task, allowed files/actions, fixed criteria subset, source/artifact
++  references, checks and stop rules. Do not paste past narratives or the entire mission.
++- No second full copy of criteria in task prose when `work` already carries them.
++- Keep historical reports outside mission state; retain native reference + compact outcome.
++- Respond to blockers/material changes and ~10-minute progress, not every startup notice.
++- A report-format problem is not a new product repair round. Repair the report locally.
++
++## Validation and rollout
++
++Offline regressions and RED/GREEN logs:
++`goal-team-evidence/efficiency-20260908/`. Existing checks remain applicable:
++`check-goal-dispatch.mjs`, `check-goal-team.mjs`, `check-goal-step-storage.mjs`,
++`check-handoff-contract.mjs`, `check-team-outcomes.mjs`, `check-host-evidence.mjs`.
++
++Measured offline: illegal preparation emits no dispatch artifacts; phase-renamed fourth
++admission emits no child; report-only failure does not relaunch; unaffected host receipts
++verify without command rerun. These are not measured live token/cost/time improvements.
++No live child or TUI canary was executed for this change. Helpers are read on invocation;
++existing sessions need to reread these instructions. Third-party package versions and
++Goal records are unchanged. Older hash-gated patch bundles may reject changed helper
++hashes; do not overwrite or bypass those checks. Use this change's backup/manifest for
++recovery and rebase upgrade patches explicitly.
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/efficiency-20260908/before/OPERATING-MODEL.md
++++ /home/timmypai/.pi/agent/teams/OPERATING-MODEL.md
+@@ -4,6 +4,15 @@
+ > 這是以 pi-subagents 原生控制器＋角色設定＋主 agent 操作契約組成的團隊，
+ > 不是 OS sandbox、不可竄改稽核系統，也不是會自行擴權的自治部署平台。
+ > 本次依使用者要求由主 agent 單獨建置及驗證，沒有執行新團隊的模型 E2E。
++
++## 2026-09-08 效率與職責修訂
++
++目前新派工以 [EFFICIENCY-CONTRACT.md](EFFICIENCY-CONTRACT.md) 為準：
++reviewer 管 source/spec；QA 管情境與實際證據評估，不假裝執行 browser；
++verifier/e2e 在已有能力下執行 browser；固定機械命令優先 host。
++不為固定流程重複派所有角色。Goal CLI 必填 work，逐項 criteria 與 checks 不丟失；
++同 task/role admission 上限跨 phase 計數。缺證據不降級 gate，報告失敗不自動重做。
++本輪不改模型、工具、角色權限或 native 預算；offline regression 不是 live 加速證明。
+ 
+ ## 交付證據增量
+ 
+@@ -193,7 +202,8 @@
+ `handoff-contract.mjs` 產生唯一 team-handoff/1 schema 與 native args，使用原生
+ validator 做零模型預檢。所有角色遵循 outputSchema，沒有額外 memoryCandidates
+ 要求；implementer/docs/release 都明列 native sibling acceptanceReport 必填。
+-Goal helper v2 僅調整 parent packet preparation／state persistence，不改 child schema。
++Legacy Goal helper packet 保留舊 schema；新 work packet 增加必填 criterionResults，
++並保留 execution/report/product 分類，不把格式有效或 child verdict 當產品接受。
+ 格式有效、證據真實、成果合格是三個不同判斷。
+ 不新增自動 repair controller；最多一次有必要的純報告修復、禁止 writer resume
+ 排版。Native 同 child submission retry 沒有格式專用上限，不能聲稱完全硬防重試。
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/efficiency-20260908/before/HANDOFF-PRACTICE.md
++++ /home/timmypai/.pi/agent/teams/HANDOFF-PRACTICE.md
+@@ -1,6 +1,9 @@
+ # 交接契約與局部恢復
+ 
+ 目標是降低「合格交付」的總 token／時間，不是讓每次呼叫最便宜。
++2026-09-08 執行修訂見 [EFFICIENCY-CONTRACT.md](EFFICIENCY-CONTRACT.md)：
++Goal 新派工必填 work 職責／固定 criteria／checks；能力矛盾先拒絕，
++同 task/role 換 phase 不重置 admission 計數，報告問題不重做產品。
+ 本文件補充 team-flow；不新增 controller，不以報告格式作產品驗收。
+ 
+ 來源 freeze、host 收據／局部失效、Goal 可選 evidence reference、較少手抄的派工準備，見 [EVIDENCE-PRACTICE.md](EVIDENCE-PRACTICE.md)。先完成 formatter，再驗證／封存；host 機械新鮮度不取代 main 的語意驗收或 required review。
+@@ -57,6 +60,8 @@
+ ## 唯一格式來源
+ 
+ - 普通 schema 只含 summary、criterionResults、residualRisks；一次一個 criterion。
++  普通 request 可附 work（kind/criteria/checks），須與原 criteria/checks 相符；
++  Goal 新派工也要求固定逐項 criterionResults，舊 saved packet 保留舊讀取格式。
+   不要求模型重複 run ID、cwd、來源 hash；它們由主 agent/native receipt 管理。
+ - `outputSchema` 是 `structured_output.value` 的唯一欄位定義。角色的 Markdown
+   欄位清單僅是沒有 schema 時的 fallback，不能額外塞入 memoryCandidates。
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/efficiency-20260908/before/GOAL-TEAMS.md
++++ /home/timmypai/.pi/agent/teams/GOAL-TEAMS.md
+@@ -3,6 +3,15 @@
+ > **首版是主 agent 協調契約＋原生 workflow helper，不是新排程器。**
+ > pi-goal-x 保存成果任務；pi-subagents 是唯一 child controller。
+ > 不會把每次 `/team` 自動變成 persistent goal，不改寫或接管既有 goals。
++
++## 2026-09-08 效率合約
++
++新派工先讀 [EFFICIENCY-CONTRACT.md](EFFICIENCY-CONTRACT.md)。`--dispatch`
++要求 `work:{kind,criteria,checks}`，將既有有效角色能力預檢接到 Goal 準備入口。
++`checks` 不再被靜默丟掉。工作範圍與固定 criterionResults 納入新 packet；
++舊 packet 仍可讀取／reconcile，不自動遷移已存在的 Goal 或 mission。
++同 task/role 最多三次 admission，換 phase 不重置；後續 admission 需 reason/evidence。
++這是 helper 範圍限制，非全域 native controller 限制。具體恢復與相容性見上文連結。
+ 
+ ## Delivery evidence 增量
+ 
+@@ -138,6 +147,8 @@
+ | task                      | 完整 cold-start packet：目標／非目標、allowed files/actions、criteria、驗證命令、證據路徑、stop rules；debugger 必含 scratch 範圍 |
+ | requestDigest、requestRef | CLI 產生的 SHA-256 correlation 與 saved effective packet realpath；不由模型手算                                                   |
+ | timeoutMs                 | 新派工由 main 明選，納入 request identity 並傳到內層 `runs.run`；舊 packet 可省略                                                 |
++| work | 新 `--dispatch` 必填 kind/criteria/checks；criteria 使用原始 ID/text 子集，parent 仍需覆蓋完整成果要求 |
++| retry | 後續同 task/role admission 必須 `{reason,evidence}`；不作為自動 retry 或繞過 ceiling 的授權 |
+ 
+ Helper v2 先保存 `goal-step.<taskId>.<phase>.<attempt>` 的 compact intent，成功後
+ 才設 `teamGoalActiveStep`，兩者皆成功才 `runs.run`。首筆持久化失敗不留 orphan
+@@ -157,7 +168,7 @@
+ | goal auto-continue 提早喚醒     | 若 checkpoint 已在 run identity 確認前排入，先讀綁定與 existing run，不新開同 task；確認 hold 後不會再產生新 checkpoint；不可用重複 launch／sleep 解決等待                                                                                            |
+ | parent 重啟／compact            | runtime 只從目前 session branch 的完整 binding 恢復，做一次 public targeted status RPC 並比對 bounded `status.json`；active 才 hold，terminal／unknown／missing／identity mismatch 即釋放給主 agent reconciliation。舊 intent 沒 receipt 視為 unknown |
+ | launch timeout／throw／保存失敗 | intent 保留；核對 mission linked runs 與真實副作用，不能猜「沒啟動」後重送                                                                                                                                                                            |
+-| schema／acceptanceReport 錯誤   | 保存成果，只修交接；七欄 value 不加 memoryCandidates，acceptanceReport 是 native sibling。格式錯誤不構成重派 writer 理由                                                                                                                              |
++| schema／acceptanceReport 錯誤   | 保存成果，只修交接；遵循提供的 value schema（新 work 含 criterionResults），不加 memoryCandidates，acceptanceReport 是 native sibling。格式錯誤不構成重派 writer 理由                                                                                                                              |
+ | child reported pass             | 只是 step report，source／驗收證據仍由主 agent 查證；不自動 complete task                                                                                                                                                                             |
+ | goal 被 pause／unfocus／clear   | 不派後續 step；原 child 不一定停止，主 agent 對精確 run 使用原生 stop/interrupt 並確認終態；不冒稱已取消副作用                                                                                                                                        |
+ | paused goal 收到 child 通知     | 可以收證據與處理安全收尾，不自行 resume goal 或開新工；等使用者 `/goal-resume`                                                                                                                                                                        |
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/efficiency-20260908/before/EVIDENCE-PRACTICE.md
++++ /home/timmypai/.pi/agent/teams/EVIDENCE-PRACTICE.md
+@@ -51,9 +51,17 @@
+ 
+ This does not prevent future edits or automatically reopen completed Goals. Freeze/idempotence and final receipt checks are still required. Native run-owner checks remain separate; this is not cross-session exactly-once execution. Independent review and live Goal/TUI canary are not supplied by these fixtures. Reverting the patch removes this optional runtime protection; first pause/review any Goals relying on its references. Revert does not rewrite Goals.
+ 
++## Efficiency and affected evidence
++
++See [EFFICIENCY-CONTRACT.md](EFFICIENCY-CONTRACT.md). Run `verify` before deciding
++whether an existing exact-scope check needs execution again. Reuse only unchanged
++valid source/log/runtime receipts; never alter old scope to manufacture freshness.
++Changed-source reviews can inspect the affected slice and preserved prior findings;
++this does not remove required full-task criteria or final real-entrypoint evidence.
++
+ ## Less handwritten dispatch metadata
+ 
+-The existing saved packet additionally accepts `missionId`, `sourcePaths`, explicit `timeoutMs`, fresh `goalStatus: "active"` / `taskStatus: "pending"`, and optionally `acceptanceContract` relative to cwd.
++The existing saved packet additionally accepts `missionId`, `sourcePaths`, explicit `timeoutMs`, fresh `goalStatus: "active"` / `taskStatus: "pending"`, and optionally `acceptanceContract` relative to cwd. New `--dispatch` calls require `work:{kind,criteria,checks}`; later task/role admissions require diagnosed `retry:{reason,evidence}`. See the efficiency contract for role scopes and legacy packet recovery.
+ 
+ ```sh
+ node ~/.pi/agent/teams/goal-request.mjs --dispatch /absolute/saved-input.json > prepared.json
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/efficiency-20260908/before/team-flow-SKILL.md
++++ /home/timmypai/.pi/agent/skills/team-flow/SKILL.md
+@@ -12,6 +12,11 @@
+ work read `~/.pi/agent/teams/GOAL-TEAMS.md` before dispatch. Main-agent-only
+ instructions disable delegation AND refine/watchdog calls.
+ There is no requirement to launch every role. Tiny tasks stay on the parent.
++Read `~/.pi/agent/teams/EFFICIENCY-CONTRACT.md` for new Goal dispatches:
++explicit role-scoped work/criteria/checks, effective capability preflight, per-task/role
++admission ceiling across phase names, and separate execution/report/product outcomes.
++Prefer host checks and valid receipt reuse; do not repeat reviewer + static QA over
++identical scope. Main reports blockers/material progress, not routine child-start echoes.
+ 
+ Use openai-codex: main defaults Sol high; planner Sol high, implementer Luna high;
+ use task-scoped Sol xhigh / Luna max only when difficulty warrants it. Other routine

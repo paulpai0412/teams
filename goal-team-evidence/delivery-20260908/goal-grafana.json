@@ -1,0 +1,20 @@
+{
+  "status": "PASS",
+  "cwd": "/home/timmypai/apps/grafana",
+  "modelCalls": 0,
+  "childAgents": 0,
+  "cases": 54,
+  "settings": {
+    "global": "/home/timmypai/.pi/agent/pi-goal-x-settings.json",
+    "project": "/home/timmypai/apps/grafana/.pi/pi-goal-x-settings.json",
+    "auditorDisabled": true,
+    "tasksEnabled": true,
+    "oracleEnabled": false
+  },
+  "limitations": [
+    "Mocked workflow runs/state; no live goal/child/TUI E2E.",
+    "Goal snapshots and source identity are parent attestations, not runtime locks.",
+    "Single-owner protocol, not cross-session exactly-once; hold/wake is covered separately by check-goal-hold-wake.mjs.",
+    "Unrelated global extensions are outside this scoped check."
+  ]
+}

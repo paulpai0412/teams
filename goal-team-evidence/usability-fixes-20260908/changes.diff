@@ -1,0 +1,815 @@
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/before/goal-request.mjs
++++ /home/timmypai/.pi/agent/teams/goal-request.mjs
+@@ -3,6 +3,7 @@
+ import { createHash } from "node:crypto";
+ import fs from "node:fs";
+ import path from "node:path";
++import { spawnSync } from 'node:child_process';
+ import { validateWork } from "./work-contract.mjs";
+ import {
+   snapshot,
+@@ -17,8 +18,8 @@
+   );
+   assert.ok(path.isAbsolute(requestRef), "absolute saved packet path required");
+   assert.ok(
+-    Number.isInteger(input.attempt) && input.attempt >= 1 && input.attempt <= 3,
+-    "Attempt must be 1..3",
++    Number.isInteger(input.attempt) && input.attempt >= 1 && input.attempt <= 4,
++    "Attempt must be 1..4",
+   );
+   const request = Object.fromEntries(
+     [
+@@ -32,6 +33,10 @@
+       "sourceState",
+     ].map((key) => [key, input[key]]),
+   );
++  if (input.sourcePaths !== undefined) {
++    assert.ok(Array.isArray(input.sourcePaths) && input.sourcePaths.length > 0 && input.sourcePaths.length <= 200 && input.sourcePaths.every(x => typeof x === 'string' && x.trim()), 'bounded sourcePaths required');
++    request.sourcePaths = input.sourcePaths;
++  }
+   if (input.work !== undefined) request.work = validateWork(input.agent, input.work);
+   if (input.retry !== undefined) {
+     assert.ok(input.retry && typeof input.retry === 'object', 'retry explanation required');
+@@ -54,7 +59,7 @@
+     request.timeoutMs = input.timeoutMs;
+   }
+   for (const [key, value] of Object.entries(request)) {
+-    if (key !== "attempt" && key !== "timeoutMs" && key !== "work" && key !== "retry")
++    if (key !== "attempt" && key !== "timeoutMs" && key !== "work" && key !== "retry" && key !== "sourcePaths")
+       assert.ok(typeof value === "string" && value.trim(), "missing " + key);
+   }
+   assert.ok(
+@@ -73,7 +78,7 @@
+   };
+ }
+ 
+-export function prepareGoalDispatch(input, requestRef) {
++export async function prepareGoalDispatch(input, requestRef) {
+   assert.ok(
+     typeof input.missionId === "string" &&
+       /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(input.missionId),
+@@ -84,6 +89,22 @@
+     "fresh active/pending snapshot required",
+   );
+   assert.ok(input.timeoutMs !== undefined, "parent must choose timeoutMs");
++  assert.ok(Number.isInteger(input.attempt) && input.attempt >= 1 && input.attempt <= 4, 'Attempt must be 1..4');
++  validateWork(input.agent, input.work);
++  const { prepareHandoff } = await import('./handoff-contract.mjs');
++  await prepareHandoff({
++    agent: input.agent, cwd: input.cwd, task: input.task,
++    sourceState: 'preflight-only', output: 'goal-steps/preflight.md',
++    timeoutMs: input.timeoutMs, criteria: input.work.criteria,
++    checks: input.work.checks, work: input.work,
++  });
++  const readiness = spawnSync(process.execPath, [
++    new URL('./check-config.mjs', import.meta.url).pathname,
++    '--roles-only', '--roles=' + input.agent, input.cwd,
++  ], { encoding: 'utf8', timeout: 30000, maxBuffer: 1024 * 1024,
++    env: { ...process.env, PI_OFFLINE: '1', PI_MEMORY_EXIT_SUMMARY: 'off' } });
++  assert.ok(!readiness.error && readiness.status === 0,
++    'role readiness preflight failed: ' + (readiness.error?.message || readiness.stderr || 'inspect check-config output').slice(0, 2048));
+   const source = snapshot(input.cwd, input.sourcePaths);
+   for (const scope of input.sourcePaths) {
+     const root = path.resolve(input.cwd, scope);
+@@ -174,16 +195,7 @@
+     const input = JSON.parse(fs.readFileSync(file, "utf8"));
+     if (dispatch) {
+       const { packet, packetPath, setupScript, setupPath, ...prepared } =
+-        prepareGoalDispatch(input, file);
+-      validateWork(input.agent, input.work);
+-      // Reuse the native effective-profile and check-capability preflight. No child.
+-      const { prepareHandoff } = await import('./handoff-contract.mjs');
+-      await prepareHandoff({
+-        agent: input.agent, cwd: input.cwd, task: input.task,
+-        sourceState: 'sha256:' + prepared.sourceDigest,
+-        output: 'goal-steps/preflight.md', timeoutMs: input.timeoutMs,
+-        criteria: input.work.criteria, checks: input.work.checks, work: input.work,
+-      });
++        await prepareGoalDispatch(input, file);
+       try {
+         saveEvidenceJson(packetPath, packet);
+       } catch (error) {
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/before/goal-task-step.js
++++ /home/timmypai/.pi/agent/teams/goal-task-step.js
+@@ -23,8 +23,8 @@
+   if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,47}$/.test(input[field]))
+     throw new Error("Invalid " + field);
+ }
+-if (!Number.isInteger(input.attempt) || input.attempt < 1 || input.attempt > 3)
+-  throw new Error("Attempt must be 1..3");
++if (!Number.isInteger(input.attempt) || input.attempt < 1 || input.attempt > 4)
++  throw new Error("Attempt must be 1..4");
+ if (
+   !/^team\.(planner|challenger|researcher|debugger|implementer|verifier|reviewer|e2e|qa|security|docs|curator|release)$/.test(
+     input.agent,
+@@ -105,26 +105,35 @@
+   requestDigest: input.requestDigest,
+   requestRef: input.requestRef,
+ };
+-// Same task + role shares a ceiling across all phase names and source changes.
++// Same task + role shares a repair ceiling, not a successful-work ceiling.
+ // Parent-owned mission state, not a cross-session lock or native global limit.
+ const budgetKey = 'goal-admissions.' + request.taskId + '.' + request.agent;
+-const budget = (await state.get(budgetKey)) ?? { count: 0 };
+-if (!Number.isInteger(budget.count) || budget.count < 0 || budget.count >= 3)
+-  throw new Error('Task/role admission limit reached; do not rename phase or change role to retry');
+-if (budget.count > 0) {
+-  if (!request.retry || !['reason', 'evidence'].every(field =>
+-    typeof request.retry[field] === 'string' && request.retry[field].trim() && request.retry[field].length <= 1024))
+-    throw new Error('New admission requires diagnosed reason and evidence');
++const budget = (await state.get(budgetKey)) ?? { version: 2, repairs: 0 };
++if (budget.version !== 2 || !Number.isInteger(budget.repairs) || budget.repairs < 0 || budget.repairs > 3)
++  throw new Error('Legacy/invalid admission accounting requires parent reconciliation');
++let repairs = budget.repairs;
++if (budget.lastRecord) {
+   const previous = await state.get(budget.lastRecord);
+-  if (!previous || previous.status === 'dispatching')
+-    throw new Error('Previous admission unresolved; reconcile native receipt first');
+-  if (budget.sourceState === request.sourceState && previous.outcomes?.reportDelivery !== 'captured')
+-    throw new Error('Repair report only; missing/invalid report does not authorize repeating work');
++  if (!previous) throw new Error('Previous record missing; reconcile native receipt first');
++  if (previous.status !== 'reported') {
++    const recovery = previous.recovery;
++    const recoveryValid = recovery &&
++      ['nativeStatusRef', 'hostReceiptRef'].every(field => typeof recovery[field] === 'string' && recovery[field].startsWith('/')) &&
++      ['nativeDigest', 'hostReceiptDigest'].every(field => typeof recovery[field] === 'string' && /^[a-f0-9]{64}$/.test(recovery[field])) &&
++      typeof recovery.childRunId === 'string' && recovery.childRunId.trim() &&
++      typeof recovery.reason === 'string' && recovery.reason.trim() && recovery.reason.length <= 1024;
++    if (!recoveryValid || recovery.sourceState !== request.sourceState || !['continue', 'retry'].includes(recovery.action))
++      throw new Error('Native terminal receipt and parent recovery required; text retry is not replay authority');
++    if (recovery.action === 'retry') {
++      if (repairs >= 3) throw new Error('Task/role repair limit reached; do not rename phase or change role to retry');
++      repairs++;
++    }
++  }
+ }
+ // Save the bounded intent first: storage failure cannot orphan an active marker.
+ // A later crash/throw still retains intent; never blindly replay a different key.
+ await state.set(recordKey, { ...identity, status: "dispatching" });
+-await state.set(budgetKey, { count: budget.count + 1, lastRecord: recordKey, sourceState: request.sourceState });
++await state.set(budgetKey, { version: 2, repairs, lastRecord: recordKey, sourceState: request.sourceState });
+ await state.set("teamGoalActiveStep", recordKey);
+ const schema = {
+   type: "object",
+@@ -168,7 +177,9 @@
+   };
+   schema.required.push('criterionResults');
+ }
+-const result = await runs.run(key, {
++let result;
++try {
++result = await runs.run(key, {
+   agent: request.agent,
+   cwd: request.cwd,
+   context: "fresh",
+@@ -197,6 +208,18 @@
+   output: "goal-steps/" + key + ".md",
+   outputSchema: schema,
+ });
++} catch (error) {
++  // A throw proves neither that no child ran nor that no report was captured.
++  await state.set(recordKey, {
++    ...identity, status: 'blocked',
++    outcomes: { execution: 'unknown', reportDelivery: 'unknown', product: 'unknown' },
++    error: String(error?.message ?? error).slice(0, 2048),
++    ...(typeof error?.runId === 'string' ? { runId: error.runId.slice(0, 256) } : {}),
++    ...(typeof error?.outputReference === 'string' ? { outputReference: error.outputReference.slice(0, 2048) } : {}),
++    ...(typeof error?.structuredOutputPath === 'string' ? { structuredOutputPath: error.structuredOutputPath.slice(0, 2048) } : {}),
++  });
++  throw error;
++}
+ const report = result?.structuredOutput;
+ const rows = report?.criterionResults;
+ const criteriaValid = !request.work || (
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/before/check-goal-dispatch.mjs
++++ /home/timmypai/.pi/agent/teams/check-goal-dispatch.mjs
+@@ -104,12 +104,8 @@
+   state.set("teamGoalActiveStep", null);
+   assert.equal((await helper(state, runs)).status, "reconcile");
+   assert.equal(launches, 1, "preparation must not authorize replay");
+-  assert.throws(() =>
+-    prepareGoalDispatch({ ...input, timeoutMs: 0 }, packetFile),
+-  );
+-  assert.throws(() =>
+-    prepareGoalDispatch({ ...input, goalStatus: "paused" }, packetFile),
+-  );
++  await assert.rejects(prepareGoalDispatch({ ...input, timeoutMs: 0 }, packetFile));
++  await assert.rejects(prepareGoalDispatch({ ...input, goalStatus: "paused" }, packetFile));
+   const writes = [];
+   await assert.rejects(
+     setup({
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/before/check-goal-team.mjs
++++ /home/timmypai/.pi/agent/teams/check-goal-team.mjs
+@@ -202,7 +202,8 @@
+   new Error("ambiguous launch failure"),
+ );
+ assert.ok(crashed.error);
+-assert.equal(crashed.data[recordKey].status, "dispatching");
++assert.equal(crashed.data[recordKey].status, "blocked");
++assert.deepEqual(crashed.data[recordKey].outcomes, {execution:'unknown', reportDelivery:'unknown', product:'unknown'});
+ assert.equal((await exercise(clone(crashed.data))).calls.length, 0);
+ cases++;
+ // Switching to a NEW key cannot bypass an unresolved active marker.
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/before/EFFICIENCY-CONTRACT.md
++++ /home/timmypai/.pi/agent/teams/EFFICIENCY-CONTRACT.md
+@@ -29,8 +29,9 @@
+ `goal-request.mjs --dispatch` requires `work` and validates it before saving launch
+ artifacts. Existing saved packets remain readable via the non-dispatch CLI; no live
+ Goal/mission is automatically migrated. New work is not prepared from an old packet
+-until the parent supplies the missing scope. The synchronous preparation export is
+-only packet construction; it is not a substitute for CLI effective-role preflight.
++until the parent supplies the missing scope. `await prepareGoalDispatch(...)` and
++CLI share the same work/shell and selected-role readiness checks. The non-dispatch
++CLI/prepareGoalRequest export is legacy packet normalization, NOT a new-work entrypoint.
+ 
+ ```json
+ {
+@@ -51,8 +52,10 @@
+ checks stay on the host. Legacy top-level `checks` without `work` are rejected rather
+ than silently discarded. Conflicting copies are rejected. Effective role shell
+ capability is checked by existing `prepareHandoff`, including project overrides.
+-Selected-role skill/model/environment readiness checks remain separately REQUIRED;
+-this does not install skills or prove arbitrary shell safety.
++Selected-role skill/model/config readiness runs inside dispatch preparation before
++saving artifacts. Task-specific environment/executable checks remain separately REQUIRED;
++this does not install skills or prove arbitrary shell safety. New effective packets
++retain sourcePaths so recovery cannot silently shrink the original evidence scope.
+ 
+ The work contract is hashed into request identity and carried to the child once.
+ Goal outputSchema requires exact unique `criterionResults` rows for contracted work.
+@@ -64,28 +67,49 @@
+ ## Bounded admissions and recovery
+ 
+ The helper retains `goal-admissions.<taskId>.<agent>` in the EXISTING mission state.
+-Maximum three admissions per task/role, including initial work; phase renaming or
+-source changes do not reset it. This is a conservative dispatch ceiling, not a quota.
+-A later admission requires bounded `retry:{reason,evidence}` documenting diagnosed
+-need. Same-key replay still reconciles without dispatch. An unresolved prior intent
+-blocks new work even if someone cleared the active marker.
++Version 2 counts at most three authorized repair replays per task/role, not successful
++slices. Initial work + three repairs fits attempt 1..4; phase/source changes do not reset
++repair history. Normal successful progression needs no invented retry reason. Native
++wave/session ceilings remain unchanged. Same-key replay only returns reconciliation.
++Legacy count-based ledgers are rejected, not silently reinterpreted or reset.
+ 
+-Missing/invalid reports at unchanged source block another same-role work admission;
+-main repairs only the report from existing evidence. No automatic repair child is
+-introduced. Stop at the ceiling; never change role/task/mission identity to bypass it.
+-User-approved scope/budget changes require explicit reconciliation, not a hidden reset.
+-Legacy steps predating this counter are NOT retroactively counted. When recovering an
+-old mission the parent must inspect its history before any new admission. Direct native
+-calls and parent edits to state are not intercepted. Single owner only, not a CAS lock.
++A failed/unknown/missing-report step requires parent recovery, even after clearing the
++active marker. Free-text `retry:{reason,evidence}` remains readable but grants no replay
++authority. Use `goal-recovery.mjs` as below. No automatic repair child, scheduling,
++Goal completion or product-pass promotion. Direct native calls and parent state edits
++are not intercepted. One owner only; this is not a CAS lock or security boundary.
++
++### Parent recovery, no child
++
++Save input `{statusPath,recordKey,action,reason,check,receipt}` outside source scope:
++- `statusPath`: actual native workflow status.json, beside its native mission.json.
++- `recordKey`: exact goal-step key; native mission state and saved request are read directly.
++- `action`: `report-only` (never replay), `continue` (parent resolved the outcome), or
++  `retry` (diagnosed work still needs execution; consumes a repair).
++- `check` and `receipt`: existing host-check input/receipt verifying effects, artifacts
++  and the full original sourcePaths; verifyCheck checks runtime, intent, log and freshness.
++- `reason`: bounded parent diagnosis after inspecting actual evidence. Parent must ensure
++  the check actually establishes the claimed safety/outcome; an arbitrary exit-0 is not proof.
++
++Run `node ~/.pi/agent/teams/goal-recovery.mjs /absolute/recovery-input.json`, inspect the
++result and execute its setupArgs through the existing controller with the same mission.
++Preparation never executes checks or mutates mission state. The generated zero-child
++script refuses changed records/bindings or another active intent, adds a separate
++recovery decision and clears only this terminal step's marker. Original outcomes/errors
++stay unchanged. `retry` is refused for a captured pass. Next failed-step dispatch must
++match recovery sourceState. Recheck source/native status before applying; no cross-process
++atomicity is claimed. Missing child identity, legacy missing scope/counter, active native
++runs or stale host evidence remain blocked; do not manufacture their migration/proof.
+ 
+ Records distinguish:
+ - `outcomes.execution`: completed / failed / unknown.
+-- `outcomes.reportDelivery`: captured / missing / invalid.
++- `outcomes.reportDelivery`: captured / missing / invalid / unknown (throw).
+ - `outcomes.product`: the well-formed report's verdict or unknown; NOT final acceptance.
+ 
+ A failed execution with a captured pass stays blocked. A child `blocked` stays blocked;
+-never infer a wrapper defect from prose. Throws preserve dispatch intent for native
+-status/artifact reconciliation. No fabricated root-cause attribution, automatic pass,
++never infer a wrapper defect from prose. Throws save blocked/unknown outcomes, bounded
++original error and available run/artifact references, retain ownership and rethrow for
++native status/artifact reconciliation. No fabricated root-cause attribution, automatic pass,
+ relaunch, or automatic marker cleanup. Keep raw reports and original statuses intact;
+ parent acceptance decisions cite actual evidence separately.
+ 
+@@ -125,8 +149,10 @@
+ `check-goal-dispatch.mjs`, `check-goal-team.mjs`, `check-goal-step-storage.mjs`,
+ `check-handoff-contract.mjs`, `check-team-outcomes.mjs`, `check-host-evidence.mjs`.
+ 
+-Measured offline: illegal preparation emits no dispatch artifacts; phase-renamed fourth
+-admission emits no child; report-only failure does not relaunch; unaffected host receipts
++The original three-admission test encoded a wrong policy; superseded by the usability
++regressions in `goal-team-evidence/usability-fixes-20260908/`. Four successful slices are
++allowed, a fourth repair is blocked, both dispatch entrypoints share readiness, throws
++retain unknown outcomes and report-only recovery emits no child. Unaffected host receipts
+ verify without command rerun. These are not measured live token/cost/time improvements.
+ No live child or TUI canary was executed for this change. Helpers are read on invocation;
+ existing sessions need to reread these instructions. Third-party package versions and
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/before/GOAL-TEAMS.md
++++ /home/timmypai/.pi/agent/teams/GOAL-TEAMS.md
+@@ -10,14 +10,15 @@
+ 要求 `work:{kind,criteria,checks}`，將既有有效角色能力預檢接到 Goal 準備入口。
+ `checks` 不再被靜默丟掉。工作範圍與固定 criterionResults 納入新 packet；
+ 舊 packet 仍可讀取／reconcile，不自動遷移已存在的 Goal 或 mission。
+-同 task/role 最多三次 admission，換 phase 不重置；後續 admission 需 reason/evidence。
++同 task/role 最多三次已核對的修復重派；成功切片不計修復，換 phase/source 不重置。
++API／CLI 共用能力與 selected-role readiness；失敗後用 goal-recovery.mjs 核對 native 與 host 證據，文字 retry 不授予重派權。
+ 這是 helper 範圍限制，非全域 native controller 限制。具體恢復與相容性見上文連結。
+ 
+ ## Delivery evidence 增量
+ 
+ 新工作優先使用 [EVIDENCE-PRACTICE.md](EVIDENCE-PRACTICE.md)：先 formatter／freeze，再 host receipt；以既有 `goal-request.mjs --dispatch` 產生 setup/dispatch args，不手抄 identity。只有已套用並驗證 delivery patch、且 runtime 已 reload 的新／明確重設 task list，才使用新 evidence reference。舊 Goal 不自動轉換。
+ 
+-`patches/goal-team-delivery/` 是 reliability v2 之上的增量；套用後用其 `apply.mjs --check/--verify`，不要拿舊增量的重疊 post hashes 判斷最新安裝。REQUIRED review/live canary 不因 offline fixture PASS 而免除。
++`patches/goal-team-delivery/` 是 reliability v2 之上的增量；後續 flow/efficiency/usability overlays 已改變部分 hashes，舊 wrapper 拒絕並不代表可重套。已安裝組合的 read-only 核對見 `goal-team-evidence/usability-fixes-20260908/check-installed.mjs` 與該目錄報告；它不是升級 installer，任何不連續仍須停止。REQUIRED review/live canary 不因 offline fixture PASS 而免除。
+ 
+ ## 使用方式
+ 
+@@ -60,7 +61,7 @@
+ PI_OFFLINE=1 PI_MEMORY_EXIT_SUMMARY=off node ~/.pi/agent/teams/check-config.mjs --roles-only "$PWD"
+ PI_OFFLINE=1 PI_MEMORY_EXIT_SUMMARY=off node ~/.pi/agent/teams/check-goal-team.mjs "$PWD"
+ node ~/.pi/agent/teams/check-goal-hold-wake.mjs
+-node ~/.pi/agent/teams/patches/goal-team-delivery/apply.mjs --check
++node ~/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/check-installed.mjs
+ node ~/.pi/agent/teams/check-goal-completion.mjs
+ ```
+ 
+@@ -113,8 +114,9 @@
+    output 與實際 source；完成 main/host 機械驗證及按風險所需 review/security/E2E。
+    格式錯誤依 [HANDOFF-PRACTICE.md](HANDOFF-PRACTICE.md) 只修交接，
+    不清 marker 後增加 implementation attempt 重做。
+-   僅在確認該 step 已終止且副作用已釐清後，以 mission-attached `state.set`
+-   清除 `teamGoalActiveStep`（設 null），保留所有 `goal-step.*` 舊紀錄。
++   成功 step 核對終止與副作用後才清除 active marker；失敗／unknown step 使用
++   `goal-recovery.mjs` 的 native terminal＋fresh host 證據流程，不手改成 reported。
++   保留所有 `goal-step.*` 舊紀錄與 outcomes；report-only 恢復不授權重派。
+    新 phase／有理由的新 attempt 使用新 key，不覆蓋舊 request 來掩蓋失敗。
+ 7. **更新成果。** 整個 task 的 REQUIRED evidence 全部有效才由主 agent
+    `update_goal_task(status="complete", evidence=...)`。短 evidence 寫 durable report
+@@ -130,25 +132,27 @@
+ 主 agent 先把下列 raw packet 存在核准的 durable evidence directory，再執行：
+ 
+ ```bash
+-node ~/.pi/agent/teams/goal-request.mjs /absolute/evidence/packet.json > /absolute/evidence/prepared.json
++node ~/.pi/agent/teams/goal-request.mjs --dispatch /absolute/evidence/packet.json > /absolute/evidence/prepared.json
+ ```
+ 
+-將 prepared JSON **原樣**交 `state.set("teamGoalRequest", prepared)`；不可改 task/source
++依序使用 prepared 的 setupArgs／dispatchArgs，不自行抄寫 state packet；不可改 task/source
+ 卻沿用舊 digest。CLI 不派工、不修改 Goal/mission；normalized contract 上限 64 KiB。
++不帶 --dispatch 的 CLI 僅供舊資料 normalization/recovery，不作新派工入口。
+ 這是 parent-only 準備，不是 child 輸入權限。
+ 
+ | 欄位                      | 來源／限制                                                                                                                        |
+ | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+ | goalId、taskId            | `get_goal` 的真實 identity；taskId 為短 slug                                                                                      |
+ | goalStatus、taskStatus    | 剛讀取的 `active`／`pending`；不是人工把 paused 改成 active                                                                       |
+-| phase、attempt            | 如 `diagnose`／`implement`／`verify`／`review`，attempt 1..3                                                                      |
++| phase、attempt            | 如 `diagnose`／`implement`／`verify`／`review`，attempt 1..4（首次＋三次修復；成功切片另有 stable phase）                                                                      |
+ | agent                     | 已檢查的普通 `team.*` 角色；advisor 另走必要性核准，不走此 helper                                                                 |
+ | cwd、sourceState          | 唯一綁定 cwd 與實際 commit＋dirty diff／artifact digest                                                                           |
+ | task                      | 完整 cold-start packet：目標／非目標、allowed files/actions、criteria、驗證命令、證據路徑、stop rules；debugger 必含 scratch 範圍 |
+ | requestDigest、requestRef | CLI 產生的 SHA-256 correlation 與 saved effective packet realpath；不由模型手算                                                   |
+ | timeoutMs                 | 新派工由 main 明選，納入 request identity 並傳到內層 `runs.run`；舊 packet 可省略                                                 |
+ | work | 新 `--dispatch` 必填 kind/criteria/checks；criteria 使用原始 ID/text 子集，parent 仍需覆蓋完整成果要求 |
+-| retry | 後續同 task/role admission 必須 `{reason,evidence}`；不作為自動 retry 或繞過 ceiling 的授權 |
++| sourcePaths | 新 effective packet 保存原始 scope，恢復檢查不可縮小 |
++| retry | legacy `{reason,evidence}` 可讀，不授予重派權；失敗需原生終止紀錄及 goal-recovery 準備的 decision |
+ 
+ Helper v2 先保存 `goal-step.<taskId>.<phase>.<attempt>` 的 compact intent，成功後
+ 才設 `teamGoalActiveStep`，兩者皆成功才 `runs.run`。首筆持久化失敗不留 orphan
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/before/HANDOFF-PRACTICE.md
++++ /home/timmypai/.pi/agent/teams/HANDOFF-PRACTICE.md
+@@ -3,7 +3,8 @@
+ 目標是降低「合格交付」的總 token／時間，不是讓每次呼叫最便宜。
+ 2026-09-08 執行修訂見 [EFFICIENCY-CONTRACT.md](EFFICIENCY-CONTRACT.md)：
+ Goal 新派工必填 work 職責／固定 criteria／checks；能力矛盾先拒絕，
+-同 task/role 換 phase 不重置 admission 計數，報告問題不重做產品。
++同 task/role 換 phase 不重置修復計數；成功切片不消耗修復額度，報告問題不重做產品。
++Goal API／CLI 已接共用能力與 selected-role readiness；失敗用 goal-recovery.mjs 核對 native 終態與 fresh host 收據。
+ 本文件補充 team-flow；不新增 controller，不以報告格式作產品驗收。
+ 
+ 來源 freeze、host 收據／局部失效、Goal 可選 evidence reference、較少手抄的派工準備，見 [EVIDENCE-PRACTICE.md](EVIDENCE-PRACTICE.md)。先完成 formatter，再驗證／封存；host 機械新鮮度不取代 main 的語意驗收或 required review。
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/before/OPERATING-MODEL.md
++++ /home/timmypai/.pi/agent/teams/OPERATING-MODEL.md
+@@ -11,7 +11,8 @@
+ reviewer 管 source/spec；QA 管情境與實際證據評估，不假裝執行 browser；
+ verifier/e2e 在已有能力下執行 browser；固定機械命令優先 host。
+ 不為固定流程重複派所有角色。Goal CLI 必填 work，逐項 criteria 與 checks 不丟失；
+-同 task/role admission 上限跨 phase 計數。缺證據不降級 gate，報告失敗不自動重做。
++同 task/role 三次修復上限跨 phase/source 計數，成功切片不計修復；API／CLI 共用角色 readiness。
++失敗後 goal-recovery.mjs 核對原生終態與 fresh host 證據；缺證據不降級 gate，不因報告失敗自動重做。
+ 本輪不改模型、工具、角色權限或 native 預算；offline regression 不是 live 加速證明。
+ 
+ ## 交付證據增量
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/before/EVIDENCE-PRACTICE.md
++++ /home/timmypai/.pi/agent/teams/EVIDENCE-PRACTICE.md
+@@ -61,13 +61,13 @@
+ 
+ ## Less handwritten dispatch metadata
+ 
+-The existing saved packet additionally accepts `missionId`, `sourcePaths`, explicit `timeoutMs`, fresh `goalStatus: "active"` / `taskStatus: "pending"`, and optionally `acceptanceContract` relative to cwd. New `--dispatch` calls require `work:{kind,criteria,checks}`; later task/role admissions require diagnosed `retry:{reason,evidence}`. See the efficiency contract for role scopes and legacy packet recovery.
++The existing saved packet additionally accepts `missionId`, `sourcePaths`, explicit `timeoutMs`, fresh `goalStatus: "active"` / `taskStatus: "pending"`, and optionally `acceptanceContract` relative to cwd. New `--dispatch` calls require `work:{kind,criteria,checks}`; failed steps require native/host-backed `goal-recovery.mjs` decisions rather than free-text retry permission; successful progression is not a repair. See the efficiency contract for role scopes and legacy packet recovery.
+ 
+ ```sh
+ node ~/.pi/agent/teams/goal-request.mjs --dispatch /absolute/saved-input.json > prepared.json
+ ```
+ 
+-This writes content-addressed effective packet/setup artifacts beside the saved input and returns small `setupArgs` then `dispatchArgs`. First run the selected-role/environment preflight. Use those native pi-subagents args unchanged, sequentially, against the explicit non-goal mission. Setup has no child and refuses foreign bindings/active intents; it does not silently overwrite ownership. The effective packet is recoverable with the existing goal-request CLI. Timeout reaches the inner `runs.run`. This is preparation, not launch authorization, product acceptance or an atomic two-operation dispatch.
++This writes content-addressed effective packet/setup artifacts beside the saved input and returns small `setupArgs` then `dispatchArgs`. The async preparation API and CLI both run selected-role readiness; separately check the task's environment/executables. Use those native pi-subagents args unchanged, sequentially, against the explicit non-goal mission. Setup has no child and refuses foreign bindings/active intents; it does not silently overwrite ownership. The effective packet is recoverable with the existing goal-request CLI. Timeout reaches the inner `runs.run`. This is preparation, not launch authorization, product acceptance or an atomic two-operation dispatch.
+ 
+ ## Readiness and measuring improvement
+ 
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/before/team-flow-SKILL.md
++++ /home/timmypai/.pi/agent/skills/team-flow/SKILL.md
+@@ -14,7 +14,10 @@
+ There is no requirement to launch every role. Tiny tasks stay on the parent.
+ Read `~/.pi/agent/teams/EFFICIENCY-CONTRACT.md` for new Goal dispatches:
+ explicit role-scoped work/criteria/checks, effective capability preflight, per-task/role
+-admission ceiling across phase names, and separate execution/report/product outcomes.
++repair ceiling across phase/source changes (successful slices do not count), and separate
++execution/report/product outcomes. API/CLI share selected-role readiness. Failed steps
++need native-terminal + fresh host evidence through goal-recovery.mjs; report-only never
++permits replay, and thrown errors remain unknown rather than invented failures/passes.
+ Prefer host checks and valid receipt reuse; do not repeat reviewer + static QA over
+ identical scope. Main reports blockers/material progress, not routine child-start echoes.
+ 
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/before/step-contract.test.mjs
++++ /home/timmypai/.pi/agent/teams/goal-team-evidence/efficiency-20260908/step-contract.test.mjs
+@@ -19,17 +19,19 @@
+  assert.match(args.task,/C1: correct parsing/);
+  assert.match(args.task,/review/);
+ });
+-test('renaming phases cannot reset the per-task role admission ceiling',async()=>{
++test('renaming phases cannot reset three authorized repairs after initial failure',async()=>{
+  const f=fixture(); let launches=0;
+- const runs={run:async()=>{launches++;return {ok:true,runId:'child-'+launches,structuredOutput:report()};}};
+- for(let n=1;n<=3;n++){
++ const runs={run:async()=>{launches++;return {ok:true,runId:'child-'+launches,structuredOutput:report({verdict:'failed'})};}};
++ for(let n=1;n<=4;n++){
+    f.data.teamGoalRequest=prepareGoalRequest({...input,phase:'renamed-'+n,retry:{reason:'new evidence needs independent review',evidence:'file:delta-'+n}},'/fixture/packet-'+n+'.json');
+-   assert.equal((await runStep(f.state,runs)).status,'reported');
++   assert.equal((await runStep(f.state,runs)).status,'blocked');
++   // Consumer fixture only; recovery.test.mjs verifies native+host preparation.
++   f.data['goal-step.t.renamed-'+n+'.1'].recovery={action:'retry',sourceState:input.sourceState,reason:'fixture diagnosed repair',nativeStatusRef:'/fixture/status.json',hostReceiptRef:'/fixture/check.json',nativeDigest:'a'.repeat(64),hostReceiptDigest:'b'.repeat(64),childRunId:'child-'+n};
+    f.data.teamGoalActiveStep=null;
+  }
+  f.data.teamGoalRequest=prepareGoalRequest({...input,phase:'another-new-name',retry:{reason:'new evidence',evidence:'file:delta-4'}},'/fixture/packet-4.json');
+- await assert.rejects(runStep(f.state,runs),/admission limit/);
+- assert.equal(launches,3);
++ await assert.rejects(runStep(f.state,runs),/repair limit/);
++ assert.equal(launches,4);
+ });
+ test('failed execution keeps a captured product report distinct, never accepts it',async()=>{
+  const f=fixture();
+@@ -44,14 +46,14 @@
+  assert.equal(first.record.outcomes.reportDelivery,'missing');
+  f.data.teamGoalActiveStep=null;
+  f.data.teamGoalRequest=prepareGoalRequest({...input,phase:'format-retry',retry:{reason:'report missing',evidence:'file:original.log'}},'/fixture/format.json');
+- await assert.rejects(runStep(f.state,runs),/Repair report only/);
++ await assert.rejects(runStep(f.state,runs),/recovery required/);
+  assert.equal(launches,1);
+ });
+-test('new same-role admission requires a diagnosed reason',async()=>{
++test('normal successful progression does not require pretending a failure occurred',async()=>{
+  const f=fixture(); const runs={run:async()=>({ok:true,runId:'child',structuredOutput:report()})};
+  await runStep(f.state,runs); f.data.teamGoalActiveStep=null;
+  f.data.teamGoalRequest=prepareGoalRequest({...input,phase:'next'},'/fixture/next.json');
+- await assert.rejects(runStep(f.state,runs),/diagnosed reason/);
++ assert.equal((await runStep(f.state,runs)).status,'reported');
+ });
+ test('missing, foreign, duplicate and unobserved criteria never pass',async()=>{
+  for(const rows of [[],[...report().criterionResults,...report().criterionResults],
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/before/dispatch-cli.test.mjs
++++ /home/timmypai/.pi/agent/teams/goal-team-evidence/efficiency-20260908/dispatch-cli.test.mjs
+@@ -12,7 +12,7 @@
+   try {
+     mkdirSync(join(dir, 'src'));
+     writeFileSync(join(dir, 'src', 'input.txt'), 'fixture');
+-    for (const attempt of [1, 2, 3]) {
++    for (const attempt of [1, 2, 3, 4]) {
+       const file = join(dir, `request-${attempt}.json`);
+       writeFileSync(file, JSON.stringify({
+         work: { kind: 'review', criteria: ['C1: source reviewed'], checks: [] },
+@@ -37,7 +37,7 @@
+     mkdirSync(join(dir, 'src'));
+     writeFileSync(join(dir, 'src', 'input.txt'), 'fixture');
+     const file = join(dir, 'request.json');
+-    for (const attempt of [4, 0, -1, 1.5, '1', null]) {
++    for (const attempt of [5, 0, -1, 1.5, '1', null]) {
+       writeFileSync(file, JSON.stringify({
+         missionId: 'mission', goalId: 'goal', taskId: 'task', phase: 'review',
+         attempt, agent: 'team.reviewer', task: 'Static source review only.',
+@@ -47,7 +47,7 @@
+       for (const mode of [[], ['--dispatch']]) {
+         const result = spawnSync(process.execPath, [cli, ...mode, file], { encoding: 'utf8' });
+         assert.equal(result.status, 1, `attempt ${JSON.stringify(attempt)} must fail at preparation (${mode})`);
+-        assert.match(result.stderr, /Attempt must be 1\.\.3/);
++        assert.match(result.stderr, /Attempt must be 1\.\.4/);
+         assert.equal(result.stdout, '');
+         assert.deepEqual(readdirSync(dir).sort(), ['request.json', 'src']);
+       }
+--- /dev/null
++++ /home/timmypai/.pi/agent/teams/goal-recovery.mjs
+@@ -0,0 +1,86 @@
++// Parent-only reconciliation preparation. Reads native receipts; never launches,
++// executes checks, mutates a mission or promotes a failed product to pass.
++import assert from 'node:assert/strict';
++import fs from 'node:fs';
++import path from 'node:path';
++import {createHash} from 'node:crypto';
++import {prepareGoalRequest} from './goal-request.mjs';
++import {verifyCheck} from './host-evidence.mjs';
++function readJson(file) {
++  assert.ok(path.isAbsolute(file), 'absolute evidence path required');
++  assert.equal(fs.realpathSync(file), file, 'canonical evidence path required');
++  const stat = fs.statSync(file);
++  assert.ok(stat.isFile() && stat.size <= 1024 * 1024, 'bounded regular evidence file required');
++  return JSON.parse(fs.readFileSync(file, 'utf8'));
++}
++const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
++export function prepareGoalRecovery(input) {
++  assert.ok(['report-only', 'continue', 'retry'].includes(input.action), 'explicit recovery action required');
++  assert.ok(typeof input.reason === 'string' && input.reason.trim() && input.reason.length <= 1024, 'bounded diagnosed reason required');
++  const native = readJson(input.statusPath);
++  assert.ok(native.mode === 'workflow' && ['complete', 'failed', 'stopped', 'cancelled'].includes(native.state), 'native workflow must be terminal');
++  const mission = readJson(path.join(path.dirname(input.statusPath), 'mission.json'));
++  assert.match(mission.missionId, /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/);
++  assert.equal(native.cwd, mission.projectRoot, 'native mission cwd mismatch');
++  const saved = readJson(path.join(mission.missionDir, mission.missionId, 'state.json'));
++  const record = saved[input.recordKey];
++  assert.ok(record && ['dispatching', 'blocked'].includes(record.status), 'unresolved step record required');
++  const request = prepareGoalRequest(readJson(record.requestRef), record.requestRef);
++  assert.equal(request.requestDigest, record.requestDigest, 'saved request changed');
++  assert.deepEqual(saved.teamGoalBinding, {goalId: request.goalId, cwd: request.cwd}, 'goal binding mismatch');
++  assert.equal(request.cwd, native.cwd, 'request cwd mismatch');
++  const key = request.taskId + '.' + request.phase + '.' + request.attempt;
++  assert.equal(input.recordKey, 'goal-step.' + key, 'record key mismatch');
++  const steps = native.steps?.filter(step => step.workflowKey === key);
++  assert.ok(steps?.length === 1 && steps[0].agent === request.agent && typeof steps[0].runId === 'string' && steps[0].runId.trim(), 'unique native child identity required');
++  const child = steps[0];
++  assert.ok(['completed', 'failed', 'stopped', 'cancelled'].includes(child.status), 'native child must be terminal');
++  if (record.runId) assert.equal(child.runId, record.runId, 'native run identity mismatch');
++  if (input.action === 'retry')
++    assert.ok(!(record.outcomes?.reportDelivery === 'captured' && record.outcomes.product === 'pass'), 'captured pass requires report-only/continue reconciliation, never repeat work');
++  assert.equal(input.check.cwd, request.cwd, 'check cwd mismatch');
++  assert.ok(request.sourcePaths, 'legacy packet has no source scope; parent migration required');
++  assert.deepEqual(input.check.sourcePaths, request.sourcePaths, 'cannot narrow original source scope');
++  const checked = verifyCheck(input.check, input.receipt);
++  const recovery = {
++    action: input.action, reason: input.reason,
++    nativeStatusRef: input.statusPath, nativeDigest: digest(native), childRunId: child.runId,
++    hostReceiptRef: input.receipt, hostReceiptDigest: digest(readJson(input.receipt)),
++    sourceState: 'sha256:' + checked.sourceDigest,
++  };
++  // Host-verified preparation, same single-owner discipline as goal-request.
++  // Keep all original outcome/error fields. Reconciliation is a separate decision.
++  const setupScript = [
++    'const key = ' + JSON.stringify(input.recordKey) + ';',
++    'const expected = ' + JSON.stringify(record) + ';',
++    'const next = {...expected, recovery: ' + JSON.stringify(recovery) + '};',
++    'const existing = await state.get(key);',
++    'if (JSON.stringify(existing) !== JSON.stringify(expected) && JSON.stringify(existing) !== JSON.stringify(next)) throw new Error("Step changed since recovery preparation");',
++    'const binding = await state.get("teamGoalBinding");',
++    'if (JSON.stringify(binding) !== ' + JSON.stringify(JSON.stringify(saved.teamGoalBinding)) + ') throw new Error("Goal binding changed");',
++    'const active = await state.get("teamGoalActiveStep");',
++    'if (active != null && active !== key) throw new Error("Another active intent must be reconciled first");',
++    'await state.set(key, next);',
++    'if (active === key) await state.set("teamGoalActiveStep", null);',
++    'return {status:"reconciled", recordKey:key, action:' + JSON.stringify(input.action) + '};',
++  ].join('\n');
++  return {missionId: mission.missionId, cwd: request.cwd, setupScript, recovery};
++}
++if (process.argv[1] === import.meta.filename) {
++  try {
++    assert.equal(process.argv.length, 3, 'usage: goal-recovery.mjs /absolute/recovery-input.json');
++    const file = fs.realpathSync(process.argv[2]);
++    const prepared = prepareGoalRecovery(readJson(file));
++    const setupPath = file + '.' + digest(prepared) + '.workflow.txt';
++    try { fs.writeFileSync(setupPath, prepared.setupScript, {flag: 'wx', mode: 0o600}); }
++    catch (error) {
++      if (error.code !== 'EEXIST') throw error;
++      assert.equal(fs.realpathSync(setupPath), setupPath, 'canonical recovery script required');
++      assert.equal(fs.readFileSync(setupPath, 'utf8'), prepared.setupScript, 'recovery script changed');
++    }
++    console.log(JSON.stringify({recovery: prepared.recovery, setupArgs: {
++      missionId: prepared.missionId, cwd: prepared.cwd, workflowScriptPath: setupPath,
++      async: false, timeoutMs: 30000, globalConcurrencyLimit: 1, maxSubagentSpawnsPerRun: 1,
++    }}, null, 2));
++  } catch (error) { console.error(error.message); process.exitCode = 1; }
++}
+--- /dev/null
++++ /home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/preparation.test.mjs
+@@ -0,0 +1,28 @@
++import assert from 'node:assert/strict';
++import {test} from 'node:test';
++import fs from 'node:fs';
++import os from 'node:os';
++import path from 'node:path';
++import {spawnSync} from 'node:child_process';
++import {prepareGoalDispatch} from '../../goal-request.mjs';
++function fixture(){const cwd=fs.mkdtempSync(path.join(os.tmpdir(),'team-ready-'));fs.mkdirSync(path.join(cwd,'src'));fs.writeFileSync(path.join(cwd,'src','value.txt'),'fixture');return {cwd,input:{missionId:'fixture',goalId:'goal',taskId:'task',phase:'work',attempt:1,agent:'team.docs',task:'Run the approved check.',cwd,sourcePaths:['src'],timeoutMs:1000,goalStatus:'active',taskStatus:'pending',work:{kind:'implementation',criteria:['C1: documented check'],checks:[{command:'node check.mjs',location:'child-safe'}]}}};}
++test('public API rejects no-shell execution exactly like CLI',async()=>{
++ const {cwd,input}=fixture();try{let error;try{await prepareGoalDispatch(input,path.join(cwd,'packet.json'));}catch(e){error=e;}
++ assert.match(error?.message??'',/shell/);
++ assert.deepEqual(fs.readdirSync(cwd),['src']);
++ }finally{fs.rmSync(cwd,{recursive:true,force:true});}
++});
++test('declared missing skill blocks both API and CLI before artifacts',async()=>{
++ const {cwd,input}=fixture();try{
++ // A disposable project override proves readiness integration independent of host skill inventory.
++ fs.mkdirSync(path.join(cwd,'.pi','agents'),{recursive:true});
++ fs.writeFileSync(path.join(cwd,'.pi','agents','team.qa.md'),fs.readFileSync(new URL('../../../agents/team.qa.md',import.meta.url),'utf8').replace('skills: team-member, qa','skills: team-member, fixture-skill-that-does-not-exist'));
++ const req={...input,agent:'team.qa',work:{kind:'scenarios',criteria:['C1: user scenario'],checks:[]}};
++ let error;try{await prepareGoalDispatch(req,path.join(cwd,'packet.json'));}catch(e){error=e;}
++ assert.match(error?.message??'',/readiness|role preflight/);
++ const file=path.join(cwd,'input.json');fs.writeFileSync(file,JSON.stringify(req));
++ const child=spawnSync(process.execPath,[new URL('../../goal-request.mjs',import.meta.url).pathname,'--dispatch',file],{encoding:'utf8',timeout:60000});
++ assert.equal(child.status,1);assert.match(child.stderr,/readiness|role preflight/);
++ assert.equal(fs.readdirSync(cwd).filter(x=>x.endsWith('.workflow.txt')||x.endsWith('.request.json')).length,0);
++ }finally{fs.rmSync(cwd,{recursive:true,force:true});}
++});
+--- /dev/null
++++ /home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/lifecycle.test.mjs
+@@ -0,0 +1,39 @@
++import assert from 'node:assert/strict';
++import {test} from 'node:test';
++import fs from 'node:fs';
++import {prepareGoalRequest} from '../../goal-request.mjs';
++const AsyncFunction=Object.getPrototypeOf(async()=>{}).constructor;
++const execute=new AsyncFunction('state','runs',fs.readFileSync(new URL('../../goal-task-step.js',import.meta.url),'utf8'));
++const base={goalId:'goal',taskId:'task',phase:'review',attempt:1,agent:'team.reviewer',task:'Review the candidate.',cwd:'/fixture',sourceState:'sha256:one',goalStatus:'active',taskStatus:'pending',work:{kind:'review',criteria:['C1: correctness'],checks:[]}};
++function fixture(){const data={teamGoalBinding:{goalId:'goal',cwd:'/fixture'}};return {data,state:{get:async k=>data[k],set:async(k,v)=>{data[k]=structuredClone(v)}}};}
++function packet(f,n,extra={}){f.data.teamGoalRequest=prepareGoalRequest({...base,phase:'slice-'+n,...extra},'/fixture/input-'+n+'.json');}
++function result(f){const input=f.data.teamGoalRequest;return {ok:true,runId:'child',structuredOutput:{verdict:'pass',goalId:'goal',taskId:'task',inputSourceState:input.sourceState,sourceState:input.sourceState,evidence:['fixture'],residualRisks:[],criterionResults:[{criterion:'C1: correctness',status:'met',entrypoint:'fixture',observed:'fixture',evidence:['fixture']}]}};}
++test('same-phase ordinal accommodates initial work plus three repairs',()=>{
++ const f=fixture();assert.doesNotThrow(()=>packet(f,1,{attempt:4}));
++ assert.throws(()=>packet(f,1,{attempt:5}),/Attempt/);
++});
++test('four successful new candidate slices need no retry permission',async()=>{
++ const f=fixture();let launches=0;const runs={run:async()=>{launches++;return result(f)}};
++ for(let n=1;n<=4;n++){packet(f,n,{sourceState:'sha256:'+n});assert.equal((await execute(f.state,runs)).status,'reported');f.data.teamGoalActiveStep=null;}
++ assert.equal(launches,4);
++});
++test('captured-report failure cannot relaunch with a free-text report-fix reason',async()=>{
++ const f=fixture();packet(f,1);let launches=0;const runs={run:async()=>{launches++;return {...result(f),ok:false}}};
++ await execute(f.state,runs);f.data.teamGoalActiveStep=null;
++ packet(f,2,{retry:{reason:'repair report finalization only',evidence:'file:captured'}});
++ await assert.rejects(execute(f.state,runs),/recovery|reconcil/i);assert.equal(launches,1);
++});
++test('bare recovery action without native/host provenance cannot authorize launch',async()=>{
++ const f=fixture();packet(f,1);await execute(f.state,{run:async()=>({...result(f),ok:false})});
++ f.data['goal-step.task.slice-1.1'].recovery={action:'continue',sourceState:base.sourceState};
++ f.data.teamGoalActiveStep=null;packet(f,2);
++ await assert.rejects(execute(f.state,{run:async()=>result(f)}),/recovery required/);
++});
++test('throw preserves unknown execution and error without promoting to product pass',async()=>{
++ const f=fixture();packet(f,1);const error=new Error('fixture WebSocket failure');
++ await assert.rejects(execute(f.state,{run:async()=>{throw error}}),/fixture WebSocket/);
++ const record=f.data['goal-step.task.slice-1.1'];
++ assert.deepEqual(record.outcomes,{execution:'unknown',reportDelivery:'unknown',product:'unknown'});
++ assert.equal(record.error,'fixture WebSocket failure');assert.equal(record.status,'blocked');
++ assert.equal(f.data.teamGoalActiveStep,'goal-step.task.slice-1.1');
++});
+--- /dev/null
++++ /home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/recovery.test.mjs
+@@ -0,0 +1,59 @@
++import assert from 'node:assert/strict';
++import {test} from 'node:test';
++import fs from 'node:fs';
++import os from 'node:os';
++import path from 'node:path';
++import {prepareGoalRequest} from '../../goal-request.mjs';
++import {runCheck} from '../../host-evidence.mjs';
++import {prepareGoalRecovery} from '../../goal-recovery.mjs';
++const AsyncFunction=Object.getPrototypeOf(async()=>{}).constructor;
++const execute=new AsyncFunction('state','runs',fs.readFileSync(new URL('../../goal-task-step.js',import.meta.url),'utf8'));
++function fixture(){
++ const cwd=fs.mkdtempSync(path.join(os.tmpdir(),'team-recovery-'));
++ fs.mkdirSync(path.join(cwd,'src'));fs.writeFileSync(path.join(cwd,'src','value.txt'),'fixture');
++ const sourcePaths=['src'];const check={cwd,sourcePaths,argv:[process.execPath,'-e','console.log("fixture recovery evidence")'],timeoutMs:1000};
++ const receipt=path.join(cwd,'check.json');runCheck(check,receipt);
++ const req=prepareGoalRequest({goalId:'goal',taskId:'task',phase:'review',attempt:1,agent:'team.reviewer',task:'Review fixture',cwd,sourceState:'sha256:initial',sourcePaths,goalStatus:'active',taskStatus:'pending',work:{kind:'review',criteria:['C1: correct'],checks:[]}},path.join(cwd,'request.json'));
++ fs.writeFileSync(req.requestRef,JSON.stringify(req));
++ const recordKey='goal-step.task.review.1';const record={version:2,requestRef:req.requestRef,requestDigest:req.requestDigest,status:'blocked',outcomes:{execution:'unknown',reportDelivery:'unknown',product:'unknown'}};
++ const state={teamGoalBinding:{goalId:'goal',cwd},teamGoalActiveStep:recordKey,[recordKey]:record};
++ const missionDir=path.join(cwd,'missions');fs.mkdirSync(path.join(missionDir,'mission'),{recursive:true});const statePath=path.join(missionDir,'mission','state.json');fs.writeFileSync(statePath,JSON.stringify(state));
++ const statusPath=path.join(cwd,'status.json');const status={mode:'workflow',cwd,state:'failed',runId:'workflow-id',steps:[{workflowKey:'task.review.1',agent:'team.reviewer',runId:'child-id',status:'failed'}]};fs.writeFileSync(statusPath,JSON.stringify(status));fs.writeFileSync(path.join(cwd,'mission.json'),JSON.stringify({missionId:'mission',projectRoot:cwd,missionDir}));
++ return {cwd,state,statePath,status,statusPath,recordKey,record,input:{statusPath,recordKey,action:'retry',reason:'fixture diagnosed failure; no outstanding effects',check,receipt},save(){fs.writeFileSync(statePath,JSON.stringify(state));fs.writeFileSync(statusPath,JSON.stringify(status));}};
++}
++test('terminal native receipt + fresh host check produces zero-launch guarded recovery',async()=>{const f=fixture();try{
++ const prepared=prepareGoalRecovery(f.input);let launches=0;
++ fs.writeFileSync(new URL('./recovery.workflow.txt',import.meta.url),prepared.setupScript);
++ const state={get:async k=>f.state[k],set:async(k,v)=>{f.state[k]=structuredClone(v)}};
++ const out=await new AsyncFunction('state','runs',prepared.setupScript)(state,{run:async()=>{launches++}});
++ assert.equal(out.status,'reconciled');assert.equal(launches,0);assert.equal(f.state.teamGoalActiveStep,null);
++ assert.equal(f.state[f.recordKey].status,'blocked');assert.equal(f.state[f.recordKey].outcomes.execution,'unknown');
++ assert.equal(f.state[f.recordKey].recovery.childRunId,'child-id');
++ assert.equal(f.state[f.recordKey].recovery.action,'retry');
++ // Replay after the record write/marker-clear boundary must be harmless.
++ f.state.teamGoalActiveStep=f.recordKey;
++ await new AsyncFunction('state',prepared.setupScript)(state);
++ assert.equal(f.state.teamGoalActiveStep,null);assert.equal(launches,0);
++ const req=JSON.parse(fs.readFileSync(f.record.requestRef));
++ f.state.teamGoalRequest=prepareGoalRequest({...req,phase:'retry',attempt:2,sourceState:prepared.recovery.sourceState},path.join(f.cwd,'next.json'));
++ f.state['goal-admissions.task.team.reviewer']={version:2,repairs:0,lastRecord:f.recordKey};
++ const runs={run:async()=>{launches++;return {ok:false,runId:'retry-child'}}};
++ await execute(state,runs);await execute(state,runs);
++ assert.equal(launches,1);assert.equal(f.state['goal-admissions.task.team.reviewer'].repairs,1);
++ assert.equal(f.state[f.recordKey].outcomes.execution,'unknown');
++ }finally{fs.rmSync(f.cwd,{recursive:true,force:true});}});
++test('active native child, foreign identity, stale source, changed record all fail closed',async()=>{const f=fixture();try{
++ f.status.steps[0].status='running';f.save();assert.throws(()=>prepareGoalRecovery(f.input),/terminal/);
++ f.status.steps[0].status='failed';f.status.steps[0].agent='team.qa';f.save();assert.throws(()=>prepareGoalRecovery(f.input),/identity/);
++ f.status.steps[0].agent='team.reviewer';f.save();const prepared=prepareGoalRecovery(f.input);
++ f.state[f.recordKey].error='changed';await assert.rejects(new AsyncFunction('state',prepared.setupScript)({get:async k=>f.state[k],set:async()=>{throw new Error('must not write')}}),/changed/);
++ fs.writeFileSync(path.join(f.cwd,'src','value.txt'),'changed');assert.throws(()=>prepareGoalRecovery(f.input),/source changed/);
++ }finally{fs.rmSync(f.cwd,{recursive:true,force:true});}});
++test('captured pass cannot receive retry permission; report-only never authorizes replay',async()=>{const f=fixture();try{
++ f.record.outcomes={execution:'failed',reportDelivery:'captured',product:'pass'};f.save();assert.throws(()=>prepareGoalRecovery(f.input),/captured/);
++ const prepared=prepareGoalRecovery({...f.input,action:'report-only'});const state={get:async k=>f.state[k],set:async(k,v)=>{f.state[k]=v}};
++ await new AsyncFunction('state',prepared.setupScript)(state);
++ const req=JSON.parse(fs.readFileSync(f.record.requestRef));f.state.teamGoalRequest=prepareGoalRequest({...req,phase:'report-fix',sourceState:f.state[f.recordKey].recovery.sourceState},path.join(f.cwd,'next.json'));
++ f.state['goal-admissions.task.team.reviewer']={version:2,repairs:0,lastRecord:f.recordKey};
++ await assert.rejects(execute(state,{run:async()=>{throw new Error('must not launch')}}),/recovery required/);
++ }finally{fs.rmSync(f.cwd,{recursive:true,force:true});}});
+--- /dev/null
++++ /home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/check-installed.mjs
+@@ -0,0 +1,36 @@
++// Read-only verification of known chronological overlays. Not an installer.
++import assert from 'node:assert/strict';
++import fs from 'node:fs';
++import path from 'node:path';
++import {createHash} from 'node:crypto';
++const root=path.resolve(import.meta.dirname,'../..');
++const hash=file=>createHash('sha256').update(fs.readFileSync(file)).digest('hex');
++const json=file=>JSON.parse(fs.readFileSync(file,'utf8'));
++const expected=new Map();let previous;
++for(const name of ['goal-team-hold-wake','goal-team-reliability','goal-team-delivery']){
++ const dir=path.join(root,'patches',name), manifest=json(path.join(dir,'manifest.json'));
++ const pkg=path.resolve(root,'../npm/node_modules',manifest.package);
++ assert.equal(json(path.join(pkg,'package.json')).version,manifest.version,'package version changed');
++ if(manifest.requires) assert.equal(manifest.requires,previous,'patch dependency mismatch');
++ for(const row of manifest.requiredFiles??[]){const file=path.join(pkg,row.path);if(expected.has(file))assert.equal(expected.get(file),row.sha256,'required layer mismatch '+file);expected.set(file,row.sha256);}
++ for(const row of manifest.files){
++  const file=path.join(pkg,row.path);
++  if(row.preimage)assert.equal(hash(path.join(dir,row.preimage)),row.preSha256,'saved preimage changed');
++  assert.equal(hash(path.join(dir,row.postimage)),row.postSha256,'saved postimage changed');
++  if(expected.has(file))assert.equal(expected.get(file),row.preSha256,'layer continuity mismatch '+file);
++  expected.set(file,row.postSha256);
++ }
++ previous=manifest.patchId;
++}
++for(const name of ['flow-fixes-20260908','efficiency-20260908','usability-fixes-20260908']){
++ const manifest=json(path.join(root,'goal-team-evidence',name,'manifest.json'));
++ for(const row of manifest.files){
++  const pre=row.preSha256??row.beforeSha256??null, post=row.postSha256??row.afterSha256;
++  if(row.before)assert.equal(hash(row.before),pre,'saved overlay preimage changed '+row.path);
++  if(row.after)assert.equal(hash(row.after),post,'saved overlay postimage changed '+row.path);
++  if(expected.has(row.path))assert.equal(expected.get(row.path),pre,'overlay continuity mismatch '+row.path);
++  expected.set(row.path,post);
++ }
++}
++for(const [file,sha] of expected)assert.equal(hash(file),sha,'installed source mismatch '+file);
++console.log(JSON.stringify({status:'verified',files:expected.size,scope:'known base/delta/runtime/helper overlays only',limitations:['not a fresh-install or upgrade installer','legacy wrappers correctly reject superseded hashes; never bypass them']},null,2));
+--- /dev/null
++++ /home/timmypai/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/installed.test.mjs
+@@ -0,0 +1,28 @@
++import assert from 'node:assert/strict';
++import fs from 'node:fs';
++import os from 'node:os';
++import path from 'node:path';
++import {spawnSync} from 'node:child_process';
++import {test} from 'node:test';
++test('overlay verifier accepts copied known stack and rejects a changed installed byte',()=>{
++ const root=path.resolve(import.meta.dirname,'../../..');const temp=fs.mkdtempSync(path.join(os.tmpdir(),'team-overlay-'));
++ const mapped=p=>{assert.ok(p.startsWith(root+path.sep));return path.join(temp,path.relative(root,p));};
++ const copy=p=>{const dest=mapped(p);fs.mkdirSync(path.dirname(dest),{recursive:true});fs.copyFileSync(p,dest);};
++ try {
++  for(const name of ['goal-team-hold-wake','goal-team-reliability','goal-team-delivery']){
++   const dir=path.join(root,'teams/patches',name),file=path.join(dir,'manifest.json'),m=JSON.parse(fs.readFileSync(file));copy(file);
++   const pkg=path.join(root,'npm/node_modules',m.package);copy(path.join(pkg,'package.json'));
++   for(const row of [...m.files,...m.requiredFiles??[]])copy(path.join(pkg,row.path));
++   for(const row of m.files){if(row.preimage)copy(path.join(dir,row.preimage));copy(path.join(dir,row.postimage));}
++  }
++  for(const name of ['flow-fixes-20260908','efficiency-20260908','usability-fixes-20260908']){
++   const file=path.join(root,'teams/goal-team-evidence',name,'manifest.json'),m=JSON.parse(fs.readFileSync(file));
++   for(const row of m.files)for(const key of ['path','before','after'])if(row[key]){copy(row[key]);row[key]=mapped(row[key]);}
++   fs.mkdirSync(path.dirname(mapped(file)),{recursive:true});fs.writeFileSync(mapped(file),JSON.stringify(m));
++  }
++  const script=mapped(path.join(import.meta.dirname,'check-installed.mjs'));
++  const good=spawnSync(process.execPath,[script],{encoding:'utf8'});assert.equal(good.status,0,good.stderr);
++  fs.appendFileSync(mapped(path.join(root,'teams/goal-request.mjs')),'\n// fixture tamper\n');
++  const bad=spawnSync(process.execPath,[script],{encoding:'utf8'});assert.equal(bad.status,1);assert.match(bad.stderr,/installed source mismatch/);
++ }finally{fs.rmSync(temp,{recursive:true,force:true});}
++});

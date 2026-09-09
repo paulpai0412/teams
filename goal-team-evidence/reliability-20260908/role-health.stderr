@@ -1,0 +1,34 @@
+team.docs missing skill
++ actual - expected
+
++ [
++   'docs-generator'
++ ]
+- []
+
+team.e2e missing skill
++ actual - expected
+
++ [
++   'browser-automation'
++ ]
+- []
+
+team.release missing skill
++ actual - expected
+
++ [
++   'supply-chain-security'
++ ]
+- []
+
+team.security missing skill
++ actual - expected
+
++ [
++   'code-audit',
++   'llm-security',
++   'supply-chain-security'
++ ]
+- []
+

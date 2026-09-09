@@ -1,0 +1,10 @@
+✔ CLI still prepares valid attempts without launching a child (114.591192ms)
+✔ CLI rejects out-of-budget attempts before creating dispatch artifacts (395.085496ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 557.32322

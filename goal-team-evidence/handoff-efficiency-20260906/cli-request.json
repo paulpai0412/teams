@@ -1,0 +1,10 @@
+{
+  "agent": "team.implementer",
+  "cwd": "/home/timmypai",
+  "task": "Offline preflight fixture only; no implementation or child launch authorized.",
+  "criteria": ["Request is prepared without executing work"],
+  "sourceState": "offline-fixture-no-source-change",
+  "output": "handoffs/preflight-fixture.md",
+  "timeoutMs": 234567,
+  "checks": []
+}

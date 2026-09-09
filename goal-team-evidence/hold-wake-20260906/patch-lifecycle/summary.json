@@ -1,0 +1,15 @@
+{
+  "status": "PASS",
+  "cases": 22,
+  "check": "pre",
+  "apply": "APPLIED",
+  "idempotent": "ALREADY_APPLIED",
+  "verify": "VERIFIED",
+  "revert": "REVERTED",
+  "reverted": "pre",
+  "incompatibleExit": 1,
+  "forcedFailureExit": 1,
+  "forcedFailureState": "pre",
+  "backup": "2026-09-06T02-52-11-980Z-c8fa69ce",
+  "rolledBackBackup": "2026-09-06T02-52-16-240Z-fc889da6"
+}

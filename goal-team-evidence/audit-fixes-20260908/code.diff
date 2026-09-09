@@ -1,0 +1,258 @@
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/00-goal-team-evidence.mjs
++++ /home/timmypai/.pi/agent/npm/node_modules/pi-goal-x/extensions/goal-team-evidence.mjs
+@@ -64,6 +64,12 @@
+   } finally {
+     fs.closeSync(fd);
+   }
++}
++export function evidenceDigest(file) {
++  assert.ok(path.isAbsolute(file), 'absolute evidence path required');
++  const bytes = readBytes(file);
++  assert.ok(bytes.length > 0, 'empty evidence artifact');
++  return sha(bytes);
+ }
+ function readJson(file) {
+   try {
+@@ -431,6 +437,22 @@
+     assert.equal(contractDigest, digest, "acceptance contract changed");
+   return { contract, root, decision, contractDigest, file };
+ }
++// A parent reconciliation settles execution, not product acceptance. Historical
++// source may change after a repair; never rerun historical checks to settle it.
++export function goalStepSettled(record) {
++  const recovery = record?.recovery;
++  return !!(record && ['reported', 'blocked', 'dispatching'].includes(record.status) &&
++    recovery && ['continue', 'retry', 'report-only'].includes(recovery.action) &&
++    recovery.requestDigest === record.requestDigest && /^[a-f0-9]{64}$/.test(record.requestDigest ?? '') &&
++    ['nativeStatusRef', 'hostReceiptRef'].every(field => typeof recovery[field] === 'string' && recovery[field].startsWith('/')) &&
++    ['nativeDigest', 'hostReceiptDigest'].every(field => typeof recovery[field] === 'string' && /^[a-f0-9]{64}$/.test(recovery[field])) &&
++    typeof recovery.childRunId === 'string' && recovery.childRunId.trim() &&
++    (record.runId == null || record.runId === recovery.childRunId) &&
++    typeof recovery.sourceState === 'string' && recovery.sourceState.trim() &&
++    (recovery.action !== 'retry' || record.outcomes?.product !== 'pass' ||
++      (typeof recovery.rejectionRef === 'string' && recovery.rejectionRef.startsWith('/') && /^[a-f0-9]{64}$/.test(recovery.rejectionDigest ?? ''))) &&
++    typeof recovery.reason === 'string' && recovery.reason.trim() && recovery.reason.length <= 1024);
++}
+ function missionSettled(contract) {
+   if (!contract.mission) return;
+   const { id, statePath } = contract.mission;
+@@ -459,10 +481,7 @@
+   for (const [key, value] of Object.entries(state))
+     if (key.startsWith("goal-step.")) {
+       assert.ok(
+-        value &&
+-          ["reported", "blocked"].includes(value.status) &&
+-          typeof value.runId === "string" &&
+-          value.runId.trim(),
++        goalStepSettled(value),
+         "unresolved retained step: " + key,
+       );
+     }
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/21-goal-recovery.mjs
++++ /home/timmypai/.pi/agent/teams/goal-recovery.mjs
+@@ -5,7 +5,7 @@
+ import path from 'node:path';
+ import {createHash} from 'node:crypto';
+ import {prepareGoalRequest} from './goal-request.mjs';
+-import {verifyCheck} from './host-evidence.mjs';
++import {verifyCheck, goalStepSettled, evidenceDigest} from './host-evidence.mjs';
+ function readJson(file) {
+   assert.ok(path.isAbsolute(file), 'absolute evidence path required');
+   assert.equal(fs.realpathSync(file), file, 'canonical evidence path required');
+@@ -24,7 +24,7 @@
+   assert.equal(native.cwd, mission.projectRoot, 'native mission cwd mismatch');
+   const saved = readJson(path.join(mission.missionDir, mission.missionId, 'state.json'));
+   const record = saved[input.recordKey];
+-  assert.ok(record && ['dispatching', 'blocked'].includes(record.status), 'unresolved step record required');
++  assert.ok(record && ['dispatching', 'blocked', 'reported'].includes(record.status), 'retained step record required');
+   const request = prepareGoalRequest(readJson(record.requestRef), record.requestRef);
+   assert.equal(request.requestDigest, record.requestDigest, 'saved request changed');
+   assert.deepEqual(saved.teamGoalBinding, {goalId: request.goalId, cwd: request.cwd}, 'goal binding mismatch');
+@@ -36,18 +36,23 @@
+   const child = steps[0];
+   assert.ok(['completed', 'failed', 'stopped', 'cancelled'].includes(child.status), 'native child must be terminal');
+   if (record.runId) assert.equal(child.runId, record.runId, 'native run identity mismatch');
+-  if (input.action === 'retry')
+-    assert.ok(!(record.outcomes?.reportDelivery === 'captured' && record.outcomes.product === 'pass'), 'captured pass requires report-only/continue reconciliation, never repeat work');
++  if (input.action === 'retry' && record.outcomes?.product === 'pass')
++    assert.ok(typeof input.rejection === 'string' && input.rejection.trim(), 'captured pass requires separate parent product-rejection evidence, never repeat work just for a report');
++  const rejection = input.rejection === undefined ? {} : {
++    rejectionRef: input.rejection, rejectionDigest: evidenceDigest(input.rejection),
++  };
++  assert.ok(input.action === 'retry' || input.rejection === undefined, 'rejection evidence belongs to an explicit retry decision');
+   assert.equal(input.check.cwd, request.cwd, 'check cwd mismatch');
+   assert.ok(request.sourcePaths, 'legacy packet has no source scope; parent migration required');
+   assert.deepEqual(input.check.sourcePaths, request.sourcePaths, 'cannot narrow original source scope');
+   const checked = verifyCheck(input.check, input.receipt);
+   const recovery = {
+-    action: input.action, reason: input.reason,
++    action: input.action, reason: input.reason, requestDigest: record.requestDigest, ...rejection,
+     nativeStatusRef: input.statusPath, nativeDigest: digest(native), childRunId: child.runId,
+     hostReceiptRef: input.receipt, hostReceiptDigest: digest(readJson(input.receipt)),
+     sourceState: 'sha256:' + checked.sourceDigest,
+   };
++  assert.ok(goalStepSettled({...record, recovery}), 'recovery must be consumable by final acceptance');
+   // Host-verified preparation, same single-owner discipline as goal-request.
+   // Keep all original outcome/error fields. Reconciliation is a separate decision.
+   const setupScript = [
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/22-goal-request.mjs
++++ /home/timmypai/.pi/agent/teams/goal-request.mjs
+@@ -3,7 +3,6 @@
+ import { createHash } from "node:crypto";
+ import fs from "node:fs";
+ import path from "node:path";
+-import { spawnSync } from 'node:child_process';
+ import { validateWork } from "./work-contract.mjs";
+ import {
+   snapshot,
+@@ -21,6 +20,8 @@
+     Number.isInteger(input.attempt) && input.attempt >= 1 && input.attempt <= 4,
+     "Attempt must be 1..4",
+   );
++  for (const field of ['taskId', 'phase'])
++    assert.ok(typeof input[field] === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,47}$/.test(input[field]), 'Invalid ' + field);
+   const request = Object.fromEntries(
+     [
+       "goalId",
+@@ -91,6 +92,7 @@
+   assert.ok(input.timeoutMs !== undefined, "parent must choose timeoutMs");
+   assert.ok(Number.isInteger(input.attempt) && input.attempt >= 1 && input.attempt <= 4, 'Attempt must be 1..4');
+   validateWork(input.agent, input.work);
++  prepareGoalRequest({...input, sourceState: 'preflight-only'}, requestRef);
+   const { prepareHandoff } = await import('./handoff-contract.mjs');
+   await prepareHandoff({
+     agent: input.agent, cwd: input.cwd, task: input.task,
+@@ -98,13 +100,6 @@
+     timeoutMs: input.timeoutMs, criteria: input.work.criteria,
+     checks: input.work.checks, work: input.work,
+   });
+-  const readiness = spawnSync(process.execPath, [
+-    new URL('./check-config.mjs', import.meta.url).pathname,
+-    '--roles-only', '--roles=' + input.agent, input.cwd,
+-  ], { encoding: 'utf8', timeout: 30000, maxBuffer: 1024 * 1024,
+-    env: { ...process.env, PI_OFFLINE: '1', PI_MEMORY_EXIT_SUMMARY: 'off' } });
+-  assert.ok(!readiness.error && readiness.status === 0,
+-    'role readiness preflight failed: ' + (readiness.error?.message || readiness.stderr || 'inspect check-config output').slice(0, 2048));
+   const source = snapshot(input.cwd, input.sourcePaths);
+   for (const scope of input.sourcePaths) {
+     const root = path.resolve(input.cwd, scope);
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/23-goal-task-step.js
++++ /home/timmypai/.pi/agent/teams/goal-task-step.js
+@@ -115,19 +115,28 @@
+ if (budget.lastRecord) {
+   const previous = await state.get(budget.lastRecord);
+   if (!previous) throw new Error('Previous record missing; reconcile native receipt first');
+-  if (previous.status !== 'reported') {
+-    const recovery = previous.recovery;
+-    const recoveryValid = recovery &&
+-      ['nativeStatusRef', 'hostReceiptRef'].every(field => typeof recovery[field] === 'string' && recovery[field].startsWith('/')) &&
+-      ['nativeDigest', 'hostReceiptDigest'].every(field => typeof recovery[field] === 'string' && /^[a-f0-9]{64}$/.test(recovery[field])) &&
+-      typeof recovery.childRunId === 'string' && recovery.childRunId.trim() &&
+-      typeof recovery.reason === 'string' && recovery.reason.trim() && recovery.reason.length <= 1024;
+-    if (!recoveryValid || recovery.sourceState !== request.sourceState || !['continue', 'retry'].includes(recovery.action))
+-      throw new Error('Native terminal receipt and parent recovery required; text retry is not replay authority');
+-    if (recovery.action === 'retry') {
+-      if (repairs >= 3) throw new Error('Task/role repair limit reached; do not rename phase or change role to retry');
+-      repairs++;
+-    }
++  // Child reported is not parent acceptance. Every prior slice needs a terminal
++  // disposition; continue is free, evidence-backed retry consumes a repair.
++  const recovery = previous.recovery;
++  const recoveryValid = ['reported', 'blocked', 'dispatching'].includes(previous.status) && recovery &&
++    recovery.requestDigest === previous.requestDigest && /^[a-f0-9]{64}$/.test(previous.requestDigest ?? '') &&
++    ['nativeStatusRef', 'hostReceiptRef'].every(field => typeof recovery[field] === 'string' && recovery[field].startsWith('/')) &&
++    ['nativeDigest', 'hostReceiptDigest'].every(field => typeof recovery[field] === 'string' && /^[a-f0-9]{64}$/.test(recovery[field])) &&
++    typeof recovery.childRunId === 'string' && recovery.childRunId.trim() &&
++    (previous.runId == null || previous.runId === recovery.childRunId) &&
++    typeof recovery.reason === 'string' && recovery.reason.trim() && recovery.reason.length <= 1024;
++  if (recovery?.action === 'report-only')
++    throw new Error('Report-only never authorizes another launch; finish report handling, then prepare explicit continue recovery for genuinely new work');
++  if (!recoveryValid || recovery.sourceState !== request.sourceState || !['continue', 'retry'].includes(recovery.action))
++    throw new Error('Native terminal receipt and parent recovery required; reported is not acceptance and text retry is not replay authority');
++  if (request.retry && recovery.action !== 'retry')
++    throw new Error('Declared repair requires a parent retry disposition, not continue');
++  if (recovery.action === 'retry') {
++    if (previous.outcomes?.product === 'pass' &&
++        !(typeof recovery.rejectionRef === 'string' && recovery.rejectionRef.startsWith('/') && /^[a-f0-9]{64}$/.test(recovery.rejectionDigest ?? '')))
++      throw new Error('Captured pass requires separate parent product-rejection evidence for a repair');
++    if (repairs >= 3) throw new Error('Task/role repair limit reached; do not rename phase or change role to retry');
++    repairs++;
+   }
+ }
+ // Save the bounded intent first: storage failure cannot orphan an active marker.
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/24-handoff-contract.mjs
++++ /home/timmypai/.pi/agent/teams/handoff-contract.mjs
+@@ -3,6 +3,7 @@
+ import fs from "node:fs";
+ import path from "node:path";
+ import { createHash } from "node:crypto";
++import { spawnSync } from 'node:child_process';
+ import { validateWork } from './work-contract.mjs';
+ import { createJiti } from "../npm/node_modules/jiti/lib/jiti.mjs";
+ 
+@@ -231,6 +232,15 @@
+     "valid",
+     "native handoff preflight: " + (probe.message ?? "invalid"),
+   );
++  // Shared by ordinary handoff and Goal preparation; roles-only exits before
++  // check-config's full handoff regression, so this cannot recurse.
++  const readiness = spawnSync(process.execPath, [
++    new URL('./check-config.mjs', import.meta.url).pathname,
++    '--roles-only', '--roles=' + input.agent, input.cwd,
++  ], { encoding: 'utf8', timeout: 30000, maxBuffer: 1024 * 1024,
++    env: { ...process.env, PI_OFFLINE: '1', PI_MEMORY_EXIT_SUMMARY: 'off' } });
++  assert.ok(!readiness.error && readiness.status === 0,
++    'role readiness preflight failed: ' + (readiness.error?.message || readiness.stderr || 'inspect check-config output').slice(0, 2048));
+   return prepared;
+ }
+ 
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/25-host-evidence.mjs
++++ /home/timmypai/.pi/agent/teams/host-evidence.mjs
+@@ -64,6 +64,12 @@
+   } finally {
+     fs.closeSync(fd);
+   }
++}
++export function evidenceDigest(file) {
++  assert.ok(path.isAbsolute(file), 'absolute evidence path required');
++  const bytes = readBytes(file);
++  assert.ok(bytes.length > 0, 'empty evidence artifact');
++  return sha(bytes);
+ }
+ function readJson(file) {
+   try {
+@@ -431,6 +437,22 @@
+     assert.equal(contractDigest, digest, "acceptance contract changed");
+   return { contract, root, decision, contractDigest, file };
+ }
++// A parent reconciliation settles execution, not product acceptance. Historical
++// source may change after a repair; never rerun historical checks to settle it.
++export function goalStepSettled(record) {
++  const recovery = record?.recovery;
++  return !!(record && ['reported', 'blocked', 'dispatching'].includes(record.status) &&
++    recovery && ['continue', 'retry', 'report-only'].includes(recovery.action) &&
++    recovery.requestDigest === record.requestDigest && /^[a-f0-9]{64}$/.test(record.requestDigest ?? '') &&
++    ['nativeStatusRef', 'hostReceiptRef'].every(field => typeof recovery[field] === 'string' && recovery[field].startsWith('/')) &&
++    ['nativeDigest', 'hostReceiptDigest'].every(field => typeof recovery[field] === 'string' && /^[a-f0-9]{64}$/.test(recovery[field])) &&
++    typeof recovery.childRunId === 'string' && recovery.childRunId.trim() &&
++    (record.runId == null || record.runId === recovery.childRunId) &&
++    typeof recovery.sourceState === 'string' && recovery.sourceState.trim() &&
++    (recovery.action !== 'retry' || record.outcomes?.product !== 'pass' ||
++      (typeof recovery.rejectionRef === 'string' && recovery.rejectionRef.startsWith('/') && /^[a-f0-9]{64}$/.test(recovery.rejectionDigest ?? ''))) &&
++    typeof recovery.reason === 'string' && recovery.reason.trim() && recovery.reason.length <= 1024);
++}
+ function missionSettled(contract) {
+   if (!contract.mission) return;
+   const { id, statePath } = contract.mission;
+@@ -459,10 +481,7 @@
+   for (const [key, value] of Object.entries(state))
+     if (key.startsWith("goal-step.")) {
+       assert.ok(
+-        value &&
+-          ["reported", "blocked"].includes(value.status) &&
+-          typeof value.runId === "string" &&
+-          value.runId.trim(),
++        goalStepSettled(value),
+         "unresolved retained step: " + key,
+       );
+     }

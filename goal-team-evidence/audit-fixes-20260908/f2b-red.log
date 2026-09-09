@@ -1,0 +1,25 @@
+✖ unreconciled failure with a runId cannot pass merely by clearing the marker (29.291337ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 127.850818
+
+✖ failing tests:
+
+test at ../../.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/reconciliation.test.mjs:63:1
+✖ unreconciled failure with a runId cannot pass merely by clearing the marker (29.291337ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/reconciliation.test.mjs:67:9)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /unresolved retained step/,
+    operator: 'throws',
+    diff: 'simple'
+  }

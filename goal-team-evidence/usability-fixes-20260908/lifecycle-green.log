@@ -1,0 +1,11 @@
+✔ four successful new candidate slices need no retry permission (3.165395ms)
+✔ captured-report failure cannot relaunch with a free-text report-fix reason (0.474336ms)
+✔ throw preserves unknown execution and error without promoting to product pass (0.308882ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 46.147086

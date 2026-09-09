@@ -1,0 +1,126 @@
+{
+  "createdAt": "2026-09-05T11:23:23.207926+00:00",
+  "scope": "Global Pi configuration migration; no new-team model E2E or deployment",
+  "backup": "/home/timmypai/.pi/backups/agent-teams-20260905-185915",
+  "files": [
+    {
+      "path": "/home/timmypai/.pi/agent/AGENTS.md",
+      "sha256": "65151c723c6afdf4047b9ee498f6ba6baae569a33b67dfbf1cb55d19bc2f976d"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/agents/team.advisor.md",
+      "sha256": "b0d7e980296ac8557cfa11a775e7f441dd087afbd8c7eb370835063ed3f99e4a"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/agents/team.challenger.md",
+      "sha256": "8df30024d3424b4739a3c1c075f719775a008cb87642b4a3ae18e56e3d5aee29"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/agents/team.curator.md",
+      "sha256": "ad0bad0a8081c0400965e421bea92af89d368f7c503ec293b2fbf686281e63fa"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/agents/team.docs.md",
+      "sha256": "bfa2243422824087dbc79b3115ef5c2b80ad77c7e8116a38b298d195d827c190"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/agents/team.e2e.md",
+      "sha256": "0a3db48ea463b8e058dd66d549788980a051ed20af5e7e2dad4b238378d66865"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/agents/team.implementer.md",
+      "sha256": "14f6e3e697b84274f40c022e416a15c473b7e0a6538cd085f804369b28ba24fb"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/agents/team.planner.md",
+      "sha256": "a49c20ef029475ee7ffecc1574e14313c1b4d13af260882f87528c796926f515"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/agents/team.qa.md",
+      "sha256": "adb180d8ff72021fe1d98619af5b789ef037c01f61ece2b5a3c13b21b394a6f8"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/agents/team.release.md",
+      "sha256": "e78ccd2293c258f1aa58801cefd892aad584b8fd9f67570766646f4c38e98c36"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/agents/team.researcher.md",
+      "sha256": "472aef37b5c8b9d73b129c253c5140e6eef1ed1da6d6cf32bc8625c577ff4297"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/agents/team.reviewer.md",
+      "sha256": "1cc5d18a3926fb50f4069f9053b4b0bcd21b3b81ce1398b162efce53564cc55e"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/agents/team.security.md",
+      "sha256": "b67fad34d22239da60c85ce9de1bda8b26464c2b1748a43d17450eb70d56f76e"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/agents/team.verifier.md",
+      "sha256": "6cafc61d1788241045d7c99f4eab1727b0e04522e41a7a59f68aec11bdda73d9"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/extensions/subagent/config.json",
+      "sha256": "1ecac572db2aed082c3aa6ec5c9957fd756b78cb5eeebb9997e364e6e0aae125"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/mcp.json",
+      "sha256": "c895339eb7dda4a8c836d4eadadf5813a911a04233d00adc6170f92817807104"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/prompts/team-audit.md",
+      "sha256": "4a28dc8130d3042e0ef5e1dc35302742843f51b2d65de9738181618e304b8324"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/prompts/team.md",
+      "sha256": "0fe8b4310e0b44597bdd4237cd7f723e53d1efe7faad3c6d7036c8a26990dc9d"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/settings.json",
+      "sha256": "f9a7f87693954f1b00e9e227a4b1e3f9f32d8d470659ce12665f29fa7d69fe57"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/skills/team-flow/SKILL.md",
+      "sha256": "d916f428397711b9a537171337d5f35a6424cb0f1929a6f5619754bce9490225"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/skills/team-member/SKILL.md",
+      "sha256": "20270081522d79482aaf5d56a7511bf38c1d26acd67af0e5623c965e698f2622"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/OPERATING-MODEL.md",
+      "sha256": "2ad2714cd912c405012c414ad482644743c75ea1e5869679546693ec0100c60d"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/backup-path.txt",
+      "sha256": "48612fe5994d873e5f2275dc244fa91fcb57370581fbb2a5d973da82d736770e"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/check-config.mjs",
+      "sha256": "ea7e2a6372e57265bcfeb79c054ca0cc902c805f658d775750cc2df4d1eb6f98"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/gate-candidate.js",
+      "sha256": "5042c46c895b195e52d8336ff7fe6333ddd4fb712e4d1eae10b6a63a9fae1e6e"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/skill-catalog.json",
+      "sha256": "d7b4d822667dc9c4926470119700cd63864d3b1590aba66f49ed8def00d7f7e1"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/validation-home.json",
+      "sha256": "b38805b9cccc6e06f0cb65f01e6e681bbf02a7ef98ed15e0744320a1ac7718a1"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/validation.json",
+      "sha256": "c9e0805c33b42633aae7924e1ef78d0f7519e5dc28a922e6b460b3f9103f42c5"
+    },
+    {
+      "path": "/home/timmypai/.pi/settings.json",
+      "sha256": "1308d769be7310f4dc1d4e33c0a90a9c9c7c64b87dbb5aed13cdb371db970036"
+    }
+  ],
+  "updatedAt": "2026-09-05T11:34:19.481886+00:00",
+  "routingRevision": "Luna routine / Terra review / Astra advisor-only",
+  "routingBackup": "/home/timmypai/.pi/backups/team-model-routing-20260905-192801"
+}

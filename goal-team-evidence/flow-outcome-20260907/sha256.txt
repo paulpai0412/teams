@@ -1,0 +1,6 @@
+c103befc5628751e0f70129c7a8b97fb3e4780565f8969dd9282d3787a0fc21c  /home/timmypai/.pi/agent/teams/check-config.mjs
+5a55282ef56d0e2052d3f26950cc0579c622b520fc9ec67061a79f5db7e7c383  /home/timmypai/.pi/agent/teams/check-selected-role-preflight.mjs
+8091bf26f9fd5d253848ca74f4201b374c8c965ce59a07e0fe759283c396ece6  /home/timmypai/.pi/agent/teams/HANDOFF-PRACTICE.md
+824e2ecf76eb600bf992b8f2a8cfd29192ebfdd97d684da63cac2393a693171b  /home/timmypai/.pi/agent/teams/OUTCOME-PRACTICE.md
+9f3e51eb52af58253e2af39603e86cf70e7e69348505567075436d61ed7d1708  /home/timmypai/.pi/agent/teams/OPERATING-MODEL.md
+48aeac0908b7c7f61a1bdbf30cce928dce812b49df460d50a71464f469cd1aac  /home/timmypai/.pi/agent/skills/team-flow/SKILL.md

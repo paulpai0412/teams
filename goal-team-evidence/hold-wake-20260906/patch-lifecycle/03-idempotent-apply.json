@@ -1,0 +1,4 @@
+{
+  "status": "ALREADY_APPLIED",
+  "validation": "{\"status\":\"PASS\",\"cases\":22,\"sourceRoot\":\"/tmp/goal-hold-patch-fixture.crh8JG/extensions\",\"measurements\":{\"checkpointWhileHeld\":0,\"nativeWakeCount\":1,\"bridgeWakeCount\":0,\"checkpointAfterRelease\":1},\"boundaries\":[\"Actual installed GoalRuntime, GoalTeamHold, and registerGoalEvents are loaded through jiti.\",\"Pi event bus, session context, native status artifacts, and notifier wake count are deterministic local fixtures; no model child is launched.\"]}"
+}

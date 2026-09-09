@@ -1,0 +1,60 @@
+{
+  "files": [
+    {
+      "path": "/home/timmypai/.pi/agent/skills/docs-generator/SKILL.md",
+      "before": null,
+      "after": "/home/timmypai/.pi/agent/teams/goal-team-evidence/skills-ready-20260908/after/docs-generator.SKILL.md",
+      "preSha256": null,
+      "postSha256": "a860372eda18ab2f8a5ebe5213fc38861eff6e77ced3be8d402dc8924ed49c00"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/skills/browser-automation/SKILL.md",
+      "before": null,
+      "after": "/home/timmypai/.pi/agent/teams/goal-team-evidence/skills-ready-20260908/after/browser-automation.SKILL.md",
+      "preSha256": null,
+      "postSha256": "b49cd2531fcc8662c9f47fef2954a6479e08701ca62c2a167026465b229416aa"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/skills/supply-chain-security/SKILL.md",
+      "before": null,
+      "after": "/home/timmypai/.pi/agent/teams/goal-team-evidence/skills-ready-20260908/after/supply-chain-security.SKILL.md",
+      "preSha256": null,
+      "postSha256": "9920a54d310d2e3975ddad6013634fb797789b31eaac069a4a95dcf622a6a769"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/skills/code-audit/SKILL.md",
+      "before": null,
+      "after": "/home/timmypai/.pi/agent/teams/goal-team-evidence/skills-ready-20260908/after/code-audit.SKILL.md",
+      "preSha256": null,
+      "postSha256": "f1cb36d20941bdedd17544179dd4e2eaa2d52b966b46112d3258e0ac5dcc7e40"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/skills/llm-security/SKILL.md",
+      "before": null,
+      "after": "/home/timmypai/.pi/agent/teams/goal-team-evidence/skills-ready-20260908/after/llm-security.SKILL.md",
+      "preSha256": null,
+      "postSha256": "79489a9587058b54c2f0a666ec762405957005827d65ee03a249a1f81b7cb73a"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/skill-catalog.json",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/skills-ready-20260908/skill-catalog.before.json",
+      "after": "/home/timmypai/.pi/agent/teams/goal-team-evidence/skills-ready-20260908/after/skill-catalog.json",
+      "preSha256": "e719280dba16e0419241c3e95e74b622f37ae36045ee5a2df83e689b84b948c6",
+      "postSha256": "6e35ba02922f04ae999c615895f757c3c95cf851e6ec0e42bc1a8c90404256af"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/check-config.mjs",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/skills-ready-20260908/check-config.before.mjs",
+      "after": "/home/timmypai/.pi/agent/teams/goal-team-evidence/skills-ready-20260908/after/check-config.mjs",
+      "preSha256": "e55f3aea58799ebd498e3ae4c85b2c58b4a02bf74b0b56bceea816a1e35bdae2",
+      "postSha256": "1ae169bed8fb5eaf7d6ff41e05809dffb001e749239cc389c8d2d6b30b16f711"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/goal-team-evidence/skills-ready-20260908/check-skills.mjs",
+      "before": null,
+      "after": "/home/timmypai/.pi/agent/teams/goal-team-evidence/skills-ready-20260908/after/check-skills.mjs",
+      "preSha256": null,
+      "postSha256": "bfdfa82d52c113a35af97be3fae8392f827febe36c97801da39b46218851867c"
+    }
+  ]
+}

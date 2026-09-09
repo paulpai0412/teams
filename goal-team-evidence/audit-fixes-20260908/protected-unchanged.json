@@ -1,0 +1,65 @@
+{
+  "verified": 15,
+  "files": [
+    {
+      "path": "/home/timmypai/.pi/agent/agents/team.advisor.md",
+      "sha256": "dea0438d64f4c9228fab69a2460143765655357b3c2ba5337c224175e5fd2c99"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/agents/team.challenger.md",
+      "sha256": "ff9f97e79903593cf36d8e535578d47a70817fa17cd389da4b96ee303c0bfb57"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/agents/team.curator.md",
+      "sha256": "eac3759773cbaa5a8f41b4047414784c660a921ead188f6dca70e4ddf7ddb963"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/agents/team.debugger.md",
+      "sha256": "e26725ef2f8355963d18ac6793d8107bbc8be0335a8000c9bcc2d8321cbf884c"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/agents/team.docs.md",
+      "sha256": "9b496af581b267fc967ab077ba97bec70ed4132c2966d6ca37c3d473407ac942"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/agents/team.e2e.md",
+      "sha256": "3db00a8c0e734244b1f3d9188bd4c91a644e0c98f0a1e44294b2dec68be2bb21"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/agents/team.implementer.md",
+      "sha256": "9bd9f05434bd2d7010098406fb0988e3822a6e6d3a163e596acbb271558b75be"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/agents/team.planner.md",
+      "sha256": "359f846e7e9f4649341347998c76a1f2bc4ba0ffe333fa2eb497d118b6ad7ac9"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/agents/team.qa.md",
+      "sha256": "f7ca968cad1532b2a673d277ce8fc68dd688fd83a368d137415f0de0d7784cb8"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/agents/team.release.md",
+      "sha256": "9ea300b25516f619fbfa60cb876cd49c0415f6b336a16adf39d8049fdf02bab7"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/agents/team.researcher.md",
+      "sha256": "e7577cad724299f0b161b56e2993c4c591463f64b3346e4222e63e2f5506781c"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/agents/team.reviewer.md",
+      "sha256": "fcac94e50c320bd64ab81f269a954b38cf6bea535a9c326228b130562bb0f5d5"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/agents/team.security.md",
+      "sha256": "cd24a2d204b3a58eaa999e7066d8409542090e18326dc5b62042c3c313aaa672"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/agents/team.verifier.md",
+      "sha256": "f7fbd54e635ba29fa36abb730e00d86f66ebec92d67df337c499fa5789d02bb8"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/settings.json",
+      "sha256": "f51c575981222e43f3ee036271be6ced07ec10004a707ec842102b99da66ec0c"
+    }
+  ]
+}

@@ -1,0 +1,256 @@
+--- before/goal-team-hold.ts
++++ after/goal-team-hold.ts
+@@ -19,6 +19,9 @@
+ 	goalId: string;
+ 	taskId: string;
+ 	sessionId: string;
++	/** Parent session ownership; legacy entries use cwd for both identities. */
++	ownerCwd?: string;
++	/** Native child execution directory. */
+ 	cwd: string;
+ 	toolCallId: string;
+ 	runId: string;
+@@ -62,6 +65,7 @@
+ 	goalId: string;
+ 	taskId: string;
+ 	sessionId: string;
++	ownerCwd: string;
+ 	cwd: string;
+ 	toolCallId: string;
+ }
+@@ -81,6 +85,7 @@
+ 		&& left.taskId === right.taskId
+ 		&& left.sessionId === right.sessionId
+ 		&& left.cwd === right.cwd
++		&& (left.ownerCwd ?? left.cwd) === (right.ownerCwd ?? right.cwd)
+ 		&& left.toolCallId === right.toolCallId
+ 		&& left.runId === right.runId
+ 		&& left.asyncDir === right.asyncDir
+@@ -94,6 +99,7 @@
+ 		if (!text(input[field])) return null;
+ 	}
+ 	if (!isAbsolute(input.cwd as string) || !isAbsolute(input.asyncDir as string)) return null;
++	if (input.ownerCwd !== undefined && (!text(input.ownerCwd) || !isAbsolute(input.ownerCwd))) return null;
+ 	if (!ID_PATTERN.test(input.runId as string)) return null;
+ 	return {
+ 		version: 1,
+@@ -101,6 +107,7 @@
+ 		taskId: input.taskId as string,
+ 		sessionId: input.sessionId as string,
+ 		cwd: input.cwd as string,
++		...(input.ownerCwd !== undefined ? { ownerCwd: input.ownerCwd as string } : {}),
+ 		toolCallId: input.toolCallId as string,
+ 		runId: input.runId as string,
+ 		asyncDir: resolve(input.asyncDir as string),
+@@ -128,7 +135,7 @@
+ 	const latest = new Map<string, GoalTeamHoldEntry>();
+ 	for (const value of entries) {
+ 		const entry = normalizeEntry(value);
+-		if (!entry || entry.binding.goalId !== goalId || entry.binding.cwd !== cwd
++		if (!entry || entry.binding.goalId !== goalId || (entry.binding.ownerCwd ?? entry.binding.cwd) !== cwd
+ 			|| (taskId !== undefined && entry.binding.taskId !== taskId)) continue;
+ 		latest.set(entry.binding.runId, entry);
+ 	}
+@@ -145,7 +152,7 @@
+ }
+ 
+ function currentMatches(
+-	binding: Pick<GoalTeamRunBinding, "goalId" | "taskId" | "sessionId" | "cwd">,
++	binding: Pick<GoalTeamRunBinding, "goalId" | "taskId" | "sessionId" | "cwd" | "ownerCwd">,
+ 	goal: GoalRecord | null,
+ 	sessionId: string | null,
+ 	cwd: string,
+@@ -158,7 +165,7 @@
+ 		&& binding.goalId === goal.id
+ 		&& binding.taskId === goal.currentTaskId
+ 		&& binding.sessionId === sessionId
+-		&& binding.cwd === cwd,
++		&& (binding.ownerCwd ?? binding.cwd) === cwd,
+ 	);
+ }
+ 
+@@ -299,7 +306,10 @@
+ 		const sessionId = this.deps.sessionId();
+ 		const cwd = this.deps.cwd();
+ 		if (!text(sessionId) || (requested.sessionId !== undefined && requested.sessionId !== sessionId)) return false;
++		// Derive owner identity from the host, never from caller-supplied binding data.
++		if (!isAbsolute(cwd) || resolve(requested.cwd) !== resolve(text(args.cwd) ? args.cwd : cwd)) return false;
+ 		const proposed = {
++			ownerCwd: cwd,
+ 			goalId: requested.goalId,
+ 			taskId: requested.taskId,
+ 			sessionId,
+@@ -325,6 +335,7 @@
+ 			goalId: pending.goalId,
+ 			taskId: pending.taskId,
+ 			sessionId: pending.sessionId,
++			ownerCwd: pending.ownerCwd,
+ 			cwd: pending.cwd,
+ 			toolCallId: pending.toolCallId,
+ 			runId: output.runId,
+--- before/subagent-prompt-runtime.ts
++++ after/subagent-prompt-runtime.ts
+@@ -473,6 +473,10 @@
+ 	const childIndex = Number(process.env[SUBAGENT_CHILD_INDEX_ENV]);
+ 	const pending = new Map<string, Array<{ request: SteerRequest; deliveryStatus: SteerDeliveryStatus }>>();
+ 	const queued: Array<{ request: SteerRequest; ready: boolean }> = [];
++	// Keep parent guidance outside Pi's queue until a structured step's safe boundary.
++	const structuredStep = Boolean(process.env[STRUCTURED_OUTPUT_CAPTURE_ENV]);
++	const deferred: SteerRequest[] = [];
++	let reportCaptured = false;
+ 	let disposed = false;
+ 	let agentRunning = false;
+ 	let inTurn = false;
+@@ -504,9 +508,22 @@
+ 		if (disposed || flushing) return;
+ 		flushing = true;
+ 		try {
+-			const requests = consumeSteerRequestsFromDir(steerInbox);
++			const incoming = consumeSteerRequestsFromDir(steerInbox);
++			const requests = structuredStep && inTurn && !reportCaptured ? incoming : [...deferred.splice(0), ...incoming];
+ 			for (let index = 0; index < requests.length; index++) {
+ 				const request = requests[index]!;
++				if (reportCaptured) {
++					acknowledge(request, "failed", "Structured report already captured; reconcile the terminal result instead of steering this step.");
++					continue;
++				}
++				if (structuredStep && inTurn) {
++					if (deferred.length >= MAX_STEER_QUEUE_SIZE) acknowledge(request, "failed", "Structured-step guidance queue is full.");
++					else {
++						deferred.push(request);
++						acknowledge(request, "queued", "Guidance retained until the current structured-step turn finishes.", "queued");
++					}
++					continue;
++				}
+ 				if (!canSteer || typeof sendUserMessage !== "function") {
+ 					acknowledge(request, "failed", "Child Pi session does not support sendUserMessage steering.");
+ 					continue;
+@@ -670,10 +687,16 @@
+ 		for (const entry of queued) entry.ready = true;
+ 		return activate();
+ 	});
+-	for (const eventName of ["message_start", "message_update", "message_end", "tool_execution_start", "tool_execution_end"] as const) {
++	onRuntimeEvent("tool_execution_end", (event) => {
++		const result = event as { toolName?: string; isError?: boolean; result?: { terminate?: boolean } };
++		if (structuredStep && result.toolName === "structured_output" && result.isError === false && result.result?.terminate === true) reportCaptured = true;
++		return activate();
++	});
++	for (const eventName of ["message_start", "message_update", "message_end", "tool_execution_start"] as const) {
+ 		onRuntimeEvent(eventName, activate);
+ 	}
+ 	onRuntimeEvent("session_shutdown", () => {
++		for (const request of deferred.splice(0)) acknowledge(request, "failed", "Run ended before the structured-step guidance boundary.");
+ 		for (const entry of queued) acknowledge(entry.request, "failed", "Run ended before queued follow-up delivery.", "queued");
+ 		for (const entries of pending.values()) {
+ 			for (const entry of entries) acknowledge(entry.request, "failed", "Run ended before Pi confirmed steering input delivery.");
+--- before/subagent-runner.ts
++++ after/subagent-runner.ts
+@@ -1875,7 +1875,11 @@
+ 		let structuredOutput: unknown;
+ 		let structuredError: string | undefined;
+ 		let validatedStructuredOutput = false;
+-		if (effectiveStructuredOutput && run.exitCode === 0 && !run.error && !toolAvailabilityError && !midToolExitError) {
++		const capturedReport = Boolean(effectiveStructuredOutput) && run.messages.some((message) => message.role === "toolResult"
++			&& message.toolName === "structured_output" && message.isError === false);
++		// A captured report is evidence even on failure, never proof the run succeeded.
++		if (effectiveStructuredOutput && !run.timedOut && !run.stopped
++			&& (capturedReport || (run.exitCode === 0 && !run.error && !toolAvailabilityError && !midToolExitError))) {
+ 			if (!run.structuredOutputToolInvoked) {
+ 				structuredError = MISSING_STRUCTURED_OUTPUT_CALL_ERROR;
+ 			} else {
+@@ -1890,7 +1894,7 @@
+ 					const acceptanceReport = readStructuredOutputAcceptanceReport(effectiveStructuredOutput);
+ 					structuredAcceptanceReport = acceptanceReport.value;
+ 					structuredAcceptanceReportError = acceptanceReport.error;
+-					validatedStructuredOutput = true;
++					validatedStructuredOutput = run.exitCode === 0 && !run.error && !toolAvailabilityError && !midToolExitError;
+ 				}
+ 			}
+ 		}
+@@ -1964,8 +1968,7 @@
+ 		})) ? formatProcessSignalError(run.processSignal!) : undefined;
+ 		const underlyingError = toolAvailabilityError
+ 			?? midToolExitError
+-			?? structuredError
+-			?? run.error
++			?? (run.error && structuredError ? `${run.error}\nReport validation failed: ${structuredError}` : structuredError ?? run.error)
+ 			?? signalError
+ 			?? (run.exitCode !== 0 && run.stderr.trim() ? run.stderr.trim() : undefined)
+ 			?? ((emptyOutputError || missingRequiredOutputError) && run.stderr.trim() ? run.stderr.trim() : undefined)
+@@ -1976,13 +1979,16 @@
+ 					? `${hiddenError.errorType} failed (exit ${effectiveExitCode}): ${hiddenError.details}`
+ 					: `${hiddenError.errorType} failed with exit code ${effectiveExitCode}`
+ 				: undefined);
+-		const error = formatSubagentExtensionConflictError(
++		const executionError = formatSubagentExtensionConflictError(
+ 			underlyingError ?? missingRequiredOutputError ?? completionEvidence.legacyFailureError,
+ 			{
+ 				agent: step.agent,
+ 				ambientExtensionsEnabled: launchResolvedExtensions?.disableAmbientExtensions === false,
+ 			},
+ 		);
++		const error = executionError && structuredOutput !== undefined && effectiveStructuredOutput
++			? `${executionError}\n\nCaptured structured report (not accepted): ${effectiveStructuredOutput.outputPath}\nReconcile this report and the execution failure before considering another run.`
++			: executionError;
+ 		const attempt: ModelAttempt = omitUndefinedProperties({
+ 			model: candidate ?? run.model ?? step.model ?? "default",
+ 			success: effectiveExitCode === 0 && !error,
+@@ -2009,6 +2015,8 @@
+ 		});
+ 		const fileMutationEffect = completionEvidence.fileMutation ?? (missingRequiredOutputAfterMutation ? { status: "observed" as const, expected: completionEvidence.mutationExpected, attempted: true, evidence: mutationEvidence } : undefined);
+ 		finalResult = { ...run, exitCode: effectiveExitCode, model: candidate ?? run.model, error, structuredOutput, runtimeAcknowledgedExtensions, ...(step.agentContract ? { agentContract: step.agentContract } : {}), ...(fileMutationEffect || settlementDiagnostic ? { effects: { ...(fileMutationEffect ? { fileMutation: fileMutationEffect } : {}), ...(settlementDiagnostic ? { settlementDiagnostic } : {}) } } : {}) } as RunPiStreamingResult;
++		// Never replay useful work merely to recover a terminal report envelope.
++		if (capturedReport) break modelAttemptsLoop;
+ 		const abortRecovery = !attempt.success ? planAbortRecovery({
+ 			messages: run.messages,
+ 			error,
+--- before/execution.ts
++++ after/execution.ts
+@@ -1524,7 +1524,10 @@
+ 		result.exitCode = 1;
+ 	}
+ 	let validatedStructuredOutput = false;
+-	if (options.structuredOutput && result.exitCode === 0 && !result.error) {
++	const capturedReport = Boolean(options.structuredOutput) && (result.messages ?? []).some((message) => message.role === "toolResult"
++		&& message.toolName === "structured_output" && message.isError === false);
++	if (options.structuredOutput && !result.timedOut && !result.stopped
++		&& (capturedReport || (result.exitCode === 0 && !result.error))) {
+ 		result.structuredOutputSchemaPath = options.structuredOutput.schemaPath;
+ 		result.structuredOutputPath = options.structuredOutput.outputPath;
+ 		if (!structuredOutputToolInvoked) {
+@@ -1539,14 +1542,14 @@
+ 			});
+ 			if (structured.error) {
+ 				result.exitCode = 1;
+-				result.error = structured.error;
++				result.error = result.error ? `${result.error}\nReport validation failed: ${structured.error}` : structured.error;
+ 				result.structuredOutputFailed = true;
+ 			} else {
+ 				result.structuredOutput = structured.value;
+ 				const acceptanceReport = readStructuredOutputAcceptanceReport(options.structuredOutput);
+ 				(result as SingleResult & { structuredAcceptanceReport?: unknown; structuredAcceptanceReportError?: string }).structuredAcceptanceReport = acceptanceReport.value;
+ 				(result as SingleResult & { structuredAcceptanceReport?: unknown; structuredAcceptanceReportError?: string }).structuredAcceptanceReportError = acceptanceReport.error;
+-				validatedStructuredOutput = true;
++				validatedStructuredOutput = result.exitCode === 0 && !result.error;
+ 			}
+ 		}
+ 	}
+@@ -1572,6 +1575,9 @@
+ 		}
+ 	}
+ 
++	if (result.error && result.structuredOutput !== undefined && result.structuredOutputPath) {
++		result.error += `\n\nCaptured structured report (not accepted): ${result.structuredOutputPath}\nReconcile this report and the execution failure before considering another run.`;
++	}
+ 	progress.status = result.exitCode === 0 ? "completed" : "failed";
+ 	progress.durationMs = Date.now() - startTime;
+ 	if (result.error) {
+@@ -2038,6 +2044,8 @@
+ 				usage: { ...result.usage },
+ 			};
+ 			modelAttempts.push(attempt);
++			if (options.structuredOutput && (result.messages ?? []).some((message) => message.role === "toolResult"
++				&& message.toolName === "structured_output" && message.isError === false)) break modelAttemptsLoop;
+ 			if (!attemptSucceeded) {
+ 				const afterCompactionSettlement = (result as AbortRecoverySingleResult)[AFTER_COMPACTION_SETTLEMENT];
+ 				const abortRecovery = planAbortRecovery({

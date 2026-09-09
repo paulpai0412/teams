@@ -1,0 +1,139 @@
+{
+  "files": [
+    {
+      "path": "/home/timmypai/.pi/agent/npm/node_modules/pi-goal-x/extensions/goal-team-evidence.mjs",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/00-goal-team-evidence.mjs",
+      "preSha256": "32386d8fe1fd3687841709b6bbf129ca0ea8c9021016f1c7ca17dc36a3cf01dd"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/skills/team-flow/SKILL.md",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/01-SKILL.md",
+      "preSha256": "b4522682be5a6b852261e68bd61eac0f469c3821ce925bb885b290561d3b49b8"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/CHECKPOINT-REVIEW-DESIGN.md",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/02-CHECKPOINT-REVIEW-DESIGN.md",
+      "preSha256": "635b31147d4b4b0898eb4bfb65b854e584a1715ca134b21a8f0bb852831510c3"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/EFFICIENCY-CONTRACT.md",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/03-EFFICIENCY-CONTRACT.md",
+      "preSha256": "fbcdd6178ea6c96f266c3bf70ae257fab8bf5444f42de8c52142fd9cf8d27e47"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/EVIDENCE-PRACTICE.md",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/04-EVIDENCE-PRACTICE.md",
+      "preSha256": "33d470e461f2578cab9033cb0c715041053d4201e6ef9addd713dc5c0f9e157e"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/GOAL-TEAMS.md",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/05-GOAL-TEAMS.md",
+      "preSha256": "fd42c86524665531a547878e4f0832271a01d655548e43867cda21bf2eb49d60"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/HANDOFF-PRACTICE.md",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/06-HANDOFF-PRACTICE.md",
+      "preSha256": "91d360b19864a0790b6a3272e602d0c245263fc42da5ad085d83ca8fb7e5209c"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/OPERATING-MODEL.md",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/07-OPERATING-MODEL.md",
+      "preSha256": "6f656c274d99305d1809769f6bd40eed26a3ea1ae86c171e12666283a43eab9c"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/OUTCOME-PRACTICE.md",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/08-OUTCOME-PRACTICE.md",
+      "preSha256": "824e2ecf76eb600bf992b8f2a8cfd29192ebfdd97d684da63cac2393a693171b"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/check-config.mjs",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/09-check-config.mjs",
+      "preSha256": "1ae169bed8fb5eaf7d6ff41e05809dffb001e749239cc389c8d2d6b30b16f711"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/check-goal-completion.mjs",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/10-check-goal-completion.mjs",
+      "preSha256": "a6e46dfb0077512f7256cdb8fb3600887ec10b08a5dd03a48a2c0898ef1c0962"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/check-goal-dispatch.mjs",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/11-check-goal-dispatch.mjs",
+      "preSha256": "aa8f442e8f50b41bfc9bfd6c48c08886b44cd0328c9f56a17c6e63f93ae02316"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/check-goal-hold-wake.mjs",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/12-check-goal-hold-wake.mjs",
+      "preSha256": "93027e49926c2ad981e33e09f99aff4a799a20275499affe9ca93c23dabd3d6f"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/check-goal-step-storage.mjs",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/13-check-goal-step-storage.mjs",
+      "preSha256": "8c589e1938c8459ced77b1f56ab0bfd609e91f76229aedf03dd2f2fbbadaf03c"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/check-goal-team.mjs",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/14-check-goal-team.mjs",
+      "preSha256": "d04e21c67dccd252948f928581a347eabfdb7f84f73c0610bdb5423938241e92"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/check-handoff-contract.mjs",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/15-check-handoff-contract.mjs",
+      "preSha256": "bd60c7d71da537c206807cb90dba024be26dece08349367fcc0ee0a9c765ca6c"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/check-host-evidence.mjs",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/16-check-host-evidence.mjs",
+      "preSha256": "17d5598820a999183559a9476bed1894a2c9c6a5f08590656318af91980cc444"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/check-reliability-patch.mjs",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/17-check-reliability-patch.mjs",
+      "preSha256": "3b873b25090ffc16454e9e2d2dd816844494b78524783021c30b2180f560d4bf"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/check-selected-role-preflight.mjs",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/18-check-selected-role-preflight.mjs",
+      "preSha256": "f23e6e77ab6247f20b61e85ecd1e3812c803faf747a8450863e3c6e12b7b44a9"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/check-team-outcomes.mjs",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/19-check-team-outcomes.mjs",
+      "preSha256": "4b20f7627061bf7affe4ed819752acbd89165a855f99883d75d8b124c7ef1b67"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/gate-candidate.js",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/20-gate-candidate.js",
+      "preSha256": "5bcc8b989e8ce468fa1307f6c82bf46bc9275f0453bbea3b9fa79e5bdda60ef3"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/goal-recovery.mjs",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/21-goal-recovery.mjs",
+      "preSha256": "a941a255107352cc0eba798b6bd91e54e50ac3819389483d28f4f95cdce16be2"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/goal-request.mjs",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/22-goal-request.mjs",
+      "preSha256": "a129455a32c9288a8c26337c6246325a9310126c21671217ef54e33c6d382068"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/goal-task-step.js",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/23-goal-task-step.js",
+      "preSha256": "15108bd95ab3a471882cc8ad8f2920a5de0c7f49031b09389094a08ad3baf641"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/handoff-contract.mjs",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/24-handoff-contract.mjs",
+      "preSha256": "078ab9f6b92d179a6a91864a08ddbe29edabf01236709ef859e6256c136bbef5"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/host-evidence.mjs",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/25-host-evidence.mjs",
+      "preSha256": "32386d8fe1fd3687841709b6bbf129ca0ea8c9021016f1c7ca17dc36a3cf01dd"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/work-contract.mjs",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/26-work-contract.mjs",
+      "preSha256": "ddd9859dec724d3fbd17b1f52642fd4abb64989e0a2e2da59832e3414b01f392"
+    }
+  ]
+}

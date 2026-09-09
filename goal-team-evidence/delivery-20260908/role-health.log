@@ -1,0 +1,4 @@
+team.docs missing skill: docs-generator
+team.e2e missing skill: browser-automation
+team.release missing skill: supply-chain-security
+team.security missing skill: code-audit, llm-security, supply-chain-security

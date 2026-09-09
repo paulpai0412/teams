@@ -1,0 +1,19 @@
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: handoff failure must not replay completed work
+
+2 !== 0
+
+    at checkOutcomeGate (file:///home/timmypai/.pi/agent/teams/check-team-outcomes.mjs:48:10)
+    at async file:///home/timmypai/.pi/agent/teams/check-team-outcomes.mjs:54:52 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: 2,
+  expected: 0,
+  operator: 'strictEqual',
+  diff: 'simple'
+}
+
+Node.js v24.18.0

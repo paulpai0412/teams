@@ -1,0 +1,9 @@
+{
+  "status": "verified",
+  "files": 53,
+  "scope": "known base/delta/runtime/helper overlays only",
+  "limitations": [
+    "not a fresh-install or upgrade installer",
+    "legacy wrappers correctly reject superseded hashes; never bypass them"
+  ]
+}

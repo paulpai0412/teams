@@ -1,0 +1,26 @@
+✔ CLI still prepares valid attempts without launching a child (3379.871479ms)
+✔ CLI rejects out-of-budget attempts before creating dispatch artifacts (355.694291ms)
+✔ work/checks reach the child and summary-only cannot pass a contracted review (2.422587ms)
+✔ renaming phases cannot reset three authorized repairs after initial failure (1.652539ms)
+✔ failed execution keeps a captured product report distinct, never accepts it (0.257117ms)
+✔ missing report cannot trigger another same-source launch after clearing active marker (0.323158ms)
+✔ normal successful progression does not require pretending a failure occurred (0.5273ms)
+✔ missing, foreign, duplicate and unobserved criteria never pass (0.673156ms)
+✔ static review cannot pass on a different final source binding (0.231975ms)
+✔ declared execution command is retained once in the actual child task (0.264833ms)
+✔ matched criterion observations can pass without running browser in static role (0.31221ms)
+✔ same-phase ordinal accommodates initial work plus three repairs (2.570647ms)
+✔ four successful new candidate slices need no retry permission (1.543832ms)
+✔ captured-report failure cannot relaunch with a free-text report-fix reason (0.375191ms)
+✔ bare recovery action without native/host provenance cannot authorize launch (0.392183ms)
+✔ throw preserves unknown execution and error without promoting to product pass (0.287933ms)
+✔ public API rejects no-shell execution exactly like CLI (157.599801ms)
+✔ declared missing skill blocks both API and CLI before artifacts (1572.871672ms)
+ℹ tests 18
+ℹ suites 0
+ℹ pass 18
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3775.89092

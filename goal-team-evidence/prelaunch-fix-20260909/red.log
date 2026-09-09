@@ -1,0 +1,50 @@
+✖ recover pre-launch write failure at goal-admissions.task.team.implementer (24.596058ms)
+✖ recover pre-launch write failure at teamGoalActiveStep (21.677316ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 0
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 152.75128
+
+✖ failing tests:
+
+test at ../../.pi/agent/teams/goal-team-evidence/prelaunch-fix-20260909/prelaunch.test.mjs:63:2
+✖ recover pre-launch write failure at goal-admissions.task.team.implementer (24.596058ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'dispatching'
+  - 'not-launched'
+  
+      at TestContext.<anonymous> (file:///home/timmypai/.pi/agent/teams/goal-team-evidence/prelaunch-fix-20260909/prelaunch.test.mjs:70:10)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'dispatching',
+    expected: 'not-launched',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at ../../.pi/agent/teams/goal-team-evidence/prelaunch-fix-20260909/prelaunch.test.mjs:63:2
+✖ recover pre-launch write failure at teamGoalActiveStep (21.677316ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'dispatching'
+  - 'not-launched'
+  
+      at TestContext.<anonymous> (file:///home/timmypai/.pi/agent/teams/goal-team-evidence/prelaunch-fix-20260909/prelaunch.test.mjs:70:10)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'dispatching',
+    expected: 'not-launched',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

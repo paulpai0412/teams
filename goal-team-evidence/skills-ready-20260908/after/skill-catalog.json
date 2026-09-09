@@ -1,0 +1,515 @@
+{
+  "scope": "Installed local skills; main catalog intentionally smaller. Discover fresh before use after updates.",
+  "skills": [
+    {
+      "name": "docs-generator",
+      "path": "/home/timmypai/.pi/agent/skills/docs-generator/SKILL.md",
+      "description": "Local task-oriented documentation from source/evidence; no shell or publishing.",
+      "authority": "Guidance only; never grants tools or permission. Local version approved 2026-09-08."
+    },
+    {
+      "name": "browser-automation",
+      "path": "/home/timmypai/.pi/agent/skills/browser-automation/SKILL.md",
+      "description": "Approved browser journeys using an existing harness, real-entrypoint evidence and owned-resource cleanup; no installation or production sessions.",
+      "authority": "Guidance only; never grants tools or permission. Local version approved 2026-09-08."
+    },
+    {
+      "name": "supply-chain-security",
+      "path": "/home/timmypai/.pi/agent/skills/supply-chain-security/SKILL.md",
+      "description": "Static dependency/CI/provenance review and approved release preparation; no scan/sign/deploy execution.",
+      "authority": "Guidance only; never grants tools or permission. Local version approved 2026-09-08."
+    },
+    {
+      "name": "code-audit",
+      "path": "/home/timmypai/.pi/agent/skills/code-audit/SKILL.md",
+      "description": "Read-only source security review of authorization, trust boundaries, sensitive operations and reachable data flow.",
+      "authority": "Guidance only; never grants tools or permission. Local version approved 2026-09-08."
+    },
+    {
+      "name": "llm-security",
+      "path": "/home/timmypai/.pi/agent/skills/llm-security/SKILL.md",
+      "description": "Read-only agent/LLM review of tool authority, retrieval, memory, output consumption and recovery; no live attacks or new providers.",
+      "authority": "Guidance only; never grants tools or permission. Local version approved 2026-09-08."
+    },
+    {
+      "name": "admission-control",
+      "path": "/home/timmypai/.pi/agent/skills/admission-control/SKILL.md",
+      "description": "Use when the user asks to \"write a validator\", \"add validation\", \"implement admission control\", \"write a mutating webhook\", \"add a mutation handler\", \"validate incoming resources\", \"implement admission logic\", \"add admission webhooks\", \"write ingress validation\", or asks how to validate or mutate resources before they are persisted in a grafana-app-sdk app. Provides guidance on implementing validation and mutation admission handlers for grafana-app-sdk apps.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "agent-network",
+      "path": "/home/timmypai/.pi/agent/npm/node_modules/remote-pi/skills/agent-network/SKILL.md",
+      "description": "Use when the remote-pi mesh tools (`list_peers`, `agent_send`, and — on Claude — `get_messages`) are available. You are an agent (a Claude session or a Pi coding agent) connected to the remote-pi agent mesh over a local broker. This skill teaches how to discover who's online (`list_peers`), how to send messages with a delivery ACK (`agent_send`), how incoming messages reach you (via `get_messages` on Claude, or delivered into your turn on Pi), how to reply (echo `re`), and how to treat every peer address as an opaque routing key that must be echoed verbatim.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "app-sdk-concepts",
+      "path": "/home/timmypai/.pi/agent/skills/app-sdk-concepts/SKILL.md",
+      "description": "Use when starting any grafana-app-sdk work — scaffolding a Grafana app, initializing a Grafana App Platform app, picking a deployment mode (standalone operator / grafana/apps / frontend-only), wiring app-specific config, or onboarding to the SDK. Covers `grafana-app-sdk` CLI install, `project init` per deployment mode, project layout, the schema-centric workflow (CUE kinds → generated code → reconciler/admission logic), and `SpecificConfig` for env-driven app configuration. Use even if the user just says \"make a new app\", \"Grafana app platform\", \"kinds and watchers\", \"operator scaffold\", or asks about `apps/` inside the Grafana repo, without naming the SDK explicitly.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "ask-matt",
+      "path": "/home/timmypai/.pi/agent/skills/ask-matt/SKILL.md",
+      "description": "Ask which skill or flow fits your situation. A router over the skills in this repo.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "batch-grill-me",
+      "path": "/home/timmypai/.pi/agent/skills/batch-grill-me/SKILL.md",
+      "description": "A relentless interview that asks every frontier question at once, round by round.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "beautiful-article",
+      "path": "/home/timmypai/.pi/agent/skills/beautiful-article/SKILL.md",
+      "description": "\"把用户提供的素材（网页 URL / PDF / DOCX / Markdown / 纯文本 / 截图 / 粘贴材料）编辑、设计成一篇美丽的、可离线打开和分享的**单文件 HTML 网页文章**。基于 reacticle 组件协议：不手写裸 HTML/CSS，而用语义组件 + 受主题约束的 Raw 自由层；按 source→规划→双确认→生成→终审→修复的小型 harness 流程推进，默认 100% 信息保留的长文。触发场景：把 URL/PDF/DOCX/文章做成网页文章 / 长文 / briefing / 解释文 / 视觉文章 / 教程 / 审阅复盘 / 方案分析，'render this as a beautiful web article / 把这篇做成网页文章 / 生成一篇可分享的 HTML 长文 / reacticle 文章'。只生成文章，不生成后台、表单、dashboard、产品原型或通用 Web App。\"",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "claude-handoff",
+      "path": "/home/timmypai/.pi/agent/skills/claude-handoff/SKILL.md",
+      "description": "Hand the current conversation off to a fresh background agent that picks up the work immediately.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "code-review",
+      "path": "/home/timmypai/.pi/agent/skills/code-review/SKILL.md",
+      "description": "Review the changes since a fixed point (commit, branch, tag, or merge-base) along two axes — Standards (does the code follow this repo's documented coding standards?) and Spec (does the code match what the originating issue/PRD asked for?). Runs both reviews in parallel sub-agents and reports them side by side. Use when the user wants to review a branch, a PR, work-in-progress changes, or asks to \"review since X\".",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "codebase-design",
+      "path": "/home/timmypai/.pi/agent/skills/codebase-design/SKILL.md",
+      "description": "Shared vocabulary for designing deep modules. Use when the user wants to design or improve a module's interface, find deepening opportunities, decide where a seam goes, make code more testable or AI-navigable, or when another skill needs the deep-module vocabulary.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "codebase-memory",
+      "path": "/home/timmypai/.pi/agent/skills/codebase-memory/SKILL.md",
+      "description": "Structural code discovery with the local codebase-memory-mcp knowledge graph. Use when locating symbols, understanding architecture, tracing callers/callees, assessing changes, or verifying code relationships.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "council-mode",
+      "path": "/home/timmypai/.pi/agent/npm/node_modules/pi-subagents/skills/council-mode/SKILL.md",
+      "description": "Run a bounded supervisor-mediated advisor council. Use when the user asks for council mode, asks to convene advisors, debate a decision, cross-examine recommendations, or run /council.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "cue-kind-definition",
+      "path": "/home/timmypai/.pi/agent/skills/cue-kind-definition/SKILL.md",
+      "description": "Author CUE kind definitions for grafana-app-sdk apps - schemas, versioning, field constraints, named type definitions, custom routes, and codegen configuration. Scaffolds kinds via `grafana-app-sdk project kind add`, writes spec/status schemas with type constraints (regex, enum, range), defines `#`-prefixed named types for reusable structs, registers versions in the app manifest, and runs `grafana-app-sdk generate` with explicit error recovery. Use when working with CUE kinds, adding a new resource type, adding a version to an existing kind, writing schema field constraints, defining `#Definition` types, adding custom routes, editing files under `kinds/`, or when the user asks to \"model a resource\", \"add a CUE schema\", or \"write a kind\" — even without saying \"CUE\" explicitly.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "design-an-interface",
+      "path": "/home/timmypai/.pi/agent/skills/design-an-interface/SKILL.md",
+      "description": "Generate multiple radically different interface designs for a module using parallel sub-agents. Use when user wants to design an API, explore interface options, compare module shapes, or mentions \"design it twice\".",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "diagnosing-bugs",
+      "path": "/home/timmypai/.pi/agent/skills/diagnosing-bugs/SKILL.md",
+      "description": "Diagnosis loop for hard bugs and performance regressions. Use when the user says \"diagnose\"/\"debug this\", or reports something broken/throwing/failing/slow.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "diagram-design",
+      "path": "/home/timmypai/.pi/agent/git/github.com/cathrynlavery/diagram-design/skills/diagram-design/SKILL.md",
+      "description": "Create branded architecture, IT current-state, flowchart, sequence, state machine, ER/data model, timeline, swimlane, quadrant, radar/spider, polar chart (polar/radial lollipop), loop/flywheel, nested, tree, org chart, layer stack, Venn, pyramid/funnel, treemap, bar, line, Gantt and scatter charts, high-level, process, medallion, data flow, DP integration, DP security matrix, Sankey, fishbone, Wardley map, kanban, user journey, deployment, dependency graph, UML class, story map, or database schema diagrams as standalone HTML/SVG/PNG. Redraw .drawio/.drawio.png/.drawio.svg or Mermaid .mmd sources at a chosen size/detail; onboard brand tokens from a website; add semantic patterns, callouts, accessible motion, or sketchy/hand-drawn styling.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "domain-modeling",
+      "path": "/home/timmypai/.pi/agent/skills/domain-modeling/SKILL.md",
+      "description": "Build and sharpen a project's domain model. Use when the user wants to pin down domain terminology or a ubiquitous language, record an architectural decision, or when another skill needs to maintain the domain model.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "edit-article",
+      "path": "/home/timmypai/.pi/agent/skills/edit-article/SKILL.md",
+      "description": "Edit and improve articles by restructuring sections, improving clarity, and tightening prose. Use when user wants to edit, revise, or improve an article draft.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "excalidraw-diagram",
+      "path": "/home/timmypai/.pi/agent/skills/excalidraw-diagram/SKILL.md",
+      "description": "Generate Excalidraw diagrams from text content. Supports three output modes - Obsidian (.md), Standard (.excalidraw), and Animated (.excalidraw with animation order). Triggers on \"Excalidraw\", \"画图\", \"流程图\", \"思维导图\", \"可视化\", \"diagram\", \"标准Excalidraw\", \"standard excalidraw\", \"Excalidraw动画\", \"动画图\", \"animate\".",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "find-skills",
+      "path": "/home/timmypai/.pi/agent/skills/find-skills/SKILL.md",
+      "description": "Helps users discover and install agent skills when they ask questions like \"how do I do X\", \"find a skill for X\", \"is there a skill that can...\", or express interest in extending capabilities. This skill should be used when the user is looking for functionality that might exist as an installable skill.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "git-guardrails-claude-code",
+      "path": "/home/timmypai/.pi/agent/skills/git-guardrails-claude-code/SKILL.md",
+      "description": "Set up Claude Code hooks to block dangerous git commands (push, reset --hard, clean, branch -D, etc.) before they execute. Use when user wants to prevent destructive git operations, add git safety hooks, or block git push/reset in Claude Code.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "gpt-image-2",
+      "path": "/home/timmypai/.pi/agent/skills/gpt-image-2/SKILL.md",
+      "description": "面向 GPT Image 2 的图像生成 / 编辑技能。可在 3 种环境下使用：(A) Garden 本地模式，通过 OpenAI 兼容接口直接出图并落盘；(B) Host-Native 模式，把本 Skill 当作提示词工程指引，把渲染好的 prompt 交给宿主 Agent 自带的图像工具出图；(C) Advisor 模式，宿主无任何图像工具时退化为高质量 prompt 顾问。涵盖 18 大类、80+ 个结构化模板，覆盖海报 / UI / 产品 / 信息图 / 学术图 / 技术架构图 / 漫画 / 头像 / 流程板 / 电影分镜 / IP 周边 / 编辑工作流等场景。",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "grill-me",
+      "path": "/home/timmypai/.pi/agent/skills/grill-me/SKILL.md",
+      "description": "A relentless interview to sharpen a plan or design.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "grill-with-docs",
+      "path": "/home/timmypai/.pi/agent/skills/grill-with-docs/SKILL.md",
+      "description": "A relentless interview to sharpen a plan or design, which also creates docs (ADR's and glossary) as we go.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "grilling",
+      "path": "/home/timmypai/.pi/agent/skills/grilling/SKILL.md",
+      "description": "Grill the user relentlessly about a plan, decision, or idea. Use when the user wants to stress-test their thinking, or uses any 'grill' trigger phrases.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "handoff",
+      "path": "/home/timmypai/.pi/agent/skills/handoff/SKILL.md",
+      "description": "Compact the current conversation into a handoff document for another agent to pick up.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "hf-cli",
+      "path": "/home/timmypai/.pi/agent/skills/hf-cli/SKILL.md",
+      "description": "\"Hugging Face Hub CLI (`hf`) for downloading, uploading, and managing models, datasets, spaces, buckets, repos, papers, jobs, and more on the Hugging Face Hub. Use when: handling authentication; managing local cache; managing Hugging Face Buckets; running or scheduling jobs on Hugging Face infrastructure; managing Hugging Face repos; discussions and pull requests; browsing models, datasets and spaces; reading, searching, or browsing academic papers; managing collections; querying datasets; configuring spaces; setting up webhooks; or deploying and managing HF Inference Endpoints. Make sure to use this skill whenever the user mentions 'hf', 'huggingface', 'Hugging Face', 'huggingface-cli', or 'hugging face cli', or wants to do anything related to the Hugging Face ecosystem and to AI and ML in general. Also use for cloud storage needs like training checkpoints, data pipelines, or agent traces. Use even if the user doesn't explicitly ask for a CLI command. Replaces the deprecated `huggingface-cli`.\"",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "huggingface-best",
+      "path": "/home/timmypai/.pi/agent/skills/huggingface-best/SKILL.md",
+      "description": "Read frontmatter at the given path.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "huggingface-datasets",
+      "path": "/home/timmypai/.pi/agent/skills/huggingface-datasets/SKILL.md",
+      "description": "Use this skill for Hugging Face Dataset Viewer API workflows that fetch subset/split metadata, paginate rows, search text, apply filters, download parquet URLs, and read size or statistics.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "huggingface-papers",
+      "path": "/home/timmypai/.pi/agent/skills/huggingface-papers/SKILL.md",
+      "description": "Look up and read Hugging Face paper pages in markdown, and use the papers API for structured metadata such as authors, linked models/datasets/spaces, Github repo and project page. Use when the user shares a Hugging Face paper page URL, an arXiv URL or ID, or asks to summarize, explain, or analyze an AI research paper.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "implement",
+      "path": "/home/timmypai/.pi/agent/skills/implement/SKILL.md",
+      "description": "\"Implement a piece of work based on a spec or set of tickets.\"",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "improve-codebase-architecture",
+      "path": "/home/timmypai/.pi/agent/skills/improve-codebase-architecture/SKILL.md",
+      "description": "Scan a codebase for deepening opportunities, present them as a visual HTML report, then grill through whichever one you pick.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "karpathy-guidelines",
+      "path": "/home/timmypai/.pi/agent/git/github.com/multica-ai/andrej-karpathy-skills/skills/karpathy-guidelines/SKILL.md",
+      "description": "Behavioral guidelines to reduce common LLM coding mistakes. Use when writing, reviewing, or refactoring code to avoid overcomplication, make surgical changes, surface assumptions, and define verifiable success criteria.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "kb-retriever",
+      "path": "/home/timmypai/.pi/agent/skills/kb-retriever/SKILL.md",
+      "description": "面向本地知识库目录的检索和问答助手。核心流程：(1)分层索引导航 (2)遇到PDF/Excel时必须先读取references学习处理方法 (3)处理文件后再检索。按文件类型组合使用 grep、Read、pdfplumber、pandas 进行渐进式检索，避免整文件加载。用户问题涉及\"从知识库目录回答问题/检索信息/查资料\"时使用。",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "loop-me",
+      "path": "/home/timmypai/.pi/agent/skills/loop-me/SKILL.md",
+      "description": "Grill me about specs for the workflows I want to build, within this workspace.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "mcp-scripting",
+      "path": "/home/timmypai/.pi/agent/npm/node_modules/pi-mcp-adapter/skills/mcp-scripting/SKILL.md",
+      "description": "Write mcpScript JavaScript for discovering, inspecting, and calling MCP tools.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "mermaid-visualizer",
+      "path": "/home/timmypai/.pi/agent/skills/mermaid-visualizer/SKILL.md",
+      "description": "Transform text content into professional Mermaid diagrams for presentations and documentation. Use when users ask to visualize concepts, create flowcharts, or make diagrams from text. Supports process flows, system architectures, comparisons, mindmaps, and more with built-in syntax error prevention.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "migrate-to-shoehorn",
+      "path": "/home/timmypai/.pi/agent/skills/migrate-to-shoehorn/SKILL.md",
+      "description": "Migrate test files from `as` type assertions to @total-typescript/shoehorn. Use when user mentions shoehorn, wants to replace `as` in tests, or needs partial test data.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "ml-research",
+      "path": "/home/timmypai/.pi/agent/skills/ml-research/SKILL.md",
+      "description": "Read frontmatter at the given path.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "obsidian-canvas-creator",
+      "path": "/home/timmypai/.pi/agent/skills/obsidian-canvas-creator/SKILL.md",
+      "description": "Create Obsidian Canvas files from text content, supporting both MindMap and freeform layouts. Use this skill when users want to visualize content as an interactive canvas, create mind maps, or organize information spatially in Obsidian format.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "obsidian-vault",
+      "path": "/home/timmypai/.pi/agent/skills/obsidian-vault/SKILL.md",
+      "description": "Search, create, and manage notes in the Obsidian vault with wikilinks and index notes. Use when user wants to find, create, or organize notes in Obsidian.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "parse-document",
+      "path": "/home/timmypai/.pi/agent/npm/node_modules/pi-docparser/skills/parse-document/SKILL.md",
+      "description": "Read frontmatter at the given path.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "pi-subagents",
+      "path": "/home/timmypai/.pi/agent/npm/node_modules/pi-subagents/skills/pi-subagents/SKILL.md",
+      "description": "Read frontmatter at the given path.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "ponytail",
+      "path": "/home/timmypai/.pi/agent/git/github.com/DietrichGebert/ponytail/skills/ponytail/SKILL.md",
+      "description": "Read frontmatter at the given path.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "ponytail-audit",
+      "path": "/home/timmypai/.pi/agent/git/github.com/DietrichGebert/ponytail/skills/ponytail-audit/SKILL.md",
+      "description": "Read frontmatter at the given path.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "ponytail-debt",
+      "path": "/home/timmypai/.pi/agent/git/github.com/DietrichGebert/ponytail/skills/ponytail-debt/SKILL.md",
+      "description": "Read frontmatter at the given path.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "ponytail-gain",
+      "path": "/home/timmypai/.pi/agent/git/github.com/DietrichGebert/ponytail/skills/ponytail-gain/SKILL.md",
+      "description": "Read frontmatter at the given path.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "ponytail-help",
+      "path": "/home/timmypai/.pi/agent/git/github.com/DietrichGebert/ponytail/skills/ponytail-help/SKILL.md",
+      "description": "Read frontmatter at the given path.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "ponytail-review",
+      "path": "/home/timmypai/.pi/agent/git/github.com/DietrichGebert/ponytail/skills/ponytail-review/SKILL.md",
+      "description": "Read frontmatter at the given path.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "prototype",
+      "path": "/home/timmypai/.pi/agent/skills/prototype/SKILL.md",
+      "description": "Build a throwaway prototype to answer a design question. Use when the user wants to sanity-check whether a state model or logic feels right, or explore what a UI should look like.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "qa",
+      "path": "/home/timmypai/.pi/agent/skills/qa/SKILL.md",
+      "description": "Interactive QA session where user reports bugs or issues conversationally, and the agent files GitHub issues. Explores the codebase in the background for context and domain language. Use when user wants to report bugs, do QA, file issues conversationally, or mentions \"QA session\".",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "reconciler-logic",
+      "path": "/home/timmypai/.pi/agent/skills/reconciler-logic/SKILL.md",
+      "description": "Implement reconcilers and watchers for grafana-app-sdk apps — write `TypedReconciler[*MyKind]` reconcile functions, apply generation-based skip patterns, do conflict-safe status updates via `resource.UpdateObject`, configure `BasicReconcileOptions` (namespace, label/field filters, finalizer management), use `Watcher` for event-style handling, reconcile `UnmanagedKinds` (resources your app doesn't own), and register the whole thing in `app.go`. Use when writing a reconciler, implementing the reconcile loop, adding async business logic, handling create/update/delete events, processing resource state changes, scheduling periodic resyncs with `RequeueAfter`, picking between Watcher and Reconciler, or wiring a controller into `app.go` — even when the user says \"process this resource\", \"handle X events\", or \"write a controller\" without saying \"reconciler\".",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "request-refactor-plan",
+      "path": "/home/timmypai/.pi/agent/skills/request-refactor-plan/SKILL.md",
+      "description": "Create a detailed refactor plan with tiny commits via user interview, then file it as a GitHub issue. Use when user wants to plan a refactor, create a refactoring RFC, or break a refactor into safe incremental steps.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "research",
+      "path": "/home/timmypai/.pi/agent/skills/research/SKILL.md",
+      "description": "Investigate a question against high-trust primary sources and capture the findings as a Markdown file in the repo. Use when the user wants a topic researched, docs or API facts gathered, or reading legwork delegated to a background agent.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "resolving-merge-conflicts",
+      "path": "/home/timmypai/.pi/agent/skills/resolving-merge-conflicts/SKILL.md",
+      "description": "\"Use when you need to resolve an in-progress git merge/rebase conflict.\"",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "scaffold-exercises",
+      "path": "/home/timmypai/.pi/agent/skills/scaffold-exercises/SKILL.md",
+      "description": "Create exercise directory structures with sections, problems, solutions, and explainers that pass linting. Use when user wants to scaffold exercises, create exercise stubs, or set up a new course section.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "scientific-critical-thinking",
+      "path": "/home/timmypai/.agents/skills/scientific-critical-thinking/SKILL.md",
+      "description": "Evaluate scientific claims and evidence quality. Use for assessing experimental design validity, identifying biases and confounders, applying evidence grading frameworks (GRADE, Cochrane Risk of Bias), or teaching critical analysis. Best for understanding evidence quality, identifying flaws. For formal peer review writing use peer-review.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "scikit-learn",
+      "path": "/home/timmypai/.agents/skills/scikit-learn/SKILL.md",
+      "description": "Machine learning in Python with scikit-learn. Use when working with supervised learning (classification, regression), unsupervised learning (clustering, dimensionality reduction), model evaluation, hyperparameter tuning, preprocessing, or building ML pipelines. Provides comprehensive reference documentation for algorithms, preprocessing techniques, pipelines, and best practices.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "setup-matt-pocock-skills",
+      "path": "/home/timmypai/.pi/agent/skills/setup-matt-pocock-skills/SKILL.md",
+      "description": "Configure this repo for the engineering skills — set up its issue tracker, triage label vocabulary, and domain doc layout. Run once before first use of the other engineering skills.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "setup-pre-commit",
+      "path": "/home/timmypai/.pi/agent/skills/setup-pre-commit/SKILL.md",
+      "description": "Set up Husky pre-commit hooks with lint-staged (Prettier), type checking, and tests in the current repo. Use when user wants to add pre-commit hooks, set up Husky, configure lint-staged, or add commit-time formatting/typechecking/testing.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "setup-ts-deep-modules",
+      "path": "/home/timmypai/.pi/agent/skills/setup-ts-deep-modules/SKILL.md",
+      "description": "Wire dependency-cruiser into a TypeScript repo so each package is a deep module — implementation hidden in subfolders, reachable only through its entry-point files. User-invoked.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "show-me",
+      "path": "/home/timmypai/.pi/agent/skills/show-me/SKILL.md",
+      "description": "Help the user understand the current topic visually with concise diagrams, code-shape sketches, and focused HTML artifacts.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "statistical-analysis",
+      "path": "/home/timmypai/.agents/skills/statistical-analysis/SKILL.md",
+      "description": "Guided statistical analysis for research data - test selection, assumption checking, effect sizes, power analysis, Bayesian alternatives, and APA-formatted reporting. Use whenever a user wants to compare groups, test a hypothesis, analyze experimental or survey data, check statistical assumptions, compute required sample sizes, or write up results - even if they never name a specific test. Covers t-tests, ANOVA, chi-square, correlation, regression, non-parametric and Bayesian methods. For low-level model APIs, see the statsmodels and pymc skills.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "statsmodels",
+      "path": "/home/timmypai/.agents/skills/statsmodels/SKILL.md",
+      "description": "Statistical models library for Python. Use when you need specific model classes (OLS, GLM, mixed models, ARIMA) with detailed diagnostics, residuals, and inference. Best for econometrics, time series, rigorous inference with coefficient tables. For guided statistical test selection with APA reporting use statistical-analysis.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "tdd",
+      "path": "/home/timmypai/.pi/agent/skills/tdd/SKILL.md",
+      "description": "Test-driven development. Use when the user wants to build features or fix bugs test-first, mentions \"red-green-refactor\", or wants integration tests.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "teach",
+      "path": "/home/timmypai/.pi/agent/skills/teach/SKILL.md",
+      "description": "Teach the user a new skill or concept, within this workspace.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "team-flow",
+      "path": "/home/timmypai/.pi/agent/skills/team-flow/SKILL.md",
+      "description": "Parent-owned dynamic Astra team orchestration with explicit authority, conditional gates, audit receipts, recovery and bounded evidence-based memory/refinement. Use for substantial delegated work or agent-team management.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "team-member",
+      "path": "/home/timmypai/.pi/agent/skills/team-member/SKILL.md",
+      "description": "Shared handoff, evidence, authority and memory contract for the bounded team.* specialist roles.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "to-questionnaire",
+      "path": "/home/timmypai/.pi/agent/skills/to-questionnaire/SKILL.md",
+      "description": "Turn a decision you can't fully answer into a questionnaire for someone else to fill in.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "to-spec",
+      "path": "/home/timmypai/.pi/agent/skills/to-spec/SKILL.md",
+      "description": "Turn the current conversation into a spec and publish it to the project issue tracker — no interview, just synthesis of what you've already discussed.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "to-tickets",
+      "path": "/home/timmypai/.pi/agent/skills/to-tickets/SKILL.md",
+      "description": "Break a plan, spec, or the current conversation into a set of tracer-bullet tickets, each declaring its blocking edges, published to the configured tracker — edges as text in one file per ticket locally, or native blocking links on a real tracker.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "triage",
+      "path": "/home/timmypai/.pi/agent/skills/triage/SKILL.md",
+      "description": "Move issues and external PRs through a state machine of triage roles — categorise, verify, grill if needed, and write agent-ready briefs.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "ubiquitous-language",
+      "path": "/home/timmypai/.pi/agent/skills/ubiquitous-language/SKILL.md",
+      "description": "Extract a DDD-style ubiquitous language glossary from the current conversation, flagging ambiguities and proposing canonical terms. Saves to UBIQUITOUS_LANGUAGE.md. Use when user wants to define domain terms, build a glossary, harden terminology, create a ubiquitous language, or mentions \"domain model\" or \"DDD\".",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "wayfinder",
+      "path": "/home/timmypai/.pi/agent/skills/wayfinder/SKILL.md",
+      "description": "Plan a huge chunk of work — more than one agent session can hold — as a shared map of decision tickets on your issue tracker, and resolve them one at a time until the way to the destination is clear.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "web-design-engineer",
+      "path": "/home/timmypai/.pi/agent/skills/web-design-engineer/SKILL.md",
+      "description": "\"Build or redesign polished browser-rendered visual artifacts with HTML/CSS/JavaScript/React: pages, dashboards, prototypes, slide decks, animations, UI mockups, and data visualizations. Use for visual front-end creation, design-system exploration, design critique, or explicit browser acceptance / QA of a web artifact. Not for back-end, CLI, non-visual coding, source-to-longform article conversion, or narration-driven click-through video presentations.\"",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "web-video-presentation",
+      "path": "/home/timmypai/.pi/agent/skills/web-video-presentation/SKILL.md",
+      "description": "把一篇文章或口播稿，做成\"看起来像视频\"的点击驱动 16:9 网页演示，可选合成口播音频。流程：原始文章 → **一次产出**口播稿 + outline 开发计划 → 用户**一次对齐** 5 件事（稿子 / outline / 主题 / 素材 / 开发模式）→ 网页开发（逐章 / 顺序 / 并行）→ 可选音频合成（provider-agnostic：内置 MiniMax mmx-cli + OpenAI TTS，可换 ElevenLabs / edge-tts / Azure / 自带 TTS）。**outline 只规划节奏与信息密度，不规划动画** —— 动画由章节开发时按 PRINCIPLES + ANTI-AI 法则即时设计。每次点击推进口播稿的一个节拍，每一步独占整屏，进度条平时隐藏只在悬浮时出现。适用场景：用网页做视频（动态 PPT 但不像 PPT）、把口播稿 / 文章变成可交互的解说、为 B 站 / YouTube / 视频号录屏教程、做有电影感的产品 / talk demo。本 Skill 沉淀的是设计方法论 + 协作流程 —— 不绑定任何特定样式 / 字体 / 颜色 —— 因此能复用到任意主题与美学。",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "wizard",
+      "path": "/home/timmypai/.pi/agent/skills/wizard/SKILL.md",
+      "description": "Generate an interactive bash wizard that walks a human through a manual procedure — third-party setup, a one-off migration, an A→B state transition — opening URLs, capturing values, confirming each step, and writing .env files and GitHub Actions secrets.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "writing-beats",
+      "path": "/home/timmypai/.pi/agent/skills/writing-beats/SKILL.md",
+      "description": "Writing, exploit — assemble raw material into a journey of beats, grounding each term before a beat leans on it.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "writing-fragments",
+      "path": "/home/timmypai/.pi/agent/skills/writing-fragments/SKILL.md",
+      "description": "Writing, explore — mine raw fragments, no structure yet.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "writing-great-skills",
+      "path": "/home/timmypai/.pi/agent/skills/writing-great-skills/SKILL.md",
+      "description": "Reference for writing and editing skills well — the vocabulary and principles that make a skill predictable.",
+      "authority": "Guidance only; never grants tools or permission."
+    },
+    {
+      "name": "writing-shape",
+      "path": "/home/timmypai/.pi/agent/skills/writing-shape/SKILL.md",
+      "description": "Writing, exploit — shape raw material into an article, paragraph by paragraph.",
+      "authority": "Guidance only; never grants tools or permission."
+    }
+  ]
+}

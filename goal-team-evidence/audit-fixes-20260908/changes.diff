@@ -1,0 +1,622 @@
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/00-goal-team-evidence.mjs
++++ /home/timmypai/.pi/agent/npm/node_modules/pi-goal-x/extensions/goal-team-evidence.mjs
+@@ -64,6 +64,12 @@
+   } finally {
+     fs.closeSync(fd);
+   }
++}
++export function evidenceDigest(file) {
++  assert.ok(path.isAbsolute(file), 'absolute evidence path required');
++  const bytes = readBytes(file);
++  assert.ok(bytes.length > 0, 'empty evidence artifact');
++  return sha(bytes);
+ }
+ function readJson(file) {
+   try {
+@@ -431,6 +437,22 @@
+     assert.equal(contractDigest, digest, "acceptance contract changed");
+   return { contract, root, decision, contractDigest, file };
+ }
++// A parent reconciliation settles execution, not product acceptance. Historical
++// source may change after a repair; never rerun historical checks to settle it.
++export function goalStepSettled(record) {
++  const recovery = record?.recovery;
++  return !!(record && ['reported', 'blocked', 'dispatching'].includes(record.status) &&
++    recovery && ['continue', 'retry', 'report-only'].includes(recovery.action) &&
++    recovery.requestDigest === record.requestDigest && /^[a-f0-9]{64}$/.test(record.requestDigest ?? '') &&
++    ['nativeStatusRef', 'hostReceiptRef'].every(field => typeof recovery[field] === 'string' && recovery[field].startsWith('/')) &&
++    ['nativeDigest', 'hostReceiptDigest'].every(field => typeof recovery[field] === 'string' && /^[a-f0-9]{64}$/.test(recovery[field])) &&
++    typeof recovery.childRunId === 'string' && recovery.childRunId.trim() &&
++    (record.runId == null || record.runId === recovery.childRunId) &&
++    typeof recovery.sourceState === 'string' && recovery.sourceState.trim() &&
++    (recovery.action !== 'retry' || record.outcomes?.product !== 'pass' ||
++      (typeof recovery.rejectionRef === 'string' && recovery.rejectionRef.startsWith('/') && /^[a-f0-9]{64}$/.test(recovery.rejectionDigest ?? ''))) &&
++    typeof recovery.reason === 'string' && recovery.reason.trim() && recovery.reason.length <= 1024);
++}
+ function missionSettled(contract) {
+   if (!contract.mission) return;
+   const { id, statePath } = contract.mission;
+@@ -459,10 +481,7 @@
+   for (const [key, value] of Object.entries(state))
+     if (key.startsWith("goal-step.")) {
+       assert.ok(
+-        value &&
+-          ["reported", "blocked"].includes(value.status) &&
+-          typeof value.runId === "string" &&
+-          value.runId.trim(),
++        goalStepSettled(value),
+         "unresolved retained step: " + key,
+       );
+     }
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/01-SKILL.md
++++ /home/timmypai/.pi/agent/skills/team-flow/SKILL.md
+@@ -15,9 +15,12 @@
+ Read `~/.pi/agent/teams/EFFICIENCY-CONTRACT.md` for new Goal dispatches:
+ explicit role-scoped work/criteria/checks, effective capability preflight, per-task/role
+ repair ceiling across phase/source changes (successful slices do not count), and separate
+-execution/report/product outcomes. API/CLI share selected-role readiness. Failed steps
+-need native-terminal + fresh host evidence through goal-recovery.mjs; report-only never
+-permits replay, and thrown errors remain unknown rather than invented failures/passes.
++execution/report/product outcomes. Ordinary handoff and Goal API/CLI share one selected-role
++readiness call. Every step, including child reported, needs a native-terminal + fresh host
++reconciliation through goal-recovery.mjs. Parent-accepted continue costs zero repairs;
++host/review-rejected retry consumes one and captured pass needs a separate rejection artifact.
++Report-only permits no launch: finish report handling locally, then explicitly continue
++for genuine new work. Original thrown errors remain unknown, never promoted to pass.
+ Prefer host checks and valid receipt reuse; do not repeat reviewer + static QA over
+ identical scope. Main reports blockers/material progress, not routine child-start echoes.
+ 
+@@ -52,10 +55,12 @@
+ ## Shape and authorize
+ 
+ 1. Read the target and project rules. Inspect current git/dirty state, executable
+-   profiles and project overrides before choosing capabilities. Run preflight with
+-   `check-config.mjs --roles-only --roles=team.debugger,team.reviewer <cwd>` using
+-   the actual selected roles; omit --roles for all-role health. Selected success
+-   is not global health; shared safety/discovery failures remain blocking.
++   profiles and project overrides before choosing capabilities. Ordinary handoff and
++   Goal preparation already include one selected-role preflight; do not repeat it.
++   For paths without that preparation, run
++   `check-config.mjs --roles-only --roles=team.debugger,team.reviewer <cwd>` with
++   the actual selected roles; omit --roles for all-role health. Selected success is
++   not global health; shared safety/discovery failures remain blocking.
+    Before implementation check task-relevant acceptance prerequisites (e.g. browser
+    executable, authorized target/login availability, readback or fixture). Never
+    expose credentials or auto-install capabilities. Missing prerequisites permit
+@@ -92,7 +97,7 @@
+ and binds it to one non-goal mission. Run the scoped role/goal preflight. Use the
+ installed goal-task-step.js for one bounded role step per wave; preserve stable
+ intent and native run receipts. A current goal task may need several role steps.
+-Check goal status/source before each step and after results; an active/unknown
++Check goal status/source before each step and after results; an active／unknown
+ run or unresolved intent blocks redispatch. Complete tasks only after all required
+ gates, never from child prose or a reported step alone. Do not create a duplicate
+ task list in todos/missions or enable mission.goal:true. Goal auto-continuation can
+@@ -124,8 +129,8 @@
+ 
+ Before ordinary structured dispatch, prepare the exact native args with
+ `~/.pi/agent/teams/handoff-contract.mjs`; do not rewrite its schema. Reuse specialized
+-Goal/gate schemas for their consumers. Check effective roles/capabilities first;
+-parent-only checks must not go to children. See HANDOFF-PRACTICE for request format.
++Goal/gate schemas for their consumers. The preparation helper checks effective roles/capabilities once; do not repeat the same
++selected-role preflight separately. Parent-only checks must not go to children. See HANDOFF-PRACTICE for request format.
+ Check `result.ok === true` before using output. Validate the assigned schema, not
+ an assumed universal verdict field. Goal/gate schemas additionally require their
+ structured verdict; ordinary team-handoff/1 returns criterion observations without
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/03-EFFICIENCY-CONTRACT.md
++++ /home/timmypai/.pi/agent/teams/EFFICIENCY-CONTRACT.md
+@@ -51,9 +51,9 @@
+ `{command, location:"child-safe"}` or `isolated-only` with `resource`. Parent-only
+ checks stay on the host. Legacy top-level `checks` without `work` are rejected rather
+ than silently discarded. Conflicting copies are rejected. Effective role shell
+-capability is checked by existing `prepareHandoff`, including project overrides.
+-Selected-role skill/model/config readiness runs inside dispatch preparation before
+-saving artifacts. Task-specific environment/executable checks remain separately REQUIRED;
++capability and selected-role skill/model/config readiness are checked once by
++`prepareHandoff`, shared by ordinary and Goal preparation, including project overrides.
++Invalid taskId/phase are rejected by the shared Goal normalizer before readiness or artifacts. Task-specific environment/executable checks remain separately REQUIRED;
+ this does not install skills or prove arbitrary shell safety. New effective packets
+ retain sourcePaths so recovery cannot silently shrink the original evidence scope.
+ 
+@@ -67,15 +67,17 @@
+ ## Bounded admissions and recovery
+ 
+ The helper retains `goal-admissions.<taskId>.<agent>` in the EXISTING mission state.
+-Version 2 counts at most three authorized repair replays per task/role, not successful
++Version 2 counts at most three parent-authorized repairs per task/role, not successful
+ slices. Initial work + three repairs fits attempt 1..4; phase/source changes do not reset
+-repair history. Normal successful progression needs no invented retry reason. Native
+-wave/session ceilings remain unchanged. Same-key replay only returns reconciliation.
+-Legacy count-based ledgers are rejected, not silently reinterpreted or reset.
++repair history. Every prior slice, INCLUDING child `reported`, needs parent terminal
++reconciliation before another same-task/role launch. `continue` consumes zero repairs;
++`retry` consumes one. A writer self-pass later rejected by host/review is still a repair.
++Use the already-required reconciliation to record that decision, not another child or
++invented failure reason. Native wave/session ceilings remain unchanged. Same-key replay
++only returns reconciliation. Legacy count-based ledgers are not reinterpreted or reset.
+ 
+-A failed/unknown/missing-report step requires parent recovery, even after clearing the
+-active marker. Free-text `retry:{reason,evidence}` remains readable but grants no replay
+-authority. Use `goal-recovery.mjs` as below. No automatic repair child, scheduling,
++Free-text `retry:{reason,evidence}` remains readable but requires an actual parent retry
++disposition; it cannot borrow a free continue decision. Use `goal-recovery.mjs` as below. No automatic repair child, scheduling,
+ Goal completion or product-pass promotion. Direct native calls and parent state edits
+ are not intercepted. One owner only; this is not a CAS lock or security boundary.
+ 
+@@ -84,8 +86,16 @@
+ Save input `{statusPath,recordKey,action,reason,check,receipt}` outside source scope:
+ - `statusPath`: actual native workflow status.json, beside its native mission.json.
+ - `recordKey`: exact goal-step key; native mission state and saved request are read directly.
+-- `action`: `report-only` (never replay), `continue` (parent resolved the outcome), or
+-  `retry` (diagnosed work still needs execution; consumes a repair).
++- `action`: `report-only` (terminal effects reconciled, report handling still pending;
++  never permits another launch), `continue` (parent finished reconciliation/report
++  handling; normal new work, zero repairs), or `retry` (parent diagnosed product work
++  still needed; consumes a repair). After report-only, finish the report locally and
++  prepare an explicit continue decision before new work; do not rerun the original work.
++- `rejection`: for retry after a captured product pass, an absolute nonempty regular
++  evidence artifact (host failure or independent review finding) inspected by the parent.
++  Its bytes are hashed; missing/empty/credential/symlink paths fail. File existence does
++  NOT prove semantic rejection. The parent must distinguish product defects from report
++  formatting; a report-only failure never justifies manufacturing this artifact.
+ - `check` and `receipt`: existing host-check input/receipt verifying effects, artifacts
+   and the full original sourcePaths; verifyCheck checks runtime, intent, log and freshness.
+ - `reason`: bounded parent diagnosis after inspecting actual evidence. Parent must ensure
+@@ -94,10 +104,10 @@
+ Run `node ~/.pi/agent/teams/goal-recovery.mjs /absolute/recovery-input.json`, inspect the
+ result and execute its setupArgs through the existing controller with the same mission.
+ Preparation never executes checks or mutates mission state. The generated zero-child
+-script refuses changed records/bindings or another active intent, adds a separate
++script refuses changed records/bindings or another active intent, adds a requestDigest-bound
+ recovery decision and clears only this terminal step's marker. Original outcomes/errors
+-stay unchanged. `retry` is refused for a captured pass. Next failed-step dispatch must
+-match recovery sourceState. Recheck source/native status before applying; no cross-process
++stay unchanged. A captured pass requires separate parent product-rejection evidence for
++retry. The next same-task/role dispatch must match recovery sourceState. Recheck source/native status before applying; no cross-process
+ atomicity is claimed. Missing child identity, legacy missing scope/counter, active native
+ runs or stale host evidence remain blocked; do not manufacture their migration/proof.
+ 
+@@ -106,12 +116,20 @@
+ - `outcomes.reportDelivery`: captured / missing / invalid / unknown (throw).
+ - `outcomes.product`: the well-formed report's verdict or unknown; NOT final acceptance.
+ 
+-A failed execution with a captured pass stays blocked. A child `blocked` stays blocked;
+-never infer a wrapper defect from prose. Throws save blocked/unknown outcomes, bounded
++A failed execution with a captured pass stays historically blocked. Parent reconciliation
++may authorize a separately evidenced product repair, but never promotes that original
++record to pass. A child `blocked` stays historically blocked; never infer a wrapper defect
++from prose. Throws save blocked/unknown outcomes, bounded
+ original error and available run/artifact references, retain ownership and rethrow for
+ native status/artifact reconciliation. No fabricated root-cause attribution, automatic pass,
+ relaunch, or automatic marker cleanup. Keep raw reports and original statuses intact;
+-parent acceptance decisions cite actual evidence separately.
++parent acceptance decisions cite actual evidence separately. Host/runtime completion and
++recovery preparation share `goalStepSettled`: a terminal request-bound recovery, including
++its childRunId, is required for retained reported/blocked/dispatching records. A bare runId
++or cleared marker is not reconciliation. This is parent-owned evidence, not signed proof.
++Historical recovery establishes terminal settlement, not current-source test freshness;
++final criteria/checks still verify the candidate. Old records without the bound recovery
++must be explicitly reconciled; no live records are automatically migrated.
+ 
+ ## Shortest valid verification path
+ 
+@@ -149,6 +167,12 @@
+ `check-goal-dispatch.mjs`, `check-goal-team.mjs`, `check-goal-step-storage.mjs`,
+ `check-handoff-contract.mjs`, `check-team-outcomes.mjs`, `check-host-evidence.mjs`.
+ 
++Current producer→consumer regressions and overlay verification are in
++`goal-team-evidence/audit-fixes-20260908/`. They cover recovered throws/final-save failures,
++unreconciled-record rejection, host-rejected repairs, successful continue, report-only
++finalization and ordinary/Goal readiness parity. Prior fixture tests that cleared markers
++without a disposition are historical, not the supported progression protocol.
++
+ The original three-admission test encoded a wrong policy; superseded by the usability
+ regressions in `goal-team-evidence/usability-fixes-20260908/`. Four successful slices are
+ allowed, a fourth repair is blocked, both dispatch entrypoints share readiness, throws
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/04-EVIDENCE-PRACTICE.md
++++ /home/timmypai/.pi/agent/teams/EVIDENCE-PRACTICE.md
+@@ -31,7 +31,7 @@
+ - `checks`: `{id, input}` entries, with the exact check.json inputs above. Check ids use letters/digits/underscore/hyphen.
+ - `requiredEvidence`: relative artifact filenames, e.g. independent review and real entrypoint observations. This list must include every REQUIRED non-command gate. File presence/hash does not prove review quality or independence; main must inspect the raw evidence.
+ - `decision`: relative current-decision JSON path. Old judgments are retained alongside it. A new seal invalidates the old ready decision before evaluating the new judgment; failure leaves pending, not a stale PASS.
+-- For Goal integration, `goalId`, `taskId`; for bound Goal-team work, `mission: {id, statePath}` naming the exact approved native mission state.json. Active or unresolved retained intents block. The helper never changes mission state.
++- For Goal integration, `goalId`, `taskId`; for bound Goal-team work, `mission: {id, statePath}` naming the exact approved native mission state.json. Active or unresolved retained intents block. Each retained step needs a requestDigest-bound terminal recovery, including childRunId; reported/runId/cleared marker alone is not settlement. `goalStepSettled` is shared by host/runtime acceptance and recovery preparation. Original failed outcomes stay failed. Historical settlement does not require rerunning old checks against changed source; final candidate checks remain separately fresh. The helper never changes mission state.
+ 
+ Parent observations JSON: `{checks: {checkId: "relative/receipt.json"}, criterionResults: [{criterion, status: "met", entrypoint, observed, evidence: ["check:checkId", "file:relative-artifact.md"]}]}`. These are parent judgments after inspecting results, not copied child verdicts. Checks may select new immutable receipt paths after a repair without rewriting approved criteria or command definitions.
+ 
+@@ -61,13 +61,13 @@
+ 
+ ## Less handwritten dispatch metadata
+ 
+-The existing saved packet additionally accepts `missionId`, `sourcePaths`, explicit `timeoutMs`, fresh `goalStatus: "active"` / `taskStatus: "pending"`, and optionally `acceptanceContract` relative to cwd. New `--dispatch` calls require `work:{kind,criteria,checks}`; failed steps require native/host-backed `goal-recovery.mjs` decisions rather than free-text retry permission; successful progression is not a repair. See the efficiency contract for role scopes and legacy packet recovery.
++The existing saved packet additionally accepts `missionId`, `sourcePaths`, explicit `timeoutMs`, fresh `goalStatus: "active"` / `taskStatus: "pending"`, and optionally `acceptanceContract` relative to cwd. New `--dispatch` calls require `work:{kind,criteria,checks}`; all steps, including reported, require native/host-backed `goal-recovery.mjs` dispositions. Parent-accepted continue is free; host/review-rejected retry consumes a repair and a captured pass needs a separate rejection artifact. Free-text retry cannot replace that decision. See the efficiency contract for role scopes and legacy packet recovery.
+ 
+ ```sh
+ node ~/.pi/agent/teams/goal-request.mjs --dispatch /absolute/saved-input.json > prepared.json
+ ```
+ 
+-This writes content-addressed effective packet/setup artifacts beside the saved input and returns small `setupArgs` then `dispatchArgs`. The async preparation API and CLI both run selected-role readiness; separately check the task's environment/executables. Use those native pi-subagents args unchanged, sequentially, against the explicit non-goal mission. Setup has no child and refuses foreign bindings/active intents; it does not silently overwrite ownership. The effective packet is recoverable with the existing goal-request CLI. Timeout reaches the inner `runs.run`. This is preparation, not launch authorization, product acceptance or an atomic two-operation dispatch.
++This writes content-addressed effective packet/setup artifacts beside the saved input and returns small `setupArgs` then `dispatchArgs`. Ordinary handoff and Goal API/CLI share one selected-role readiness call through prepareHandoff; separately check the task's environment/executables. Use those native pi-subagents args unchanged, sequentially, against the explicit non-goal mission. Setup has no child and refuses foreign bindings/active intents; it does not silently overwrite ownership. The effective packet is recoverable with the existing goal-request CLI. Timeout reaches the inner `runs.run`. This is preparation, not launch authorization, product acceptance or an atomic two-operation dispatch.
+ 
+ ## Readiness and measuring improvement
+ 
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/05-GOAL-TEAMS.md
++++ /home/timmypai/.pi/agent/teams/GOAL-TEAMS.md
+@@ -11,14 +11,14 @@
+ `checks` 不再被靜默丟掉。工作範圍與固定 criterionResults 納入新 packet；
+ 舊 packet 仍可讀取／reconcile，不自動遷移已存在的 Goal 或 mission。
+ 同 task/role 最多三次已核對的修復重派；成功切片不計修復，換 phase/source 不重置。
+-API／CLI 共用能力與 selected-role readiness；失敗後用 goal-recovery.mjs 核對 native 與 host 證據，文字 retry 不授予重派權。
++普通 handoff 與 Goal API／CLI 共用 selected-role readiness；每一步（包括 reported）用 goal-recovery.mjs 核對 native 與 host 證據。continue 不計修復，host/review 否決後的 retry 計入三次上限；文字 retry 不授予重派權。
+ 這是 helper 範圍限制，非全域 native controller 限制。具體恢復與相容性見上文連結。
+ 
+ ## Delivery evidence 增量
+ 
+ 新工作優先使用 [EVIDENCE-PRACTICE.md](EVIDENCE-PRACTICE.md)：先 formatter／freeze，再 host receipt；以既有 `goal-request.mjs --dispatch` 產生 setup/dispatch args，不手抄 identity。只有已套用並驗證 delivery patch、且 runtime 已 reload 的新／明確重設 task list，才使用新 evidence reference。舊 Goal 不自動轉換。
+ 
+-`patches/goal-team-delivery/` 是 reliability v2 之上的增量；後續 flow/efficiency/usability overlays 已改變部分 hashes，舊 wrapper 拒絕並不代表可重套。已安裝組合的 read-only 核對見 `goal-team-evidence/usability-fixes-20260908/check-installed.mjs` 與該目錄報告；它不是升級 installer，任何不連續仍須停止。REQUIRED review/live canary 不因 offline fixture PASS 而免除。
++`patches/goal-team-delivery/` 是 reliability v2 之上的增量；後續 flow/efficiency/usability overlays 已改變部分 hashes，舊 wrapper 拒絕並不代表可重套。已安裝組合的 read-only 核對見 `goal-team-evidence/audit-fixes-20260908/check-installed.mjs` 與該目錄報告；它不是升級 installer，任何不連續仍須停止。REQUIRED review/live canary 不因 offline fixture PASS 而免除。
+ 
+ ## 使用方式
+ 
+@@ -61,7 +61,7 @@
+ PI_OFFLINE=1 PI_MEMORY_EXIT_SUMMARY=off node ~/.pi/agent/teams/check-config.mjs --roles-only "$PWD"
+ PI_OFFLINE=1 PI_MEMORY_EXIT_SUMMARY=off node ~/.pi/agent/teams/check-goal-team.mjs "$PWD"
+ node ~/.pi/agent/teams/check-goal-hold-wake.mjs
+-node ~/.pi/agent/teams/goal-team-evidence/usability-fixes-20260908/check-installed.mjs
++node ~/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/check-installed.mjs
+ node ~/.pi/agent/teams/check-goal-completion.mjs
+ ```
+ 
+@@ -114,9 +114,11 @@
+    output 與實際 source；完成 main/host 機械驗證及按風險所需 review/security/E2E。
+    格式錯誤依 [HANDOFF-PRACTICE.md](HANDOFF-PRACTICE.md) 只修交接，
+    不清 marker 後增加 implementation attempt 重做。
+-   成功 step 核對終止與副作用後才清除 active marker；失敗／unknown step 使用
+-   `goal-recovery.mjs` 的 native terminal＋fresh host 證據流程，不手改成 reported。
+-   保留所有 `goal-step.*` 舊紀錄與 outcomes；report-only 恢復不授權重派。
++   所有 step（包括 child reported）使用 `goal-recovery.mjs` 的 native terminal＋fresh
++   host 證據流程取代手動清 marker。成功／報告已處理完用 continue；成果被 host/review
++   否決用 retry，captured pass 另需 rejection artifact。保留歷史 status/outcomes，
++   不改成 reported。report-only 僅表示報告待處理、不授權新 launch；本地完成報告後
++   另作明確 continue，才做真正的新工作。已有有效 host 收據可重用，不額外派 verifier。
+    新 phase／有理由的新 attempt 使用新 key，不覆蓋舊 request 來掩蓋失敗。
+ 7. **更新成果。** 整個 task 的 REQUIRED evidence 全部有效才由主 agent
+    `update_goal_task(status="complete", evidence=...)`。短 evidence 寫 durable report
+@@ -153,6 +155,10 @@
+ | work | 新 `--dispatch` 必填 kind/criteria/checks；criteria 使用原始 ID/text 子集，parent 仍需覆蓋完整成果要求 |
+ | sourcePaths | 新 effective packet 保存原始 scope，恢復檢查不可縮小 |
+ | retry | legacy `{reason,evidence}` 可讀，不授予重派權；失敗需原生終止紀錄及 goal-recovery 準備的 decision |
++
++Completion 不再把 runId 或 cleared marker 視為已處理；必須有 requestDigest 綁定的
++recovery，並接受其中已核對的 childRunId（原 throw 可以没有 runId）。舊紀錄需明確
++reconcile，不自動遷移；已安裝 runtime consumer 修改需新 session/reload 才生效。
+ 
+ Helper v2 先保存 `goal-step.<taskId>.<phase>.<attempt>` 的 compact intent，成功後
+ 才設 `teamGoalActiveStep`，兩者皆成功才 `runs.run`。首筆持久化失敗不留 orphan
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/06-HANDOFF-PRACTICE.md
++++ /home/timmypai/.pi/agent/teams/HANDOFF-PRACTICE.md
+@@ -4,7 +4,7 @@
+ 2026-09-08 執行修訂見 [EFFICIENCY-CONTRACT.md](EFFICIENCY-CONTRACT.md)：
+ Goal 新派工必填 work 職責／固定 criteria／checks；能力矛盾先拒絕，
+ 同 task/role 換 phase 不重置修復計數；成功切片不消耗修復額度，報告問題不重做產品。
+-Goal API／CLI 已接共用能力與 selected-role readiness；失敗用 goal-recovery.mjs 核對 native 終態與 fresh host 收據。
++普通 handoff／Goal API／CLI 共用同一 selected-role readiness，無需為同一 preparation 額外重跑一次。Goal 每一步（包括 reported）以 goal-recovery.mjs 核對 native 終態與 fresh host 收據；continue 不扣修復額度，host/review 否決後的 retry 才扣。
+ 本文件補充 team-flow；不新增 controller，不以報告格式作產品驗收。
+ 
+ 來源 freeze、host 收據／局部失效、Goal 可選 evidence reference、較少手抄的派工準備，見 [EVIDENCE-PRACTICE.md](EVIDENCE-PRACTICE.md)。先完成 formatter，再驗證／封存；host 機械新鮮度不取代 main 的語意驗收或 required review。
+@@ -21,7 +21,7 @@
+ 短 Markdown，不為排版啟動修復代理。Goal step／candidate gate 保留各自既有
+ 專用 schema，不能把普通 schema 塞進它們的消費者。
+ 
+-派工前在目標 cwd 執行 `check-config.mjs --roles-only --roles=team.debugger,team.reviewer <cwd>`（角色清單換成實際選用者），檢查有效 profiles、skills、MCP selectors／工具與模型 scopes；配置、角色選擇或 cwd 改變後重查。省略 `--roles` 的 `--roles-only` 仍是全角色健檢，完整健檢仍用 `check-config.mjs <cwd>`。選用範圍的成功不得宣稱全域健康；輸出的 uncheckedRoles 明列未檢角色。共用安全設定及 discovery diagnostics 仍會阻擋；選用角色缺 skill／工具／模型仍 fail closed，不自動換角色或擴權。
++`handoff-contract.mjs` 與 `goal-request.mjs --dispatch` 已包含一次 selected-role 預檢，不另重跑同一檢查。未經這兩個 preparation 入口（純閱讀／既有 candidate gate／直接 native）的工作，主 agent 才先在目標 cwd 執行 `check-config.mjs --roles-only --roles=team.debugger,team.reviewer <cwd>`（換成實際選用角色），檢查有效 profiles、skills、MCP selectors／工具與模型 scopes；配置、角色選擇或 cwd 改變後重新 prepare／預檢。省略 `--roles` 的 `--roles-only` 仍是全角色健檢，完整健檢仍用 `check-config.mjs <cwd>`。選用範圍的成功不得宣稱全域健康；輸出的 uncheckedRoles 明列未檢角色。共用安全設定及 discovery diagnostics 仍會阻擋；選用角色缺 skill／工具／模型仍 fail closed，不自動換角色或擴權。
+ 2026-09-08：role 檢查會一次彙總所有選用角色的失敗；FAIL receipt 的 `roles` 是
+ 通過項、`failures` 是阻塞項，不因列出成功角色就允許失敗角色啟動。缺 skills
+ 不自動安裝、刪除要求或換成其他角色；完整環境 readiness 仍須按任務檢查。
+@@ -53,7 +53,8 @@
+ ```
+ 
+ CLI 只讀 request、解析有效角色、檢查 timeout／output／check 能力、用原生
+-validator 編譯 envelope，輸出 `{contract, args}`；不執行 command 或啟動 child。
++validator 編譯 envelope，並跑一次本地 selected-role readiness，輸出 `{contract, args}`；
++不執行任務 command 或啟動 child。Goal preparation 重用這個入口，不再重複 readiness。
+ 把 `args` 原樣交 native `subagent` 或 stable-key `runs.run`，保留 `contract`
+ 於現有任務證據中。不要手工再抄一份 schema。派工前仍須主 agent 核對 source、
+ 實際安全範圍與有效 overrides；此 helper 不是全域 admission hook。
+@@ -92,6 +93,8 @@
+ 若确實需要模型解释，最多一次 fresh、無 shell/edit/write 的既有適用角色，
+ 只讀最少必要 artifacts／精確 errors，不能 resume 保留寫權限的 writer。
+ 第二次仍無法交接由 main 處理／回報阻塞，禁止同任務循環重做。
++Goal 的 report-only decision 是「報告仍待處理」，不是新 launch 許可；main 完成本地
++報告處理後，用同一仍有效的 host 收據準備 explicit continue，再做真正的新工作。
+ 這是主 agent 政策，不宣稱在所有原生工具呼叫上都有硬性攔截。
+ 
+ ## 重播與原生 retry 的範圍
+@@ -99,7 +102,9 @@
+ `goal-task-step.js` v2 使用 `goal-request.mjs` 準備的 saved-packet digest/reference，
+ 不把每一步完整 request/report 累積到 mission state；先保存 compact intent，成功後
+ 才寫 active marker 並派工。舊 v1 歷史仍只 reconcile；新 attempt 不能越過未
+-reconcile 的 active step。格式失敗不能被當作 implementation retry。詳見 GOAL-TEAMS.md。
++reconcile 的 active step。同 task/role 的前一筆 reported 也須 parent disposition；
++清 marker 不代表 accepted。格式失敗不能被當作 implementation retry；captured pass
++後真的被 host/review 否決須額外保存 rejection artifact。詳見 GOAL-TEAMS.md。
+ `gate-candidate.js` 現在先保存 request intent，再執行驗證；失敗保存 artifacts，
+ review 開始前保存 verification。再次執行只回 reconcile，不重跑命令。
+ 主 agent 完成 native/source reconciliation 並保存舊證據後，才可清除舊 teamGate
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/07-OPERATING-MODEL.md
++++ /home/timmypai/.pi/agent/teams/OPERATING-MODEL.md
+@@ -7,12 +7,12 @@
+ 
+ ## 2026-09-08 效率與職責修訂
+ 
+-目前新派工以 [EFFICIENCY-CONTRACT.md](EFFICIENCY-CONTRACT.md) 為準：
++目前新派工以 [EFFICIENCY-CONTRACT.md](EFFICIENCY-CONTRACT.md) 為準（audit-fixes 修訂）：
+ reviewer 管 source/spec；QA 管情境與實際證據評估，不假裝執行 browser；
+ verifier/e2e 在已有能力下執行 browser；固定機械命令優先 host。
+ 不為固定流程重複派所有角色。Goal CLI 必填 work，逐項 criteria 與 checks 不丟失；
+ 同 task/role 三次修復上限跨 phase/source 計數，成功切片不計修復；API／CLI 共用角色 readiness。
+-失敗後 goal-recovery.mjs 核對原生終態與 fresh host 證據；缺證據不降級 gate，不因報告失敗自動重做。
++每一步（包括 reported）以 goal-recovery.mjs 核對原生終態與 fresh host 證據；continue 不扣額度，host/review 否決後的 retry 計入三次修復，captured pass 另需 rejection artifact。缺證據不降級 gate，不因報告失敗自動重做。
+ 本輪不改模型、工具、角色權限或 native 預算；offline regression 不是 live 加速證明。
+ 
+ ## 交付證據增量
+@@ -43,16 +43,16 @@
+ 
+ 2026-09-07 修訂：派工可用 `check-config.mjs --roles-only --roles=team.debugger,team.reviewer <cwd>`（換成本次選用角色）；不因未選角色缺 skill 阻擋派工，但不代表全角色健康。省略 `--roles` 仍檢查全部角色，共用安全設定／discovery 錯誤及選用角色缺能力仍阻擋。開始實作前確認本次驗收環境；降級 main-only 不取消必要 review／E2E，缺證據只能交付 partial。細則見 HANDOFF-PRACTICE.md、OUTCOME-PRACTICE.md；不新增固定角色流程或自動安裝。
+ 
+-2026-09-08 reliability 修訂：role 預檢一次彙總所有缺口，不降低 fail-closed 要求；
+-Goal helper 改存 compact references，hold 於 parent boundary 補觀察，completion
+-使用有效 settings 並阻擋對應 active／unknown native run。仍非產品證據／來源
+-新鮮度自動 gate，亦未取得本輪獨立 review 或 live canary。當前 docs/e2e/release/security
+-四個角色仍缺必要 skill，不可把先前健康快照當成目前 PASS。細節見 GOAL-TEAMS.md
+-與 `goal-team-evidence/reliability-20260908/report.md`。
++當前配置：14 角色的 declared skills／role 預檢已通過；先前四角色缺 skills 的
++歷史快照已被 `goal-team-evidence/skills-ready-20260908/README.md` 取代。
++完整健檢仍因實際啟用 pi-gateway 與既定停用政策不一致而 FAIL；保留／停用需
++使用者裁定，本輪不改配置。角色健康不是 full runtime／live E2E 健康。
++恢復／驗收與返工計數的當前修訂、回歸及限制見
++`goal-team-evidence/audit-fixes-20260908/README.md`；舊 reliability 證據僅供歷史查閱。
+ 
+ ## 角色與責任
+ 
+-**2026-09-06 交付成本修訂：以下目前政策取代舊驗證快照。**
++**2026-09-06 交付成本修訂：以下角色政策取代舊驗證快照；角色列表與預檢範圍以當前來源為準。**
+ Subagents 僅使用 `openai-codex`；預設 Luna medium，main 預設 Sol high。
+ 先減少重複工作與 context，再按難度選 thinking；不聲稱有成本 benchmark。
+ Planner 可按任務升 Sol xhigh，implementer 可升 Luna max，不再全面固定最高級。
+@@ -109,7 +109,7 @@
+ 
+ 另有 **team.advisor（Astra medium，R L，team-member／codebase-design）**：僅重大
+ 未解決問題的唯讀諮詢；不參與常態 wave。Timeout 由主 agent 依任務設定；
+-profile 15 分鐘只是既有 fallback，fresh context。
++advisor profile fallback 為 15 分鐘，其餘 13 角色為 30 分鐘；皆 fresh context。
+ 
+ 原生 `contact_supervisor` 為精確 child → parent 的協調通道，runtime 視需求注入。
+ 所有 child 都禁止再分工、使用 generic mcp/mcpScript、共享全域 memory 工具、
+@@ -218,7 +218,7 @@
+ | concurrency           | 一個 run 最多 3 child；每 session 最多 1 active async top-level run                                             |
+ | budget                | 每 wave 預設 8 admissions；每 parent session 32；不含模型 provider 重試的精確成本保證                           |
+ | nesting               | depth 1，所有 team profiles 無 subagent tool                                                                    |
+-| deadline              | 主 agent 每次依任務／測試耗時明設 timeout；profile 30 分鐘僅 fallback，async composite 亦需評估                 |
++| deadline              | 主 agent 每次依任務／測試耗時明設 timeout；advisor 15 分鐘／其餘 30 分鐘僅 fallback，async composite 亦需評估                 |
+ | retry                 | 格式失敗不重做；timeout 先 reconcile；有因果證據才修復，最多三輪不是 retry 配額                                 |
+ | scheduler/watchdog    | 關閉；不啟用 subagents mission.goal 續跑。僅使用者建立的 pi-goal-x goal 可續跑主 agent                          |
+ | goal/task layer       | pi-goal-x；只有 main 更新 tasks。內建 auditor/oracle 停用，由 team gates＋main 驗收                             |
+@@ -266,7 +266,7 @@
+ 能力，不是另寫永遠運作的 learning daemon。沒有背景訓練或自動 promotion 保證；
+ 若主 agent 未執行 retrospective，必須記作未完成，不可聲稱已自我進化。
+ 
+-## 全域盤點與處置
++## 2026-09-05 歷史盤點（不是目前有效配置）
+ 
+ | 發現                                                            | 本次處置                                                                                     |
+ | --------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/21-goal-recovery.mjs
++++ /home/timmypai/.pi/agent/teams/goal-recovery.mjs
+@@ -5,7 +5,7 @@
+ import path from 'node:path';
+ import {createHash} from 'node:crypto';
+ import {prepareGoalRequest} from './goal-request.mjs';
+-import {verifyCheck} from './host-evidence.mjs';
++import {verifyCheck, goalStepSettled, evidenceDigest} from './host-evidence.mjs';
+ function readJson(file) {
+   assert.ok(path.isAbsolute(file), 'absolute evidence path required');
+   assert.equal(fs.realpathSync(file), file, 'canonical evidence path required');
+@@ -24,7 +24,7 @@
+   assert.equal(native.cwd, mission.projectRoot, 'native mission cwd mismatch');
+   const saved = readJson(path.join(mission.missionDir, mission.missionId, 'state.json'));
+   const record = saved[input.recordKey];
+-  assert.ok(record && ['dispatching', 'blocked'].includes(record.status), 'unresolved step record required');
++  assert.ok(record && ['dispatching', 'blocked', 'reported'].includes(record.status), 'retained step record required');
+   const request = prepareGoalRequest(readJson(record.requestRef), record.requestRef);
+   assert.equal(request.requestDigest, record.requestDigest, 'saved request changed');
+   assert.deepEqual(saved.teamGoalBinding, {goalId: request.goalId, cwd: request.cwd}, 'goal binding mismatch');
+@@ -36,18 +36,23 @@
+   const child = steps[0];
+   assert.ok(['completed', 'failed', 'stopped', 'cancelled'].includes(child.status), 'native child must be terminal');
+   if (record.runId) assert.equal(child.runId, record.runId, 'native run identity mismatch');
+-  if (input.action === 'retry')
+-    assert.ok(!(record.outcomes?.reportDelivery === 'captured' && record.outcomes.product === 'pass'), 'captured pass requires report-only/continue reconciliation, never repeat work');
++  if (input.action === 'retry' && record.outcomes?.product === 'pass')
++    assert.ok(typeof input.rejection === 'string' && input.rejection.trim(), 'captured pass requires separate parent product-rejection evidence, never repeat work just for a report');
++  const rejection = input.rejection === undefined ? {} : {
++    rejectionRef: input.rejection, rejectionDigest: evidenceDigest(input.rejection),
++  };
++  assert.ok(input.action === 'retry' || input.rejection === undefined, 'rejection evidence belongs to an explicit retry decision');
+   assert.equal(input.check.cwd, request.cwd, 'check cwd mismatch');
+   assert.ok(request.sourcePaths, 'legacy packet has no source scope; parent migration required');
+   assert.deepEqual(input.check.sourcePaths, request.sourcePaths, 'cannot narrow original source scope');
+   const checked = verifyCheck(input.check, input.receipt);
+   const recovery = {
+-    action: input.action, reason: input.reason,
++    action: input.action, reason: input.reason, requestDigest: record.requestDigest, ...rejection,
+     nativeStatusRef: input.statusPath, nativeDigest: digest(native), childRunId: child.runId,
+     hostReceiptRef: input.receipt, hostReceiptDigest: digest(readJson(input.receipt)),
+     sourceState: 'sha256:' + checked.sourceDigest,
+   };
++  assert.ok(goalStepSettled({...record, recovery}), 'recovery must be consumable by final acceptance');
+   // Host-verified preparation, same single-owner discipline as goal-request.
+   // Keep all original outcome/error fields. Reconciliation is a separate decision.
+   const setupScript = [
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/22-goal-request.mjs
++++ /home/timmypai/.pi/agent/teams/goal-request.mjs
+@@ -3,7 +3,6 @@
+ import { createHash } from "node:crypto";
+ import fs from "node:fs";
+ import path from "node:path";
+-import { spawnSync } from 'node:child_process';
+ import { validateWork } from "./work-contract.mjs";
+ import {
+   snapshot,
+@@ -21,6 +20,8 @@
+     Number.isInteger(input.attempt) && input.attempt >= 1 && input.attempt <= 4,
+     "Attempt must be 1..4",
+   );
++  for (const field of ['taskId', 'phase'])
++    assert.ok(typeof input[field] === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,47}$/.test(input[field]), 'Invalid ' + field);
+   const request = Object.fromEntries(
+     [
+       "goalId",
+@@ -91,6 +92,7 @@
+   assert.ok(input.timeoutMs !== undefined, "parent must choose timeoutMs");
+   assert.ok(Number.isInteger(input.attempt) && input.attempt >= 1 && input.attempt <= 4, 'Attempt must be 1..4');
+   validateWork(input.agent, input.work);
++  prepareGoalRequest({...input, sourceState: 'preflight-only'}, requestRef);
+   const { prepareHandoff } = await import('./handoff-contract.mjs');
+   await prepareHandoff({
+     agent: input.agent, cwd: input.cwd, task: input.task,
+@@ -98,13 +100,6 @@
+     timeoutMs: input.timeoutMs, criteria: input.work.criteria,
+     checks: input.work.checks, work: input.work,
+   });
+-  const readiness = spawnSync(process.execPath, [
+-    new URL('./check-config.mjs', import.meta.url).pathname,
+-    '--roles-only', '--roles=' + input.agent, input.cwd,
+-  ], { encoding: 'utf8', timeout: 30000, maxBuffer: 1024 * 1024,
+-    env: { ...process.env, PI_OFFLINE: '1', PI_MEMORY_EXIT_SUMMARY: 'off' } });
+-  assert.ok(!readiness.error && readiness.status === 0,
+-    'role readiness preflight failed: ' + (readiness.error?.message || readiness.stderr || 'inspect check-config output').slice(0, 2048));
+   const source = snapshot(input.cwd, input.sourcePaths);
+   for (const scope of input.sourcePaths) {
+     const root = path.resolve(input.cwd, scope);
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/23-goal-task-step.js
++++ /home/timmypai/.pi/agent/teams/goal-task-step.js
+@@ -115,19 +115,28 @@
+ if (budget.lastRecord) {
+   const previous = await state.get(budget.lastRecord);
+   if (!previous) throw new Error('Previous record missing; reconcile native receipt first');
+-  if (previous.status !== 'reported') {
+-    const recovery = previous.recovery;
+-    const recoveryValid = recovery &&
+-      ['nativeStatusRef', 'hostReceiptRef'].every(field => typeof recovery[field] === 'string' && recovery[field].startsWith('/')) &&
+-      ['nativeDigest', 'hostReceiptDigest'].every(field => typeof recovery[field] === 'string' && /^[a-f0-9]{64}$/.test(recovery[field])) &&
+-      typeof recovery.childRunId === 'string' && recovery.childRunId.trim() &&
+-      typeof recovery.reason === 'string' && recovery.reason.trim() && recovery.reason.length <= 1024;
+-    if (!recoveryValid || recovery.sourceState !== request.sourceState || !['continue', 'retry'].includes(recovery.action))
+-      throw new Error('Native terminal receipt and parent recovery required; text retry is not replay authority');
+-    if (recovery.action === 'retry') {
+-      if (repairs >= 3) throw new Error('Task/role repair limit reached; do not rename phase or change role to retry');
+-      repairs++;
+-    }
++  // Child reported is not parent acceptance. Every prior slice needs a terminal
++  // disposition; continue is free, evidence-backed retry consumes a repair.
++  const recovery = previous.recovery;
++  const recoveryValid = ['reported', 'blocked', 'dispatching'].includes(previous.status) && recovery &&
++    recovery.requestDigest === previous.requestDigest && /^[a-f0-9]{64}$/.test(previous.requestDigest ?? '') &&
++    ['nativeStatusRef', 'hostReceiptRef'].every(field => typeof recovery[field] === 'string' && recovery[field].startsWith('/')) &&
++    ['nativeDigest', 'hostReceiptDigest'].every(field => typeof recovery[field] === 'string' && /^[a-f0-9]{64}$/.test(recovery[field])) &&
++    typeof recovery.childRunId === 'string' && recovery.childRunId.trim() &&
++    (previous.runId == null || previous.runId === recovery.childRunId) &&
++    typeof recovery.reason === 'string' && recovery.reason.trim() && recovery.reason.length <= 1024;
++  if (recovery?.action === 'report-only')
++    throw new Error('Report-only never authorizes another launch; finish report handling, then prepare explicit continue recovery for genuinely new work');
++  if (!recoveryValid || recovery.sourceState !== request.sourceState || !['continue', 'retry'].includes(recovery.action))
++    throw new Error('Native terminal receipt and parent recovery required; reported is not acceptance and text retry is not replay authority');
++  if (request.retry && recovery.action !== 'retry')
++    throw new Error('Declared repair requires a parent retry disposition, not continue');
++  if (recovery.action === 'retry') {
++    if (previous.outcomes?.product === 'pass' &&
++        !(typeof recovery.rejectionRef === 'string' && recovery.rejectionRef.startsWith('/') && /^[a-f0-9]{64}$/.test(recovery.rejectionDigest ?? '')))
++      throw new Error('Captured pass requires separate parent product-rejection evidence for a repair');
++    if (repairs >= 3) throw new Error('Task/role repair limit reached; do not rename phase or change role to retry');
++    repairs++;
+   }
+ }
+ // Save the bounded intent first: storage failure cannot orphan an active marker.
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/24-handoff-contract.mjs
++++ /home/timmypai/.pi/agent/teams/handoff-contract.mjs
+@@ -3,6 +3,7 @@
+ import fs from "node:fs";
+ import path from "node:path";
+ import { createHash } from "node:crypto";
++import { spawnSync } from 'node:child_process';
+ import { validateWork } from './work-contract.mjs';
+ import { createJiti } from "../npm/node_modules/jiti/lib/jiti.mjs";
+ 
+@@ -231,6 +232,15 @@
+     "valid",
+     "native handoff preflight: " + (probe.message ?? "invalid"),
+   );
++  // Shared by ordinary handoff and Goal preparation; roles-only exits before
++  // check-config's full handoff regression, so this cannot recurse.
++  const readiness = spawnSync(process.execPath, [
++    new URL('./check-config.mjs', import.meta.url).pathname,
++    '--roles-only', '--roles=' + input.agent, input.cwd,
++  ], { encoding: 'utf8', timeout: 30000, maxBuffer: 1024 * 1024,
++    env: { ...process.env, PI_OFFLINE: '1', PI_MEMORY_EXIT_SUMMARY: 'off' } });
++  assert.ok(!readiness.error && readiness.status === 0,
++    'role readiness preflight failed: ' + (readiness.error?.message || readiness.stderr || 'inspect check-config output').slice(0, 2048));
+   return prepared;
+ }
+ 
+--- /home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/before/25-host-evidence.mjs
++++ /home/timmypai/.pi/agent/teams/host-evidence.mjs
+@@ -64,6 +64,12 @@
+   } finally {
+     fs.closeSync(fd);
+   }
++}
++export function evidenceDigest(file) {
++  assert.ok(path.isAbsolute(file), 'absolute evidence path required');
++  const bytes = readBytes(file);
++  assert.ok(bytes.length > 0, 'empty evidence artifact');
++  return sha(bytes);
+ }
+ function readJson(file) {
+   try {
+@@ -431,6 +437,22 @@
+     assert.equal(contractDigest, digest, "acceptance contract changed");
+   return { contract, root, decision, contractDigest, file };
+ }
++// A parent reconciliation settles execution, not product acceptance. Historical
++// source may change after a repair; never rerun historical checks to settle it.
++export function goalStepSettled(record) {
++  const recovery = record?.recovery;
++  return !!(record && ['reported', 'blocked', 'dispatching'].includes(record.status) &&
++    recovery && ['continue', 'retry', 'report-only'].includes(recovery.action) &&
++    recovery.requestDigest === record.requestDigest && /^[a-f0-9]{64}$/.test(record.requestDigest ?? '') &&
++    ['nativeStatusRef', 'hostReceiptRef'].every(field => typeof recovery[field] === 'string' && recovery[field].startsWith('/')) &&
++    ['nativeDigest', 'hostReceiptDigest'].every(field => typeof recovery[field] === 'string' && /^[a-f0-9]{64}$/.test(recovery[field])) &&
++    typeof recovery.childRunId === 'string' && recovery.childRunId.trim() &&
++    (record.runId == null || record.runId === recovery.childRunId) &&
++    typeof recovery.sourceState === 'string' && recovery.sourceState.trim() &&
++    (recovery.action !== 'retry' || record.outcomes?.product !== 'pass' ||
++      (typeof recovery.rejectionRef === 'string' && recovery.rejectionRef.startsWith('/') && /^[a-f0-9]{64}$/.test(recovery.rejectionDigest ?? ''))) &&
++    typeof recovery.reason === 'string' && recovery.reason.trim() && recovery.reason.length <= 1024);
++}
+ function missionSettled(contract) {
+   if (!contract.mission) return;
+   const { id, statePath } = contract.mission;
+@@ -459,10 +481,7 @@
+   for (const [key, value] of Object.entries(state))
+     if (key.startsWith("goal-step.")) {
+       assert.ok(
+-        value &&
+-          ["reported", "blocked"].includes(value.status) &&
+-          typeof value.runId === "string" &&
+-          value.runId.trim(),
++        goalStepSettled(value),
+         "unresolved retained step: " + key,
+       );
+     }

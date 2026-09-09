@@ -1,0 +1,70 @@
+{
+  "files": [
+    {
+      "path": "/home/timmypai/.pi/agent/teams/goal-request.mjs",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/efficiency-20260908/goal-request.mjs.before",
+      "beforeSha256": "8050921028518c7748c23d24350b675e076249a8b0f90a9da09d90b57b95ab8c",
+      "afterSha256": "8231532aecfed770ae81070c4b6c57f817a22ec398d15ac65b73b6b17e9ebb00"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/goal-task-step.js",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/efficiency-20260908/before/goal-task-step.js",
+      "beforeSha256": "6f5e8121a905e9478561abdb13ca5b503df717d1000114f9cb64647f50608ac6",
+      "afterSha256": "63cc188c6f34cc928f1759d10338b44a848ec7a253bb2451c58eb4b66de0f41e"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/handoff-contract.mjs",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/efficiency-20260908/before/handoff-contract.mjs",
+      "beforeSha256": "4fbd6067a772e9c18393f19926ac4c368ba7afcd4d5b789e06131d2399882346",
+      "afterSha256": "078ab9f6b92d179a6a91864a08ddbe29edabf01236709ef859e6256c136bbef5"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/work-contract.mjs",
+      "before": null,
+      "beforeSha256": null,
+      "afterSha256": "ddd9859dec724d3fbd17b1f52642fd4abb64989e0a2e2da59832e3414b01f392"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/check-goal-dispatch.mjs",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/efficiency-20260908/before/check-goal-dispatch.mjs",
+      "beforeSha256": "1fb9d52884dfc9d34fe2d45223b2c423d085233dc13716494c0a8379084482c3",
+      "afterSha256": "7eb6ce5342c8b29f8c2705f566a56be546b6ed49f7961b1d4941118bda7280ed"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/EFFICIENCY-CONTRACT.md",
+      "before": null,
+      "beforeSha256": null,
+      "afterSha256": "82d50f1d6837169450660fa4c0a9d33ca9294f3aa39e70207000523ce7a1acba"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/OPERATING-MODEL.md",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/efficiency-20260908/before/OPERATING-MODEL.md",
+      "beforeSha256": "1e22e415cc69dd563351e99229d46ec3acc7a00b3ba685cbf0183722c8e68ee6",
+      "afterSha256": "3bd0a712acc3bad7ed4d2c91d8c246383fb33e1a6425704871e487e0ce886cfa"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/HANDOFF-PRACTICE.md",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/efficiency-20260908/before/HANDOFF-PRACTICE.md",
+      "beforeSha256": "5b7a9422357a90f45140abc4f474fba658e4560ebb30b66a9d8cbdcf39c3b73f",
+      "afterSha256": "fa29b8d7af3d3687c2484a3c16f3fd1af7eba9172c18cf9cb1608424286d06e8"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/GOAL-TEAMS.md",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/efficiency-20260908/before/GOAL-TEAMS.md",
+      "beforeSha256": "1ef891f3a7d45e55633f50096abe7f21b35cfd16f5b5b0d156e34c0d17474f5d",
+      "afterSha256": "0e1bc5fdf1d92f218a45cc433995025e2381fabab41f675685da0ca95eca1e07"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/teams/EVIDENCE-PRACTICE.md",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/efficiency-20260908/before/EVIDENCE-PRACTICE.md",
+      "beforeSha256": "99ef88e554280deeb91bbef6540494e2334b2eab9eab3ab925325c52bfc9c558",
+      "afterSha256": "1df810c13321f5af5cd6e57dc678ce1c3347f39be46cb66d7d290f5928fa79be"
+    },
+    {
+      "path": "/home/timmypai/.pi/agent/skills/team-flow/SKILL.md",
+      "before": "/home/timmypai/.pi/agent/teams/goal-team-evidence/efficiency-20260908/before/team-flow-SKILL.md",
+      "beforeSha256": "48aeac0908b7c7f61a1bdbf30cce928dce812b49df460d50a71464f469cd1aac",
+      "afterSha256": "9aa3410e4b4b38086a38c1dfe3b22847c47d29f96f9275e977e919cf468f1582"
+    }
+  ]
+}

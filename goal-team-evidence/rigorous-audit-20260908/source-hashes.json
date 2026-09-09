@@ -1,0 +1,166 @@
+[
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.advisor.md",
+    "sha256": "dea0438d64f4c9228fab69a2460143765655357b3c2ba5337c224175e5fd2c99"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.challenger.md",
+    "sha256": "ff9f97e79903593cf36d8e535578d47a70817fa17cd389da4b96ee303c0bfb57"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.curator.md",
+    "sha256": "eac3759773cbaa5a8f41b4047414784c660a921ead188f6dca70e4ddf7ddb963"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.debugger.md",
+    "sha256": "e26725ef2f8355963d18ac6793d8107bbc8be0335a8000c9bcc2d8321cbf884c"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.docs.md",
+    "sha256": "9b496af581b267fc967ab077ba97bec70ed4132c2966d6ca37c3d473407ac942"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.e2e.md",
+    "sha256": "3db00a8c0e734244b1f3d9188bd4c91a644e0c98f0a1e44294b2dec68be2bb21"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.implementer.md",
+    "sha256": "9bd9f05434bd2d7010098406fb0988e3822a6e6d3a163e596acbb271558b75be"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.planner.md",
+    "sha256": "359f846e7e9f4649341347998c76a1f2bc4ba0ffe333fa2eb497d118b6ad7ac9"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.qa.md",
+    "sha256": "f7ca968cad1532b2a673d277ce8fc68dd688fd83a368d137415f0de0d7784cb8"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.release.md",
+    "sha256": "9ea300b25516f619fbfa60cb876cd49c0415f6b336a16adf39d8049fdf02bab7"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.researcher.md",
+    "sha256": "e7577cad724299f0b161b56e2993c4c591463f64b3346e4222e63e2f5506781c"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.reviewer.md",
+    "sha256": "fcac94e50c320bd64ab81f269a954b38cf6bea535a9c326228b130562bb0f5d5"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.security.md",
+    "sha256": "cd24a2d204b3a58eaa999e7066d8409542090e18326dc5b62042c3c313aaa672"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.verifier.md",
+    "sha256": "f7fbd54e635ba29fa36abb730e00d86f66ebec92d67df337c499fa5789d02bb8"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/npm/node_modules/pi-goal-x/extensions/goal-team-evidence.mjs",
+    "sha256": "32386d8fe1fd3687841709b6bbf129ca0ea8c9021016f1c7ca17dc36a3cf01dd"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/settings.json",
+    "sha256": "f51c575981222e43f3ee036271be6ced07ec10004a707ec842102b99da66ec0c"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/CHECKPOINT-REVIEW-DESIGN.md",
+    "sha256": "635b31147d4b4b0898eb4bfb65b854e584a1715ca134b21a8f0bb852831510c3"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/EFFICIENCY-CONTRACT.md",
+    "sha256": "fbcdd6178ea6c96f266c3bf70ae257fab8bf5444f42de8c52142fd9cf8d27e47"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/EVIDENCE-PRACTICE.md",
+    "sha256": "33d470e461f2578cab9033cb0c715041053d4201e6ef9addd713dc5c0f9e157e"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/GOAL-TEAMS.md",
+    "sha256": "fd42c86524665531a547878e4f0832271a01d655548e43867cda21bf2eb49d60"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/HANDOFF-PRACTICE.md",
+    "sha256": "91d360b19864a0790b6a3272e602d0c245263fc42da5ad085d83ca8fb7e5209c"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/OPERATING-MODEL.md",
+    "sha256": "6f656c274d99305d1809769f6bd40eed26a3ea1ae86c171e12666283a43eab9c"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/OUTCOME-PRACTICE.md",
+    "sha256": "824e2ecf76eb600bf992b8f2a8cfd29192ebfdd97d684da63cac2393a693171b"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/check-config.mjs",
+    "sha256": "1ae169bed8fb5eaf7d6ff41e05809dffb001e749239cc389c8d2d6b30b16f711"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/check-goal-completion.mjs",
+    "sha256": "a6e46dfb0077512f7256cdb8fb3600887ec10b08a5dd03a48a2c0898ef1c0962"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/check-goal-dispatch.mjs",
+    "sha256": "aa8f442e8f50b41bfc9bfd6c48c08886b44cd0328c9f56a17c6e63f93ae02316"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/check-goal-hold-wake.mjs",
+    "sha256": "93027e49926c2ad981e33e09f99aff4a799a20275499affe9ca93c23dabd3d6f"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/check-goal-step-storage.mjs",
+    "sha256": "8c589e1938c8459ced77b1f56ab0bfd609e91f76229aedf03dd2f2fbbadaf03c"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/check-goal-team.mjs",
+    "sha256": "d04e21c67dccd252948f928581a347eabfdb7f84f73c0610bdb5423938241e92"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/check-handoff-contract.mjs",
+    "sha256": "bd60c7d71da537c206807cb90dba024be26dece08349367fcc0ee0a9c765ca6c"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/check-host-evidence.mjs",
+    "sha256": "17d5598820a999183559a9476bed1894a2c9c6a5f08590656318af91980cc444"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/check-reliability-patch.mjs",
+    "sha256": "3b873b25090ffc16454e9e2d2dd816844494b78524783021c30b2180f560d4bf"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/check-selected-role-preflight.mjs",
+    "sha256": "f23e6e77ab6247f20b61e85ecd1e3812c803faf747a8450863e3c6e12b7b44a9"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/check-team-outcomes.mjs",
+    "sha256": "4b20f7627061bf7affe4ed819752acbd89165a855f99883d75d8b124c7ef1b67"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/gate-candidate.js",
+    "sha256": "5bcc8b989e8ce468fa1307f6c82bf46bc9275f0453bbea3b9fa79e5bdda60ef3"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/goal-recovery.mjs",
+    "sha256": "a941a255107352cc0eba798b6bd91e54e50ac3819389483d28f4f95cdce16be2"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/goal-request.mjs",
+    "sha256": "a129455a32c9288a8c26337c6246325a9310126c21671217ef54e33c6d382068"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/goal-task-step.js",
+    "sha256": "15108bd95ab3a471882cc8ad8f2920a5de0c7f49031b09389094a08ad3baf641"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/handoff-contract.mjs",
+    "sha256": "078ab9f6b92d179a6a91864a08ddbe29edabf01236709ef859e6256c136bbef5"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/host-evidence.mjs",
+    "sha256": "32386d8fe1fd3687841709b6bbf129ca0ea8c9021016f1c7ca17dc36a3cf01dd"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/work-contract.mjs",
+    "sha256": "ddd9859dec724d3fbd17b1f52642fd4abb64989e0a2e2da59832e3414b01f392"
+  }
+]

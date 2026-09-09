@@ -1,0 +1,7 @@
+{
+  "sourceFilesUnchanged": 23,
+  "prelaunchThreeWriteSequenceAlreadyPresentInBaseline": true,
+  "recoveryJsonReaderUnchangedFromBaseline": true,
+  "checks": "Read/hash/compare only; no test or exploitation execution",
+  "runId": "878636f9-7309-468b-8557-6912e5e16d17"
+}

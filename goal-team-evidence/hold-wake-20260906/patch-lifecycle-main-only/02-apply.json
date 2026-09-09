@@ -1,0 +1,5 @@
+{
+  "status": "APPLIED",
+  "backup": "2026-09-06T03-17-28-771Z-6ef41d3f",
+  "validation": "{\"status\":\"PASS\",\"cases\":24,\"sourceRoot\":\"/tmp/goal-hold-final-fixture.4giAod/extensions\",\"measurements\":{\"checkpointWhileHeld\":0,\"nativeWakeCount\":2,\"nativeWakeSuccess\":1,\"nativeWakeFailure\":1,\"bridgeWakeCount\":0,\"checkpointAfterRelease\":1},\"boundaries\":[\"Actual installed GoalRuntime, GoalTeamHold, registerGoalEvents, and pi-subagents notifier are loaded through jiti.\",\"The helper launch/result binding and native notifier-before-observer sequence use deterministic local session/status fixtures; no model child is launched.\"]}"
+}

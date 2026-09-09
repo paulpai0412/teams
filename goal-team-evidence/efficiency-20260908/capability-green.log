@@ -1,0 +1,11 @@
+✔ new dispatch requires an explicit responsibility instead of silently dropping work (48.151863ms)
+✔ effective no-shell profile cannot receive an execution command (247.403411ms)
+✔ browser work cannot be assigned to static QA even with no command declared (34.896072ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 376.302234

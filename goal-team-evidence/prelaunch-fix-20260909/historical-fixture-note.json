@@ -1,0 +1,6 @@
+{
+  "path": "/home/timmypai/.pi/agent/teams/goal-team-evidence/audit-fixes-20260908/recovery.workflow.txt",
+  "recordedBefore": "435b01bb029425d1b5ba88e62ff0d23acee2714aa57c8ce9a48a13ceb61fd192",
+  "currentSha256": "fd451cc51259b2be2c2fdf4d28be5f9b8d4b6104340bcba546737a4174b82925",
+  "cause": "This run mistakenly executed the archived legacy recovery test, overwriting its generated syntax-only fixture. Original hash ledger/logs/source tests retained unchanged. Do not cite current fixture as historical exact syntax evidence. Subsequent runs use a copied test in the new evidence directory."
+}

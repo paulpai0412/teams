@@ -1,0 +1,51 @@
+✔ work/checks reach the child and summary-only cannot pass a contracted review (1.500535ms)
+✖ renaming phases cannot reset the per-task role admission ceiling (2.001767ms)
+✖ failed execution keeps a captured product report distinct, never accepts it (0.595929ms)
+✔ matched criterion observations can pass without running browser in static role (0.252294ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 2
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 48.105252
+
+✖ failing tests:
+
+test at ../../.pi/agent/teams/goal-team-evidence/efficiency-20260908/step-contract.test.mjs:22:1
+✖ renaming phases cannot reset the per-task role admission ceiling (2.001767ms)
+  AssertionError [ERR_ASSERTION]: Missing expected rejection.
+      at async TestContext.<anonymous> (file:///home/timmypai/.pi/agent/teams/goal-team-evidence/efficiency-20260908/step-contract.test.mjs:31:2)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /admission limit/,
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at ../../.pi/agent/teams/goal-team-evidence/efficiency-20260908/step-contract.test.mjs:34:1
+✖ failed execution keeps a captured product report distinct, never accepts it (0.595929ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+  + undefined
+  - {
+  -   execution: 'failed',
+  -   product: 'pass',
+  -   reportDelivery: 'captured'
+  - }
+  
+      at TestContext.<anonymous> (file:///home/timmypai/.pi/agent/teams/goal-team-evidence/efficiency-20260908/step-contract.test.mjs:38:9)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: { execution: 'failed', reportDelivery: 'captured', product: 'pass' },
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

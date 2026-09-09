@@ -1,0 +1,25 @@
+✔ CLI still prepares valid attempts without launching a child (879.43279ms)
+✔ CLI rejects out-of-budget attempts before creating dispatch artifacts (379.750096ms)
+✔ existing host verification reuses unaffected evidence without executing the check again (30.565134ms)
+✔ work/checks reach the child and summary-only cannot pass a contracted review (3.598446ms)
+✔ renaming phases cannot reset the per-task role admission ceiling (1.604696ms)
+✔ failed execution keeps a captured product report distinct, never accepts it (0.364607ms)
+✔ missing report cannot trigger another same-source launch after clearing active marker (0.52648ms)
+✔ new same-role admission requires a diagnosed reason (0.465826ms)
+✔ missing, foreign, duplicate and unobserved criteria never pass (0.991791ms)
+✔ static review cannot pass on a different final source binding (0.34349ms)
+✔ declared execution command is retained once in the actual child task (0.309723ms)
+✔ matched criterion observations can pass without running browser in static role (0.256868ms)
+✔ new dispatch requires an explicit responsibility instead of silently dropping work (49.167412ms)
+✔ effective no-shell profile cannot receive an execution command (205.931733ms)
+✔ capable verifier prepares explicit browser checks without executing them (281.768037ms)
+✔ parent-only checks and undeclared browser execution fail before dispatch (76.82773ms)
+✔ browser work cannot be assigned to static QA even with no command declared (35.353867ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1317.383339

@@ -1,0 +1,12 @@
+const key = "goal-step.task.work.1";
+const expected = {"version":2,"requestDigest":"532c6331581046d4493fae52d7f220dfb8f3922ea8be0043482f2b41f5dee854","requestRef":"/tmp/team-audit-fix-KQ3iyU/packet-work.json","status":"unlaunched"};
+const next = {...expected, recovery: {"action":"continue","reason":"terminal pre-launch persistence failure","requestDigest":"532c6331581046d4493fae52d7f220dfb8f3922ea8be0043482f2b41f5dee854","nativeStatusRef":"/tmp/team-audit-fix-KQ3iyU/native-no-launch/status.json","nativeDigest":"dd94d1895aa0bdf39d9d6a9bc07a94b87a6884eabb7db4fdcf8c87261ced8407","noLaunch":true,"hostReceiptRef":"/tmp/team-audit-fix-KQ3iyU/check.json","hostReceiptDigest":"8b3d8335b708e58be4e286c37f6badd384da17d13b3e6dcedeb341c6857335fe","sourceState":"sha256:70f9fb5b2d758cfcd70327978148f2ab51f437badb45f55fd5b51d974f15b334"}};
+const existing = await state.get(key);
+if (JSON.stringify(existing) !== JSON.stringify(expected) && JSON.stringify(existing) !== JSON.stringify(next)) throw new Error("Step changed since recovery preparation");
+const binding = await state.get("teamGoalBinding");
+if (JSON.stringify(binding) !== "{\"goalId\":\"goal\",\"cwd\":\"/tmp/team-audit-fix-KQ3iyU\"}") throw new Error("Goal binding changed");
+const active = await state.get("teamGoalActiveStep");
+if (active != null && active !== key) throw new Error("Another active intent must be reconciled first");
+await state.set(key, next);
+if (active === key || true) await state.set("teamGoalActiveStep", null);
+return {status:"reconciled", recordKey:key, action:"continue"};

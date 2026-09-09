@@ -1,0 +1,167 @@
+[
+  {
+    "path": "/home/timmypai/.pi/agent/settings.json",
+    "sha256": "315c8bbc9e98190354d059b51485fadc4e3ce72938694706d7c41e86653cbd99",
+    "kind": "modified"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/AGENTS.md",
+    "sha256": "505254d8a5056d912f5e1bd4972eac0a407a1e7006177817ba7f788f35dc75f7",
+    "kind": "modified"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.advisor.md",
+    "sha256": "dea0438d64f4c9228fab69a2460143765655357b3c2ba5337c224175e5fd2c99",
+    "kind": "modified"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.challenger.md",
+    "sha256": "ff9f97e79903593cf36d8e535578d47a70817fa17cd389da4b96ee303c0bfb57",
+    "kind": "modified"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.curator.md",
+    "sha256": "eac3759773cbaa5a8f41b4047414784c660a921ead188f6dca70e4ddf7ddb963",
+    "kind": "modified"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.debugger.md",
+    "sha256": "e26725ef2f8355963d18ac6793d8107bbc8be0335a8000c9bcc2d8321cbf884c",
+    "kind": "modified"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.docs.md",
+    "sha256": "9b496af581b267fc967ab077ba97bec70ed4132c2966d6ca37c3d473407ac942",
+    "kind": "modified"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.e2e.md",
+    "sha256": "3db00a8c0e734244b1f3d9188bd4c91a644e0c98f0a1e44294b2dec68be2bb21",
+    "kind": "modified"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.implementer.md",
+    "sha256": "9bd9f05434bd2d7010098406fb0988e3822a6e6d3a163e596acbb271558b75be",
+    "kind": "modified"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.planner.md",
+    "sha256": "359f846e7e9f4649341347998c76a1f2bc4ba0ffe333fa2eb497d118b6ad7ac9",
+    "kind": "modified"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.qa.md",
+    "sha256": "f7ca968cad1532b2a673d277ce8fc68dd688fd83a368d137415f0de0d7784cb8",
+    "kind": "modified"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.release.md",
+    "sha256": "9ea300b25516f619fbfa60cb876cd49c0415f6b336a16adf39d8049fdf02bab7",
+    "kind": "modified"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.researcher.md",
+    "sha256": "e7577cad724299f0b161b56e2993c4c591463f64b3346e4222e63e2f5506781c",
+    "kind": "modified"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.reviewer.md",
+    "sha256": "fcac94e50c320bd64ab81f269a954b38cf6bea535a9c326228b130562bb0f5d5",
+    "kind": "modified"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.security.md",
+    "sha256": "cd24a2d204b3a58eaa999e7066d8409542090e18326dc5b62042c3c313aaa672",
+    "kind": "modified"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/agents/team.verifier.md",
+    "sha256": "f7fbd54e635ba29fa36abb730e00d86f66ebec92d67df337c499fa5789d02bb8",
+    "kind": "modified"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/skills/team-flow/SKILL.md",
+    "sha256": "ceda7a85e2d18ab6d0bdfe6604803ffb930fb5863d0f1ffe51571e4fc5fdf72d",
+    "kind": "modified"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/skills/team-member/SKILL.md",
+    "sha256": "105c02334b93474cf62300d21f39a66a93ec6abb96038010db6df8540172abe6",
+    "kind": "modified"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/prompts/team.md",
+    "sha256": "f88160547b5654d5aca8aa12c47ea8f14e45eb6401d593dc90e7c0d5c3904db1",
+    "kind": "modified"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/OPERATING-MODEL.md",
+    "sha256": "ed6b1ea7925a035b8c611d431a22c8b41faf294a9b3c83ccd728bf0815be9f68",
+    "kind": "modified"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/GOAL-TEAMS.md",
+    "sha256": "a043c7031901209b42bcce2ae82bccd005881d3373b8e43ac1c5d644db1fdf8a",
+    "kind": "modified"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/OUTCOME-PRACTICE.md",
+    "sha256": "2c0842c7019461e432f6e51300dfd6f2e847e088184ff96977c9f9bd5271bb85",
+    "kind": "modified"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/gate-candidate.js",
+    "sha256": "5bcc8b989e8ce468fa1307f6c82bf46bc9275f0453bbea3b9fa79e5bdda60ef3",
+    "kind": "modified"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/check-config.mjs",
+    "sha256": "7934b848c1148ce6cc1a4e3e9609af69af4d3fb0eac3ebfa6cc7da52212073da",
+    "kind": "modified"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/check-team-outcomes.mjs",
+    "sha256": "d0188e3351980eddd346cafd2b6cd206f5fb7ae073a4ef07e6b1a4921239a26e",
+    "kind": "modified"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/check-goal-team.mjs",
+    "sha256": "393503b6f0c6ed24212929865402d6a7c3b1221444013b8d268138c96e5e1c4c",
+    "kind": "modified"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/handoff-contract.mjs",
+    "sha256": "875da1904b344a3558768f0edc12cdce0dc8224734debc751c8c202b6d7123c4",
+    "kind": "new"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/check-handoff-contract.mjs",
+    "sha256": "400461372f9b163ac9da5fb2d9c3bcb0a220b861b62ccc6897d1974977de7b02",
+    "kind": "new"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/HANDOFF-PRACTICE.md",
+    "sha256": "877ab29d5e3f8eed75a774ea001ab5e5d077d88cb6f4ad39c84a7ca07bc3aae7",
+    "kind": "new"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/teams/goal-task-step.js",
+    "sha256": "8a7301fce7c29ef0eb21376f185795618ec0cb56adcf8e6633b476e43cef668c",
+    "kind": "protected-unchanged"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/npm/node_modules/pi-goal-x/extensions/goal-runtime.ts",
+    "sha256": "5f052a07b2ec33ec50f99eea8052ef733bf882e610a8922561024d66bc81d20c",
+    "kind": "protected-unchanged"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/npm/node_modules/pi-goal-x/extensions/goal-events.ts",
+    "sha256": "1d2d6c4fe30bbc8ca0badaa81db83cffacb22d1c957849467bba857b6ccfe2ff",
+    "kind": "protected-unchanged"
+  },
+  {
+    "path": "/home/timmypai/.pi/agent/npm/node_modules/pi-goal-x/extensions/goal-team-hold.ts",
+    "sha256": "c61c1a9628e2f68f08174c4ac441ea6363f6a788a85e1937b9f59ca596ba8531",
+    "kind": "protected-unchanged"
+  }
+]

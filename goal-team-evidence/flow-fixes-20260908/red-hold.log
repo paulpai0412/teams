@@ -1,0 +1,18 @@
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: same/cross cwd begin
+
+false !== true
+
+    at file:///home/timmypai/.pi/agent/teams/goal-team-evidence/flow-fixes-20260908/check-hold.mjs:20:10 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: 'strictEqual',
+  diff: 'simple'
+}
+
+Node.js v24.18.0

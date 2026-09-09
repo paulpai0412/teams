@@ -1,0 +1,9 @@
+ca311734003f5bb65b55fec068184e51417d1b5690d0a219918362f3d0c88eed  /home/timmypai/.pi/agent/teams/patches/goal-team-hold-wake/README.md
+5f1f62fc61bdec10a25167cab12a21701bcb53aecac726159075036398bfa538  /home/timmypai/.pi/agent/teams/patches/goal-team-hold-wake/apply.mjs
+87fbf255702b998ce6695c8091740cfee8ef8d531634c6a3bf3fc84350856662  /home/timmypai/.pi/agent/teams/patches/goal-team-hold-wake/manifest.json
+1d2d6c4fe30bbc8ca0badaa81db83cffacb22d1c957849467bba857b6ccfe2ff  /home/timmypai/.pi/agent/teams/patches/goal-team-hold-wake/postimage/extensions/goal-events.ts
+5f052a07b2ec33ec50f99eea8052ef733bf882e610a8922561024d66bc81d20c  /home/timmypai/.pi/agent/teams/patches/goal-team-hold-wake/postimage/extensions/goal-runtime.ts
+c61c1a9628e2f68f08174c4ac441ea6363f6a788a85e1937b9f59ca596ba8531  /home/timmypai/.pi/agent/teams/patches/goal-team-hold-wake/postimage/extensions/goal-team-hold.ts
+fc891b3869f7ed8d449f7050ee157da128f506a74bfb7018dfc1f0f334154c15  /home/timmypai/.pi/agent/teams/patches/goal-team-hold-wake/preimage/extensions/goal-events.ts
+d39fe986fe890758f0b508c49158425dfad4c833f3e571752b64b8c66f2e870c  /home/timmypai/.pi/agent/teams/patches/goal-team-hold-wake/preimage/extensions/goal-runtime.ts
+dfe174a1e4362c636eb041ddef5e639fe84b1d847a24c769620c9d62232838f3  /home/timmypai/.pi/agent/teams/patches/goal-team-hold-wake/verify-runtime.mjs

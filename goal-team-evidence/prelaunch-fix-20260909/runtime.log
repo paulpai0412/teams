@@ -1,0 +1,14 @@
+✔ recover pre-launch write failure at goal-admissions.task.team.implementer (27.754741ms)
+✔ recover pre-launch write failure at teamGoalActiveStep (23.874977ms)
+✔ marker write committed then threw still proves no launch (23.172613ms)
+✔ failed proof save preserves the original error and remains unknown (21.72276ms)
+✔ an attempted launch cannot use empty native steps as no-launch proof (21.920768ms)
+✔ no-launch recovery rejects missing, active, conflicting or stale evidence (23.96603ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 251.159433

@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "patchId": "pi-goal-x-0.30.5-goal-team-hold-wake-v1",
+  "targetRoot": "/home/timmypai/.pi/agent/npm/node_modules/pi-goal-x",
+  "packageVersion": "0.30.5",
+  "createdAt": "2026-09-06T02:52:42.350Z",
+  "state": "applied",
+  "files": [
+    {
+      "path": "extensions/goal-runtime.ts",
+      "existed": true,
+      "beforeSha256": "d39fe986fe890758f0b508c49158425dfad4c833f3e571752b64b8c66f2e870c",
+      "postSha256": "5f052a07b2ec33ec50f99eea8052ef733bf882e610a8922561024d66bc81d20c",
+      "backupPath": "files/extensions/goal-runtime.ts"
+    },
+    {
+      "path": "extensions/goal-events.ts",
+      "existed": true,
+      "beforeSha256": "fc891b3869f7ed8d449f7050ee157da128f506a74bfb7018dfc1f0f334154c15",
+      "postSha256": "3f2edd0a0bc2ac26cdff71bff3791b1474dcd8bc099c36f3bd9d565950cfb07b",
+      "backupPath": "files/extensions/goal-events.ts"
+    },
+    {
+      "path": "extensions/goal-team-hold.ts",
+      "existed": false,
+      "beforeSha256": null,
+      "postSha256": "dda540f5b63e15cb513f7d308a869babd7006979f0f7292659bd6fa00ca87cdd",
+      "backupPath": null
+    }
+  ],
+  "updatedAt": "2026-09-06T02:52:43.408Z"
+}

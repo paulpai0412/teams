@@ -1,0 +1,12 @@
+/home/timmypai/.pi/agent/npm/node_modules/pi-subagents/src/missions/workflow-state.ts:253
+        if (bytes > MISSION_STATE_MAX_BYTES) throw new Error(`Mission state exceeds the 256 KiB limit (${bytes} bytes; maximum ${MISSION_STATE_MAX_BYTES} bytes).`);
+                                                   ^
+
+Error: Mission state exceeds the 256 KiB limit (266276 bytes; maximum 262144 bytes).
+    at /home/timmypai/.pi/agent/npm/node_modules/pi-subagents/src/missions/workflow-state.ts:253:52
+    at withStateFileLock (/home/timmypai/.pi/agent/npm/node_modules/pi-subagents/src/missions/workflow-state.ts:195:12)
+    at Object.set (/home/timmypai/.pi/agent/npm/node_modules/pi-subagents/src/missions/workflow-state.ts:250:7)
+    at eval (eval at <anonymous> (file:///home/timmypai/.pi/agent/teams/check-goal-step-storage.mjs:12:16), <anonymous>:70:13)
+    at async file:///home/timmypai/.pi/agent/teams/check-goal-step-storage.mjs:30:20
+
+Node.js v24.18.0
