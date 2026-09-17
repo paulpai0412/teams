@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { spawnSync } from 'node:child_process';
-import { validateWork } from './work-contract.mjs';
+import { spawnSync } from "node:child_process";
+import { validateWork } from "./work-contract.mjs";
+import { handoffSchema } from "./handoff-schema.mjs";
 import { createJiti } from "../npm/node_modules/jiti/lib/jiti.mjs";
 
 const jiti = createJiti(import.meta.url);
@@ -25,7 +26,6 @@ const { createStructuredOutputToolParameters, validateStructuredOutputValue } =
 const { resolveAcceptanceReportMode, validateAcceptanceReport } =
   await jiti.import(new URL("runs/shared/acceptance.ts", native).pathname);
 const nonempty = (value) => typeof value === "string" && !!value.trim();
-const text = { type: "string", minLength: 1, pattern: "\\S" };
 
 export async function prepareHandoff(input) {
   assert.ok(
@@ -82,8 +82,12 @@ export async function prepareHandoff(input) {
   );
   if (input.work !== undefined) {
     validateWork(input.agent, input.work);
-    assert.deepEqual(input.work.criteria, input.criteria, 'conflicting criteria');
-    assert.deepEqual(input.work.checks, input.checks, 'conflicting checks');
+    assert.deepEqual(
+      input.work.criteria,
+      input.criteria,
+      "conflicting criteria",
+    );
+    assert.deepEqual(input.work.checks, input.checks, "conflicting checks");
   }
   const discovered = discoverAgents(input.cwd, "both");
   assert.deepEqual(
@@ -128,41 +132,7 @@ export async function prepareHandoff(input) {
         "model violates role scope",
       );
   }
-  const outputSchema = {
-    type: "object",
-    additionalProperties: false,
-    properties: {
-      summary: text,
-      criterionResults: {
-        type: "array",
-        minItems: input.criteria.length,
-        maxItems: input.criteria.length,
-        items: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            criterion: { ...text, enum: input.criteria },
-            status: {
-              type: "string",
-              enum: ["met", "not_met", "indeterminate", "needs_user"],
-            },
-            entrypoint: text,
-            observed: text,
-            evidence: { type: "array", items: text },
-          },
-          required: [
-            "criterion",
-            "status",
-            "entrypoint",
-            "observed",
-            "evidence",
-          ],
-        },
-      },
-      residualRisks: { type: "array", items: text },
-    },
-    required: ["summary", "criterionResults", "residualRisks"],
-  };
+  const outputSchema = handoffSchema(input.criteria);
   const writer = agent.acceptanceRole === "writer";
   if (writer)
     assert.equal(
@@ -234,13 +204,30 @@ export async function prepareHandoff(input) {
   );
   // Shared by ordinary handoff and Goal preparation; roles-only exits before
   // check-config's full handoff regression, so this cannot recurse.
-  const readiness = spawnSync(process.execPath, [
-    new URL('./check-config.mjs', import.meta.url).pathname,
-    '--roles-only', '--roles=' + input.agent, input.cwd,
-  ], { encoding: 'utf8', timeout: 30000, maxBuffer: 1024 * 1024,
-    env: { ...process.env, PI_OFFLINE: '1', PI_MEMORY_EXIT_SUMMARY: 'off' } });
-  assert.ok(!readiness.error && readiness.status === 0,
-    'role readiness preflight failed: ' + (readiness.error?.message || readiness.stderr || 'inspect check-config output').slice(0, 2048));
+  const readiness = spawnSync(
+    process.execPath,
+    [
+      new URL("./check-config.mjs", import.meta.url).pathname,
+      "--roles-only",
+      "--roles=" + input.agent,
+      input.cwd,
+    ],
+    {
+      encoding: "utf8",
+      timeout: 30000,
+      maxBuffer: 1024 * 1024,
+      env: { ...process.env, PI_OFFLINE: "1", PI_MEMORY_EXIT_SUMMARY: "off" },
+    },
+  );
+  assert.ok(
+    !readiness.error && readiness.status === 0,
+    "role readiness preflight failed: " +
+      (
+        readiness.error?.message ||
+        readiness.stderr ||
+        "inspect check-config output"
+      ).slice(0, 2048),
+  );
   return prepared;
 }
 

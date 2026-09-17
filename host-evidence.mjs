@@ -35,7 +35,11 @@ function readBytes(file, max = 8 * 1024 * 1024) {
     "credential paths cannot be evidence inputs",
   );
   assert.equal(fs.realpathSync(file), file, "symlink paths are not evidence");
-  const fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  // Reject special files after open without hanging on a FIFO (including a path swap).
+  const fd = fs.openSync(
+    file,
+    fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK,
+  );
   try {
     const before = fs.fstatSync(fd);
     assert.ok(
@@ -43,13 +47,12 @@ function readBytes(file, max = 8 * 1024 * 1024) {
       "bounded regular file required",
     );
     const buffer = Buffer.alloc(before.size + 1);
-    let size = 0,
-      count;
-    while (
-      size < buffer.length &&
-      (count = fs.readSync(fd, buffer, size, buffer.length - size, null)) > 0
-    )
+    let size = 0;
+    while (size < buffer.length) {
+      const count = fs.readSync(fd, buffer, size, buffer.length - size, null);
+      if (count <= 0) break;
       size += count;
+    }
     const after = fs.lstatSync(file);
     assert.ok(
       size === before.size &&
@@ -65,10 +68,13 @@ function readBytes(file, max = 8 * 1024 * 1024) {
     fs.closeSync(fd);
   }
 }
+// Shared bounded, no-symlink reader for parent-owned native artifact ingestion.
+export { readBytes as readEvidenceBytes };
+
 export function evidenceDigest(file) {
-  assert.ok(path.isAbsolute(file), 'absolute evidence path required');
+  assert.ok(path.isAbsolute(file), "absolute evidence path required");
   const bytes = readBytes(file);
-  assert.ok(bytes.length > 0, 'empty evidence artifact');
+  assert.ok(bytes.length > 0, "empty evidence artifact");
   return sha(bytes);
 }
 function readJson(file) {
@@ -77,11 +83,11 @@ function readJson(file) {
       readBytes(path.resolve(file), 1024 * 1024).toString("utf8"),
     );
   } catch (cause) {
-    throw new Error("Invalid or unreadable evidence JSON: " + file, { cause });
+    throw new Error(`Invalid or unreadable evidence JSON: ${file}`, { cause });
   }
 }
 export function saveEvidenceJson(file, value) {
-  const data = JSON.stringify(value, null, 2) + "\n";
+  const data = `${JSON.stringify(value, null, 2)}\n`;
   assert.ok(
     Buffer.byteLength(data) <= 1024 * 1024,
     "evidence metadata too large",
@@ -121,8 +127,8 @@ function scopedPath(cwd, relative) {
   return file;
 }
 
-export function snapshot(cwd, sourcePaths) {
-  cwd = path.resolve(cwd);
+export function snapshot(cwdInput, sourcePaths, excludedPaths = []) {
+  const cwd = path.resolve(cwdInput);
   assert.equal(fs.realpathSync(cwd), cwd, "canonical cwd required");
   assert.ok(
     Array.isArray(sourcePaths) &&
@@ -130,12 +136,27 @@ export function snapshot(cwd, sourcePaths) {
       sourcePaths.length <= 128,
     "1..128 explicit source paths required",
   );
+  assert.ok(
+    Array.isArray(excludedPaths) && excludedPaths.length <= 128,
+    "bounded explicit exclusions required",
+  );
+  for (const name of excludedPaths)
+    assert.ok(
+      typeof name === "string" &&
+        name &&
+        !path.isAbsolute(name) &&
+        !name
+          .split(/[\\/]/)
+          .some((part) => !part || part === "." || part === ".."),
+      "exclusion must be a scoped relative path",
+    );
   const files = new Map();
   let bytes = 0,
     visited = 0;
   function visit(file, depth = 0) {
-    assert.ok(++visited <= 1024 && depth <= 16, "source scope too broad");
     const relative = path.relative(cwd, file);
+    if (excludedPaths.includes(relative)) return;
+    assert.ok(++visited <= 1024 && depth <= 16, "source scope too broad");
     scopedPath(cwd, relative || ".");
     const stat = fs.lstatSync(file);
     if (stat.isDirectory()) {
@@ -208,9 +229,9 @@ function checkInput(input) {
   };
 }
 
-export function runCheck(input, receiptFile) {
-  input = checkInput(input);
-  receiptFile = path.resolve(receiptFile);
+export function runCheck(rawInput, receiptPath) {
+  const input = checkInput(rawInput);
+  const receiptFile = path.resolve(receiptPath);
   assert.equal(
     fs.realpathSync(path.dirname(receiptFile)),
     path.dirname(receiptFile),
@@ -222,18 +243,18 @@ export function runCheck(input, receiptFile) {
       "receipt must be outside source scope",
     );
   assert.ok(
-    !fs.existsSync(receiptFile) && !fs.existsSync(receiptFile + ".log"),
+    !fs.existsSync(receiptFile) && !fs.existsSync(`${receiptFile}.log`),
     "receipt/log already exists; reconcile instead of replaying",
   );
   const before = snapshot(input.cwd, input.sourcePaths);
   // Permanent exclusive intent: a crash/timeout never grants permission to rerun.
-  save(receiptFile + ".intent", {
+  save(`${receiptFile}.intent`, {
     version: "host-check-intent/1",
     input,
     before,
     startedAt: new Date().toISOString(),
   });
-  const fd = fs.openSync(receiptFile + ".log", "wx", 0o600);
+  const fd = fs.openSync(`${receiptFile}.log`, "wx", 0o600);
   const started = Date.now();
   let result, log;
   try {
@@ -279,9 +300,9 @@ export function runCheck(input, receiptFile) {
   return receipt;
 }
 
-export function verifyCheck(input, receiptFile) {
-  input = checkInput(input);
-  receiptFile = path.resolve(receiptFile);
+export function verifyCheck(rawInput, receiptPath) {
+  const input = checkInput(rawInput);
+  const receiptFile = path.resolve(receiptPath);
   const receipt = readJson(receiptFile);
   assert.equal(receipt.version, "host-check/1", "not a host-check receipt");
   assert.equal(
@@ -304,12 +325,12 @@ export function verifyCheck(input, receiptFile) {
   const current = snapshot(input.cwd, input.sourcePaths);
   assert.deepEqual(receipt.before, current, "source changed since check");
   assert.deepEqual(receipt.after, current, "check changed its source");
-  const intent = readJson(receiptFile + ".intent");
+  const intent = readJson(`${receiptFile}.intent`);
   assert.equal(intent.version, "host-check-intent/1");
   assert.equal(identity(intent.input), identity(input), "intent mismatch");
   assert.deepEqual(intent.before, current, "intent source mismatch");
   assert.equal(
-    sha(readBytes(receiptFile + ".log", 32 * 1024 * 1024)),
+    sha(readBytes(`${receiptFile}.log`, 32 * 1024 * 1024)),
     receipt.logSha256,
     "log changed",
   );
@@ -326,7 +347,7 @@ function atomicSave(file, value) {
     path.dirname(file),
     "canonical evidence directory required",
   );
-  const temp = file + "." + randomUUID() + ".tmp";
+  const temp = `${file}.${randomUUID()}.tmp`;
   try {
     save(temp, value);
     const fd = fs.openSync(temp, "r");
@@ -361,8 +382,8 @@ function relativeArtifact(root, name) {
   );
   return file;
 }
-function loadContract(file, digest) {
-  file = path.resolve(file);
+function loadContract(contractFile, digest) {
+  const file = path.resolve(contractFile);
   const contract = readJson(file);
   assert.equal(contract.version, "team-evidence/1");
   for (const key of Object.keys(contract))
@@ -378,7 +399,7 @@ function loadContract(file, digest) {
         "decision",
         "mission",
       ].includes(key),
-      "unknown contract field: " + key,
+      `unknown contract field: ${key}`,
     );
   assert.ok(
     typeof contract.cwd === "string" &&
@@ -441,19 +462,44 @@ function loadContract(file, digest) {
 // source may change after a repair; never rerun historical checks to settle it.
 export function goalStepSettled(record) {
   const recovery = record?.recovery;
-  return !!(record && ['reported', 'blocked', 'dispatching', 'unlaunched'].includes(record.status) &&
-    recovery && ['continue', 'retry', 'report-only'].includes(recovery.action) &&
-    recovery.requestDigest === record.requestDigest && /^[a-f0-9]{64}$/.test(record.requestDigest ?? '') &&
-    ['nativeStatusRef', 'hostReceiptRef'].every(field => typeof recovery[field] === 'string' && recovery[field].startsWith('/')) &&
-    ['nativeDigest', 'hostReceiptDigest'].every(field => typeof recovery[field] === 'string' && /^[a-f0-9]{64}$/.test(recovery[field])) &&
-    (record.status === 'unlaunched'
-      ? recovery.noLaunch === true && record.runId == null && recovery.childRunId == null && recovery.action !== 'report-only'
-      : recovery.noLaunch !== true && typeof recovery.childRunId === 'string' && recovery.childRunId.trim() &&
+  return !!(
+    record &&
+    ["reported", "blocked", "dispatching", "unlaunched"].includes(
+      record.status,
+    ) &&
+    recovery &&
+    ["continue", "retry", "report-only"].includes(recovery.action) &&
+    recovery.requestDigest === record.requestDigest &&
+    /^[a-f0-9]{64}$/.test(record.requestDigest ?? "") &&
+    ["nativeStatusRef", "hostReceiptRef"].every(
+      (field) =>
+        typeof recovery[field] === "string" && recovery[field].startsWith("/"),
+    ) &&
+    ["nativeDigest", "hostReceiptDigest"].every(
+      (field) =>
+        typeof recovery[field] === "string" &&
+        /^[a-f0-9]{64}$/.test(recovery[field]),
+    ) &&
+    (record.status === "unlaunched"
+      ? recovery.noLaunch === true &&
+        record.runId == null &&
+        recovery.childRunId == null &&
+        recovery.action !== "report-only"
+      : recovery.noLaunch !== true &&
+        typeof recovery.childRunId === "string" &&
+        recovery.childRunId.trim() &&
         (record.runId == null || record.runId === recovery.childRunId)) &&
-    typeof recovery.sourceState === 'string' && recovery.sourceState.trim() &&
-    (recovery.action !== 'retry' || record.outcomes?.product !== 'pass' ||
-      (typeof recovery.rejectionRef === 'string' && recovery.rejectionRef.startsWith('/') && /^[a-f0-9]{64}$/.test(recovery.rejectionDigest ?? ''))) &&
-    typeof recovery.reason === 'string' && recovery.reason.trim() && recovery.reason.length <= 1024);
+    typeof recovery.sourceState === "string" &&
+    recovery.sourceState.trim() &&
+    (recovery.action !== "retry" ||
+      record.outcomes?.product !== "pass" ||
+      (typeof recovery.rejectionRef === "string" &&
+        recovery.rejectionRef.startsWith("/") &&
+        /^[a-f0-9]{64}$/.test(recovery.rejectionDigest ?? ""))) &&
+    typeof recovery.reason === "string" &&
+    recovery.reason.trim() &&
+    recovery.reason.length <= 1024
+  );
 }
 function missionSettled(contract) {
   if (!contract.mission) return;
@@ -482,10 +528,7 @@ function missionSettled(contract) {
   );
   for (const [key, value] of Object.entries(state))
     if (key.startsWith("goal-step.")) {
-      assert.ok(
-        goalStepSettled(value),
-        "unresolved retained step: " + key,
-      );
+      assert.ok(goalStepSettled(value), `unresolved retained step: ${key}`);
     }
 }
 function prove(context, summary) {
@@ -520,8 +563,8 @@ function prove(context, summary) {
   for (const name of contract.requiredEvidence)
     evidence[name] = sha(readBytes(relativeArtifact(root, name)));
   const refs = new Set([
-    ...contract.checks.map((check) => "check:" + check.id),
-    ...contract.requiredEvidence.map((name) => "file:" + name),
+    ...contract.checks.map((check) => `check:${check.id}`),
+    ...contract.requiredEvidence.map((name) => `file:${name}`),
   ]);
   for (const row of rows) {
     assert.ok(
@@ -552,14 +595,9 @@ export function acceptanceReference(file, expected = {}) {
       assert.equal(
         context.contract[key],
         expected[key],
-        "acceptance identity mismatch: " + key,
+        `acceptance identity mismatch: ${key}`,
       );
-  return (
-    "team-evidence/1:" +
-    context.contractDigest +
-    ":" +
-    path.relative(context.contract.cwd, context.file)
-  );
+  return `team-evidence/1:${context.contractDigest}:${path.relative(context.contract.cwd, context.file)}`;
 }
 export function sealAcceptance(file, summaryFile) {
   const context = loadContract(file);
@@ -568,7 +606,7 @@ export function sealAcceptance(file, summaryFile) {
   // A failed attempt must never leave an older ready decision looking current.
   if (fs.existsSync(context.decision)) {
     const previous = readJson(context.decision);
-    const archive = context.decision + "." + identity(previous) + ".json";
+    const archive = `${context.decision}.${identity(previous)}.json`;
     if (fs.existsSync(archive))
       assert.equal(
         identity(readJson(archive)),
@@ -601,7 +639,7 @@ export function verifyAcceptance(file, digest, expected = {}) {
       assert.equal(
         context.contract[key],
         expected[key],
-        "acceptance identity mismatch: " + key,
+        `acceptance identity mismatch: ${key}`,
       );
   const decision = readJson(context.decision);
   assert.ok(
@@ -687,7 +725,7 @@ export function goalEvidenceBlockReason(goal, cwd, taskId) {
     visit(goal?.taskList?.tasks);
     return null;
   } catch (error) {
-    return "Team evidence blocks completion: " + error.message;
+    return `Team evidence blocks completion: ${error.message}`;
   }
 }
 

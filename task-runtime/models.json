@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "l0": "antigravity/gemini-3.8-flash",
+  "taskPi": "antigravity/gemini-3.7-flash",
+  "roles": {
+    "team.planner": "antigravity/gemini-3.8-flash",
+    "team.implementer": "antigravity/gemini-3.7-flash",
+    "team.verifier": "antigravity/gemini-3.7-flash",
+    "team.e2e": "antigravity/gemini-3.7-flash",
+    "team.qa": "antigravity/gemini-3.7-flash",
+    "team.debugger": "antigravity/gemini-3.7-flash",
+    "team.reviewer": "antigravity/gemini-3.8-flash",
+    "team.security": "antigravity/gemini-3.8-flash",
+    "team.challenger": "antigravity/gemini-3.8-flash",
+    "team.docs": "antigravity/gemini-3.7-flash",
+    "team.researcher": "antigravity/gemini-3.7-flash",
+    "team.release": "antigravity/gemini-3.7-flash",
+    "team.curator": "antigravity/gemini-3.7-flash"
+  }
+}

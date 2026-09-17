@@ -1,0 +1,7 @@
+Prepare only the approved Todo candidate for SPEC.md, without designing or repairing the app. Spawn team.implementer with max_tokens=500000 (total metered role usage, not output tokens); leave the rest of the Task budget for Worker and final review. Pass the role all candidate instructions below, including this exact read-only patch path and SHA-256: {{patchPath}} ; {{patchSha256}}.
+
+In the assigned managed checkout, verify pwd and git rev-parse --show-toplevel, verify the patch hash, then git apply --check and one git apply. Write only app/ there, never the original source. The runtime validates path scope; do not write a patch-header parser. Preserve native patch/handoff evidence and final diff; git diff --no-index exit 1 means differences, not a failed apply.
+
+Extract the inline script from app/index.html and pipe it to node --check on stdin; do not execute it or use process substitution. Preserve the command result. L0 owns the designated browser check and final review; keep their criteria indeterminate, without mock DOM/browser substitutes.
+
+Return candidate handoff and residual risks. Preserve failures and their effects; unknown effects or out-of-scope repair need an owner decision. No product repair or repetition of successful effects. At most one authorized report-only correction may reuse existing evidence in the same run, not redo implementation or checks.

@@ -1,0 +1,71 @@
+{
+  "schemaVersion": "teams-runtime-compatibility/1",
+  "capturedAt": "2026-09-10T04:20:00Z",
+  "repository": {
+    "root": "/home/timmypai/.pi/agent/teams",
+    "head": "aab9e6fd20c28b0e532c034b6f20d6680b985cdc"
+  },
+  "runtime": {
+    "os": "linux",
+    "arch": "x64",
+    "node": "24.18.0",
+    "pi": {
+      "version": "0.84.4",
+      "loadedVersion": "NOT_VERIFIED_CURRENT_SESSION"
+    },
+    "goalX": {
+      "version": "0.31.2",
+      "source": "npm:pi-goal-x@0.31.2",
+      "integrity": "sha512-AcDUf/1iv449JXtMnzwOrU9ZMiN7nhUmrW0lQJI/ZWIaGm1kBhZfVJ3iKnrsRHdpLDNZKS0HJjbfSyheQjORrg==",
+      "loadedVersion": "NOT_VERIFIED_CURRENT_SESSION",
+      "hashes": {
+        "extensions/goal.ts": "7235a4d657e41e2242d288942136aa8611bdb154d415e033feab2d5bc41c6c58",
+        "extensions/goal-service.ts": "7c1c4dab02bd979c12580077367d66d9ebdfa6271527c720f23e7cf245ff0e71",
+        "extensions/goal-runtime.ts": "d39fe986fe890758f0b508c49158425dfad4c833f3e571752b64b8c66f2e870c",
+        "extensions/goal-completion.ts": "55f4f397fb1d86162ed33078f255f9d36187776dae9163db335344588f97c7f5",
+        "extensions/goal-task-tools.ts": "0353ffd26148abd8d56dd71728fd5ab8a57059f6439daa955d978d772a489b72"
+      }
+    },
+    "subagents": {
+      "version": "0.66.0",
+      "source": "npm:pi-subagents@0.66.0",
+      "integrity": "sha512-PfvGutk0QJ2Ps0lC/a9L5T9n3RCo7w7Nt0hXg08cbj9uyUEwdrWRCYEpfZ2jMTC/1sOUpnCrVZF/669Qeek0lw==",
+      "loadedVersion": "NOT_VERIFIED_CURRENT_SESSION",
+      "hashes": {
+        "index.ts": "a2f11dbe8e200bd8c590441316a9c6ab222318d2aa738670dedcf0e72592dde3",
+        "src/api/project-panes.ts": "35993ca8ae5fc2ab74e57f0b1df48898414ceeb3421bda4aad16d845ea5cd27b"
+      }
+    },
+    "herdr": {
+      "clientVersion": "0.9.0",
+      "serverVersion": "0.9.0",
+      "channel": "stable",
+      "protocol": 22,
+      "endpointCompatible": true,
+      "binarySha256": "4fa1a01158dd8043da92d31b270780b0dcc10603038d9b61cac4d81ab63fb71f",
+      "update": "BLOCKED_WHILE_ATTACHED"
+    }
+  },
+  "manifests": {
+    "settingsSha256": "67889409c90ee3ea5873c7e25c7f27674b33e8dae49ec5bf1d309355f562a1e1",
+    "npmLockSha256": "5e4534117d798c2b2602d8dc3821f1c0e0b8d2cafaa947eb055a25d7255ec8cc"
+  },
+  "observedCompatibility": {
+    "capturedAt": "2026-09-10T07:12:05Z",
+    "taskPiCompatible": false,
+    "reason": "Pi 0.84.4 cannot resolve chord or chord/context required by pi-subagents 0.66.0 detached runner",
+    "fallback": "direct-only-incompatible-background-host",
+    "evidence": "goal-team-evidence/task-runtime-20260910/compatibility-harness.json"
+  },
+  "goalIntegration": {
+    "mode": "pi-public-tool-events",
+    "goalXSourceModified": false,
+    "requiredTools": ["update_goal_task", "update_goal"],
+    "requiredPiEvents": ["tool_call", "tool_result"],
+    "incompatibleBehavior": "disable-task-pi-and-use-direct"
+  },
+  "rollback": {
+    "directory": "/home/timmypai/.pi/agent/backups/teams-runtime/20260910T035407Z",
+    "verified": true
+  }
+}

@@ -1,5 +1,37 @@
 # Goal 任務清單 × Team 執行
 
+## 現行 Task Pi（2026-09-14）
+
+使用者已選定：新工作驗證目前 Task Pi 公開介面，不恢復舊 Goal-Team helper 的私有 hold／delivery patches。Task Pi 的 scope、owner／reservation、native roles、host/review、AcceptanceReceipt 與 Goal readback 由 `task-runtime/` 及其公開 extension 負責；見 [TASK-PI-RUNTIME-TODO.md](TASK-PI-RUNTIME-TODO.md) 與 [TASK-PI-RUNTIME-DESIGN.md](TASK-PI-RUNTIME-DESIGN.md)。
+
+### 現行需求入口（2026-09-14 修正）
+
+主線是 **使用者需求 → L0 理解／拆分／依賴與驗收設計 → L0 用原生檔案工具寫 Task specs → 公開 Task 執行／驗收 → 對照原始需求交付**。不是使用者先交完整spec或已完成patch，也不是固定啟動兩個Worker。具體欄位和操作見 [L0 SPEC](extensions/teams-orchestrator/SPEC.md)，現行dispatch工具的description／promptGuidelines已指向此規範；使用者已另外確認常態載入，`~/.pi/agent/settings.json` 現已加入這個既有extension的絕對路徑，其他設定不變。新會話或之後明確reload才會載入；本輪未reload／新建Goal／啟動模型。註冊不等於Task Pi readiness：仍需現行capability／Herdr／原生驗收條件，不能因工具可見而繞過。
+
+- 小任務維持direct；一般team handoff不用自動建立Goal。只有明確使用Goal才使用Task Pi的Goal流程，不把普通『目標』文字當持久Goal建立授權。
+- L0負責成果／依賴／總預算；Worker負責任務內角色與候選交接；extension只做已有機械控制與驗收。規劃不是另一個planner controller。
+- 新任務從實際sourceRoot／base／範圍與現有檢查產生spec，不固定檔名SPEC.md、不讀歷史E2E patch當答案。原始要求涵蓋、依賴、權限或計量不足時先處理，不把工具schema通過當語意正確。
+- 接受個別Task後仍須驗完整使用情境／必要整合；verify-only不冒稱已安裝，audit skip不當pass。G1/G2/G3只是protocol案例，不是通用能力的完成條件。
+
+目前的零模型檢查：
+
+```bash
+cd ~/.pi/agent/teams
+PI_OFFLINE=1 PI_MEMORY_EXIT_SUMMARY=off node check-config.mjs --roles-only
+node check-goal-completion.mjs
+node --test task-runtime/test/request-flow.test.mjs task-runtime/test/capabilities.test.mjs task-runtime/test/roles.test.mjs task-runtime/test/lifecycle.test.mjs task-runtime/test/integration.test.mjs task-runtime/test/e2e-control.test.mjs
+```
+
+`check-goal-completion.mjs` 驗目前安裝版的合併設定、audit／completion 結果及真 GoalService 暫存檔讀回，auditor 使用 fixture；Task Pi suites 驗 ownership、failed/unknown、usage、source/evidence、acceptance 及 Goal readback 等對應責任。這些不替代 live native／browser／獨立 review／Goal completion 證據，也不宣稱完整 V5 readiness。
+
+本次另有 fresh 公開 RPC 零 prompt 載入證據（Goal-X 0.31.2／pi-subagents 0.65.0，model tokens=0），見 `goal-team-evidence/task-runtime-readiness-memory-20260914/README.md`。
+
+**單一 dependency 例外：**使用者本次只批准 Goal-X `goal-completion.ts` 改用既有 `loadGoalSettings`，修正 completion 漏讀全域設定；非恢復舊 patches 或一般 dependency 修改權。升級可能覆蓋此修正，須重新執行現行 completion 檢查，不按舊 hash 盲目重貼。
+
+**以下均為舊 helper 的歷史規格，不是目前安裝能力或新派工指引。** `check-goal-hold-wake.mjs` 要求的私有模組已不存在；`goal-team-evidence/prelaunch-fix-20260909/check-installed.mjs` 是 0.30.5 舊 overlays 的精確核對，對現版拒絕是正確行為。保留原檢查與 manifests，不更新成假 PASS。未來若要恢復舊 helper，須另行授權，不可照以下歷史步驟直接派工。
+
+## 歷史：Goal-Team helper
+
 > **首版是主 agent 協調契約＋原生 workflow helper，不是新排程器。**
 > pi-goal-x 保存成果任務；pi-subagents 是唯一 child controller。
 > 不會把每次 `/team` 自動變成 persistent goal，不改寫或接管既有 goals。

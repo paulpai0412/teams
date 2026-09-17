@@ -5,6 +5,16 @@
 > 不是 OS sandbox、不可竄改稽核系統，也不是會自行擴權的自治部署平台。
 > 本次依使用者要求由主 agent 單獨建置及驗證，沒有執行新團隊的模型 E2E。
 
+## 2026-09-11 指引與技能修訂
+
+全域契約改為 GOAL／CONTEXT／PRIORITY／AUTONOMY／TOOLS／OUTPUT／VERIFY／STOP。
+`team-flow` 是按任務查閱的程序入口，不要求每次通讀全部歷史文件或固定派齊角色。
+所有角色以 Pi-local `skillPath` 選取指定技能，避免 home 工作目錄選回上游舊流程。
+移除 implementer 的重複通則／預設 TDD、verifier/e2e 的預設除錯流程；角色模型、
+工具、權限、budget 與原生驗收機制不變。技能分類見 `skill-catalog.json`。
+既有 Goal-runtime 程序與必要 gate 不因本次提示整理而取消；下列舊日期、版本與
+驗證結果是歷史證據，不能代替當前 runtime 驗收。
+
 ## 2026-09-08 效率與職責修訂
 
 目前新派工以 [EFFICIENCY-CONTRACT.md](EFFICIENCY-CONTRACT.md) 為準（audit-fixes 修訂）：
@@ -52,19 +62,17 @@ PI_OFFLINE=1 PI_MEMORY_EXIT_SUMMARY=off node ~/.pi/agent/teams/check-config.mjs
 
 ## 角色與責任
 
-**2026-09-06 交付成本修訂：以下角色政策取代舊驗證快照；角色列表與預檢範圍以當前來源為準。**
-Subagents 僅使用 `openai-codex`；預設 Luna medium，main 預設 Sol high。
-先減少重複工作與 context，再按難度選 thinking；不聲稱有成本 benchmark。
-Planner 可按任務升 Sol xhigh，implementer 可升 Luna max，不再全面固定最高級。
+**2026-09-17 模型配置更新：依使用者指示，整套 Agent Teams 改以 Antigravity 提供之便宜模型（Gemini 3.8 Flash / Gemini 3.7 Flash）配置各角色，避免測試浪費 token。**
+Subagents 預設使用 Antigravity Gemini Flash 系列；分析/審查/決策使用 Gemini 3.8 Flash，實作/除錯/測試/驗證使用 Gemini 3.7 Flash。
 
-| 模型          | Thinking | 角色                           |
-| ------------- | -------- | ------------------------------ |
-| gpt-5.6-luna  | low      | verifier、curator              |
-| gpt-5.6-luna  | medium   | researcher、e2e、docs、qa      |
-| gpt-5.6-luna  | high     | implementer、release、debugger |
-| gpt-5.6-sol   | high     | planner                        |
-| gpt-5.6-terra | high     | challenger、reviewer、security |
-| gpt-6-astra   | medium   | **team.advisor，僅必要時**     |
+| 模型                         | Thinking | 角色                           |
+| ---------------------------- | -------- | ------------------------------ |
+| antigravity/gemini-3.7-flash | low      | verifier、curator              |
+| antigravity/gemini-3.7-flash | medium   | researcher、e2e、docs、qa      |
+| antigravity/gemini-3.7-flash | high     | implementer、release、debugger |
+| antigravity/gemini-3.8-flash | high     | planner                        |
+| antigravity/gemini-3.8-flash | high     | challenger、reviewer、security |
+| antigravity/gemini-3.8-flash | medium   | **team.advisor，僅必要時**     |
 
 四個模型均在本機 registry 註冊；這是工作負載／資源分級政策，尚無本次模型
 benchmark 支持「最便宜／最佳」的說法。沒有自動 fallback；不得因一般任務
@@ -93,14 +101,14 @@ Luna/Terra 證據、必要性及預期決策，向使用者說明，預設一次
 | Role             | Thinking | 責任與輸出                                                               | Tools                                                            | 預設專業 skills（另加 team-member）                                  |
 | ---------------- | -------- | ------------------------------------------------------------------------ | ---------------------------------------------------------------- | -------------------------------------------------------------------- |
 | 主 agent         | high     | 意圖、計畫核准、分工、風險／成本、仲裁、整合、最終驗收及對使用者負責     | 全域工具；goal/task、subagent 控制、todo、memory、MCP 均由它管理 | team-flow、pi-subagents，其他按任務載入                              |
-| team.planner     | high     | brainstorm、方案比較、非目標、依賴、驗收與回滾設計                       | R L G                                                            | codebase-design、karpathy-guidelines、codebase-memory                |
+| team.planner     | high     | brainstorm、方案比較、非目標、依賴、驗收與回滾設計                       | R L G                                                            | codebase-design、codebase-memory                |
 | team.challenger  | high     | 反證、盲點、刪除不必要設計、可證偽實驗                                   | R L G                                                            | ponytail-review、scientific-critical-thinking                        |
 | team.researcher  | medium   | 官方文件／來源查證、版本、信心與缺口                                     | R Web                                                            | research                                                             |
 | team.debugger    | high     | 按需重現、假設實驗、根因證據與修復／回歸建議；不修改 source/tests/config | R L G V X                                                        | diagnosing-bugs、codebase-memory                                     |
-| team.implementer | high     | 單一 writer、根因修復、最小實作、回歸檢查                                | R L G V W X                                                      | karpathy-guidelines、ponytail、tdd、diagnosing-bugs、codebase-memory |
-| team.verifier    | low      | 獨立執行測試／typecheck／build、完整 log 與來源狀態                      | R L V X                                                          | diagnosing-bugs                                                      |
-| team.reviewer    | high     | fresh Standards／Spec／正確性／測試與簡潔性審查                          | R L G                                                            | code-review、ponytail-review、codebase-memory                        |
-| team.e2e         | medium   | 真實使用流程、錯誤復原、screenshots／traces、環境清理                    | R L V X                                                          | browser-automation、diagnosing-bugs                                  |
+| team.implementer | high     | 單一 writer、根因修復、最小實作、回歸檢查                                | R L G V W X                                                      | codebase-memory |
+| team.verifier    | low      | 獨立執行指定 checks、保留 log 與來源狀態 | R L V X | 無額外方法技能 |
+| team.reviewer    | high     | fresh Standards／Spec／正確性／測試與簡潔性審查                          | R L G                                                            | code-review、codebase-memory                        |
+| team.e2e         | medium   | 真實使用流程、錯誤復原、screenshots／traces、環境清理                    | R L V X                                                          | browser-automation                                  |
 | team.docs        | medium   | 使用文件、API／操作／遷移文件、實際限制                                  | R L W                                                            | docs-generator                                                       |
 | team.release     | high     | CI/CD 設定、供應鏈、promotion／rollback／health-check packet             | R L W                                                            | supply-chain-security                                                |
 | team.qa          | medium   | 驗收情境、探索 charter、可重現缺陷分級、檢查 E2E 是否符合意圖            | R L                                                              | qa                                                                   |
@@ -171,7 +179,8 @@ repo source/tests/config；需要 instrumentation 時交主 agent 安排唯一 w
 
 交付含：已執行的重現命令與原始結果、已驗證／排除假設、帶 caller/file/line
 的因果證據、剩餘不確定性、最小修復建議、能抓到原症狀的回歸檢查。
-無法重現或缺因果證據就 blocked；`pass` 只代表診斷任務完成，不代表已修復。
+缺少必要重現／因果證據時，受影響 criterion 保持 blocked；可繼續有界 source/log 分析，
+但假設不能冒充根因。`pass` 只代表指定診斷已獲充分證據，不代表已修復。
 主 agent → writer 重跑 repro 並修復 → main/host 驗證 → 風險所需獨立 review；
 不自動升級 Astra，也不取代既有驗收關卡。
 

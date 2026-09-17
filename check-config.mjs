@@ -84,25 +84,31 @@ assert.equal(
 assert.equal(settings.defaultThinkingLevel, "high");
 assert.equal(settings.subagents.disableBuiltins, true);
 assert.deepEqual(settings.subagents.defaultExtensions, []);
-assert.equal(settings.subagents.defaultModel, "openai-codex/gpt-5.6-luna");
+assert.equal(settings.subagents.defaultModel, "antigravity/gemini-3.7-flash");
 assert.equal(settings.subagents.modelScope.enforce, true);
 assert.equal(settings.subagents.modelScope.strict, true);
-assert.deepEqual(settings.subagents.modelScope.allow, [
-  "openai-codex/gpt-5.6-luna",
-  "openai-codex/gpt-5.6-terra",
-  "openai-codex/gpt-5.6-sol",
-  "openai-codex/gpt-6-astra",
-]);
+assert.ok(
+  ["antigravity/gemini-3.7-flash", "antigravity/gemini-3.8-flash"].every((m) =>
+    settings.subagents.modelScope.allow.includes(m),
+  ),
+);
 assert.equal(settings.subagents.maxThinking, "max");
 const models = await ModelRuntime.create({ allowModelNetwork: false });
-for (const id of [
-  "gpt-5.6-luna",
-  "gpt-5.6-terra",
-  "gpt-5.6-sol",
-  "gpt-6-astra",
-])
+const antigravityExt = (
+  await jiti.import(
+    "/home/timmypai/.pi/agent/npm/node_modules/pi-antigravity/src/index.ts",
+  )
+).default;
+antigravityExt({
+  registerProvider(name, config) {
+    models.registerProvider(name, config);
+  },
+  registerCommand() {},
+  registerTool() {},
+});
+for (const id of ["gemini-3.7-flash", "gemini-3.8-flash"])
   assert.ok(
-    models.getModel("openai-codex", id),
+    models.getModel("antigravity", id),
     id + " must exist in the local registry",
   );
 assert.equal(config.maxSubagentDepth, 1);
@@ -160,18 +166,16 @@ const failures = [];
 for (const agent of agentsToCheck) {
   try {
     const advisor = agent.name === "team.advisor";
-    const deep = ["team.challenger", "team.reviewer", "team.security"].includes(
-      agent.name,
-    );
+    const deep = [
+      "team.planner",
+      "team.challenger",
+      "team.reviewer",
+      "team.security",
+    ].includes(agent.name);
     const expectedModel =
-      "openai-codex/" +
-      (advisor
-        ? "gpt-6-astra"
-        : agent.name === "team.planner"
-          ? "gpt-5.6-sol"
-          : deep
-            ? "gpt-5.6-terra"
-            : "gpt-5.6-luna");
+      advisor || deep
+        ? "antigravity/gemini-3.8-flash"
+        : "antigravity/gemini-3.7-flash";
     const expectedThinking =
       agent.name === "team.advisor"
         ? "medium"
@@ -224,7 +228,15 @@ for (const agent of agentsToCheck) {
     assert.equal(agent.defaultContext, "fresh");
     assert.equal(agent.inheritSkills, false);
     assert.equal(agent.inheritGlobalContext, false);
-    assert.equal(agent.memory.scope, "project");
+    if (agent.name === "team.implementer") {
+      assert.equal(
+        agent.memory,
+        undefined,
+        "implementer memory is parent-managed; no third-party writer-memory injection",
+      );
+    } else {
+      assert.equal(agent.memory.scope, "project");
+    }
     assert.ok(Array.isArray(agent.extensions));
     for (const extension of [
       ...agent.extensions,
