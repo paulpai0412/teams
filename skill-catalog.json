@@ -1,6 +1,36 @@
 {
-  "scope": "Installed local skills; main catalog intentionally smaller. Discover fresh before use after updates.",
+  "scope": "Path inventory, not runtime authority. Descriptions below are historical discovery hints; current SKILL.md and native loader results govern. Local policy updated 2026-09-11; retained files are not all model-visible or slash-command enabled.",
+  "selectionPolicy": {
+    "automatic": ["codebase-memory", "research", "diagnosing-bugs", "code-review", "qa", "ml-research", "web-design-engineer", "show-me", "pi-subagents", "parse-document"],
+    "explicitManualCommands": ["tdd", "resolving-merge-conflicts", "kb-retriever"],
+    "retainExistingHiddenCommands": true,
+    "taskOrProject": ["codebase-design", "domain-modeling", "app-sdk-concepts", "admission-control", "cue-kind-definition", "reconciler-logic", "hf-cli", "huggingface-best", "huggingface-datasets", "huggingface-papers", "scikit-learn", "statistical-analysis", "statsmodels", "scientific-critical-thinking", "gpt-image-2", "diagram-design", "excalidraw-diagram", "mermaid-visualizer", "obsidian-canvas-creator", "obsidian-vault"],
+    "explicitWorkflowOnly": ["beautiful-article", "web-video-presentation", "prototype", "grilling", "request-refactor-plan", "find-skills", "git-guardrails-claude-code", "migrate-to-shoehorn", "scaffold-exercises", "setup-pre-commit", "karpathy-guidelines", "ponytail", "ponytail-help", "ponytail-gain", "ponytail-debt", "ponytail-audit", "ponytail-review"],
+    "requiresControllerAdaptation": ["design-an-interface", "council-mode", "agent-network"],
+    "roleOrToolReference": ["team-flow", "team-member", "browser-automation", "docs-generator", "code-audit", "llm-security", "supply-chain-security", "mcp-scripting", "pi-lens-ast-grep", "pi-lens-lsp-navigation", "pi-lens-write-ast-grep-rule", "pi-lens-write-tree-sitter-rule"],
+    "authority": "Selection is guidance, never permission. Read only relevant installed paths. Archived workflow instructions cannot impose children, approvals, installations or external writes beyond the current task and AGENTS.md. Excluded skills require explicit file reading or an authorized project setting; /skill:name is not promised for excluded files. Ponytail extension autoload is disabled; tools and other extensions are unchanged."
+  },
   "skills": [
+    {
+      "name": "pi-lens-ast-grep",
+      "path": "/home/timmypai/.pi/agent/npm/node_modules/pi-lens/skills/pi-lens-ast-grep/SKILL.md",
+      "description": "AST pattern-search/rewrite reference; use when structural patterns are relevant."
+    },
+    {
+      "name": "pi-lens-lsp-navigation",
+      "path": "/home/timmypai/.pi/agent/npm/node_modules/pi-lens/skills/pi-lens-lsp-navigation/SKILL.md",
+      "description": "LSP navigation and diagnostics reference; not a universal priority over current graph discovery."
+    },
+    {
+      "name": "pi-lens-write-ast-grep-rule",
+      "path": "/home/timmypai/.pi/agent/npm/node_modules/pi-lens/skills/pi-lens-write-ast-grep-rule/SKILL.md",
+      "description": "Reference for explicitly assigned pi-lens ast-grep rule authoring."
+    },
+    {
+      "name": "pi-lens-write-tree-sitter-rule",
+      "path": "/home/timmypai/.pi/agent/npm/node_modules/pi-lens/skills/pi-lens-write-tree-sitter-rule/SKILL.md",
+      "description": "Reference for explicitly assigned pi-lens tree-sitter rule authoring."
+    },
     {
       "name": "docs-generator",
       "path": "/home/timmypai/.pi/agent/skills/docs-generator/SKILL.md",
@@ -76,7 +106,7 @@
     {
       "name": "code-review",
       "path": "/home/timmypai/.pi/agent/skills/code-review/SKILL.md",
-      "description": "Review the changes since a fixed point (commit, branch, tag, or merge-base) along two axes — Standards (does the code follow this repo's documented coding standards?) and Spec (does the code match what the originating issue/PRD asked for?). Runs both reviews in parallel sub-agents and reports them side by side. Use when the user wants to review a branch, a PR, work-in-progress changes, or asks to \"review since X\".",
+      "description": "Review the requested diff against requirements, correctness and repository standards; no automatic delegation or publication.",
       "authority": "Guidance only; never grants tools or permission."
     },
     {
@@ -88,7 +118,7 @@
     {
       "name": "codebase-memory",
       "path": "/home/timmypai/.pi/agent/skills/codebase-memory/SKILL.md",
-      "description": "Structural code discovery with the local codebase-memory-mcp knowledge graph. Use when locating symbols, understanding architecture, tracing callers/callees, assessing changes, or verifying code relationships.",
+      "description": "Use the local code graph to locate symbols, trace relationships and assess structural impact.",
       "authority": "Guidance only; never grants tools or permission."
     },
     {
@@ -112,7 +142,7 @@
     {
       "name": "diagnosing-bugs",
       "path": "/home/timmypai/.pi/agent/skills/diagnosing-bugs/SKILL.md",
-      "description": "Diagnosis loop for hard bugs and performance regressions. Use when the user says \"diagnose\"/\"debug this\", or reports something broken/throwing/failing/slow.",
+      "description": "Investigate bugs and regressions using bounded causal evidence and discriminating checks, without a fixed phase or hypothesis quota.",
       "authority": "Guidance only; never grants tools or permission."
     },
     {
@@ -226,7 +256,7 @@
     {
       "name": "kb-retriever",
       "path": "/home/timmypai/.pi/agent/skills/kb-retriever/SKILL.md",
-      "description": "面向本地知识库目录的检索和问答助手。核心流程：(1)分层索引导航 (2)遇到PDF/Excel时必须先读取references学习处理方法 (3)处理文件后再检索。按文件类型组合使用 grep、Read、pdfplumber、pandas 进行渐进式检索，避免整文件加载。用户问题涉及\"从知识库目录回答问题/检索信息/查资料\"时使用。",
+      "description": "Scoped local knowledge-base navigation and cited answers; use installed document tools for document extraction.",
       "authority": "Guidance only; never grants tools or permission."
     },
     {
@@ -256,7 +286,7 @@
     {
       "name": "ml-research",
       "path": "/home/timmypai/.pi/agent/skills/ml-research/SKILL.md",
-      "description": "Read frontmatter at the given path.",
+      "description": "Select relevant statistical, machine-learning or Hub references for a concrete data-analysis question.",
       "authority": "Guidance only; never grants tools or permission."
     },
     {
@@ -328,7 +358,7 @@
     {
       "name": "qa",
       "path": "/home/timmypai/.pi/agent/skills/qa/SKILL.md",
-      "description": "Interactive QA session where user reports bugs or issues conversationally, and the agent files GitHub issues. Explores the codebase in the background for context and domain language. Use when user wants to report bugs, do QA, file issues conversationally, or mentions \"QA session\".",
+      "description": "Evaluate acceptance scenarios and report reproducible defects with evidence; no implicit issue filing or child agents.",
       "authority": "Guidance only; never grants tools or permission."
     },
     {
@@ -346,13 +376,13 @@
     {
       "name": "research",
       "path": "/home/timmypai/.pi/agent/skills/research/SKILL.md",
-      "description": "Investigate a question against high-trust primary sources and capture the findings as a Markdown file in the repo. Use when the user wants a topic researched, docs or API facts gathered, or reading legwork delegated to a background agent.",
+      "description": "Investigate a concrete question against primary sources, with source coverage and uncertainty; no automatic agent or report-file mandate.",
       "authority": "Guidance only; never grants tools or permission."
     },
     {
       "name": "resolving-merge-conflicts",
       "path": "/home/timmypai/.pi/agent/skills/resolving-merge-conflicts/SKILL.md",
-      "description": "\"Use when you need to resolve an in-progress git merge/rebase conflict.\"",
+      "description": "Resolve an explicitly assigned Git conflict while preserving unrelated work and respecting continuation/commit authority.",
       "authority": "Guidance only; never grants tools or permission."
     },
     {
@@ -412,7 +442,7 @@
     {
       "name": "tdd",
       "path": "/home/timmypai/.pi/agent/skills/tdd/SKILL.md",
-      "description": "Test-driven development. Use when the user wants to build features or fix bugs test-first, mentions \"red-green-refactor\", or wants integration tests.",
+      "description": "Explicitly selected test-first development using meaningful behavior checks and the existing test stack.",
       "authority": "Guidance only; never grants tools or permission."
     },
     {
@@ -424,13 +454,13 @@
     {
       "name": "team-flow",
       "path": "/home/timmypai/.pi/agent/skills/team-flow/SKILL.md",
-      "description": "Parent-owned dynamic Astra team orchestration with explicit authority, conditional gates, audit receipts, recovery and bounded evidence-based memory/refinement. Use for substantial delegated work or agent-team management.",
+      "description": "Parent-only routing and controls for bounded pi-subagents work; not a mandatory role sequence.",
       "authority": "Guidance only; never grants tools or permission."
     },
     {
       "name": "team-member",
       "path": "/home/timmypai/.pi/agent/skills/team-member/SKILL.md",
-      "description": "Shared handoff, evidence, authority and memory contract for the bounded team.* specialist roles.",
+      "description": "Authority, evidence and native handoff contract for a bounded specialist assignment.",
       "authority": "Guidance only; never grants tools or permission."
     },
     {
@@ -472,7 +502,7 @@
     {
       "name": "web-design-engineer",
       "path": "/home/timmypai/.pi/agent/skills/web-design-engineer/SKILL.md",
-      "description": "\"Build or redesign polished browser-rendered visual artifacts with HTML/CSS/JavaScript/React: pages, dashboards, prototypes, slide decks, animations, UI mockups, and data visualizations. Use for visual front-end creation, design-system exploration, design critique, or explicit browser acceptance / QA of a web artifact. Not for back-end, CLI, non-visual coding, source-to-longform article conversion, or narration-driven click-through video presentations.\"",
+      "description": "Build or assess usable, accessible browser-rendered artifacts with the existing stack and relevant real-entrypoint checks.",
       "authority": "Guidance only; never grants tools or permission."
     },
     {

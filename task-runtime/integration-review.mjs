@@ -2,6 +2,7 @@
 // dispatches a model, or upgrades native acceptance. Native run binding is separate.
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import {
   readEvidenceBytes,
@@ -20,7 +21,11 @@ import {
   readIntegrationRehearsal,
 } from "./integration.mjs";
 import { inspectWorktreeBase } from "./role-wave.mjs";
+import { TaskInputRejection } from "./input-rejection.mjs";
 import { verifyIntegrationApply } from "./integration-apply.mjs";
+import { verifyReportOrigin } from "./report-lineage.mjs";
+import { verifyReviewProductOrigin } from "./review-product-lineage.mjs";
+import { verifyConflictRepairBinding } from "./integration-conflict.mjs";
 
 const sha = /^[a-f0-9]{64}$/;
 function exact(value, keys) {
@@ -82,15 +87,33 @@ export function readAppliedIntegrationReview(context, planDigest) {
 // Called only alongside readIntegrationRehearsal, which verifies each declared
 // check's input, source, intent and log. Freeze references to those exact bytes;
 // the report's existing requestDigest binds this evidence as well as the source.
-function reviewHostChecks({ contract, mailbox }) {
+function reviewHostChecks(context) {
+  const { contract, mailbox } = context;
+  const staged = readIntegrationRehearsal(context);
+  const origin = staged.inheritedFrom
+    ? verifyReportOrigin({
+        runtimeRoot: context.runtimeRoot,
+        ledger: context.ledger,
+        contract,
+        intent: mailbox.readJson("receipts/report-revision-intent.json"),
+        assertOwner: context.assertOwner,
+      })
+    : null;
   return contract.checks.map((check) => {
     const file = path.join(
-      mailbox.root,
+      origin?.mailbox.root ?? mailbox.root,
       "integration",
       `check-${check.commandId}.json`,
     );
     const bytes = readEvidenceBytes(file, 1024 * 1024);
-    const receipt = JSON.parse(bytes.toString("utf8"));
+    let receipt;
+    try {
+      receipt = JSON.parse(bytes.toString("utf8"));
+    } catch (cause) {
+      throw new Error(`Invalid source-bound host-check receipt: ${file}`, {
+        cause,
+      });
+    }
     return {
       commandId: check.commandId,
       criterionIds: check.criterionIds,
@@ -167,6 +190,153 @@ function integrationReview(context, appliedPlanDigest) {
     nonGoals: contract.nonGoals,
     criteria: contract.criteria,
     hostChecks: reviewHostChecks(context),
+    ...(mailbox.readJson("integration/native.json").repairs?.length
+      ? {
+          branchRecovery: {
+            ref: path.join(mailbox.root, "integration/native.json"),
+            sha256: mailbox.digestRelative("integration/native.json"),
+          },
+        }
+      : {}),
+    ...(mailbox.readJson("bootstrap.json").repairIntentDigest &&
+    mailbox.readJson("receipts/repair-intent.json").schemaVersion ===
+      "teams-candidate-repair-intent/2"
+      ? (() => {
+          const intent = mailbox.readJson("receipts/repair-intent.json");
+          assert.equal(
+            digest(intent),
+            mailbox.readJson("bootstrap.json").repairIntentDigest,
+          );
+          const origin = verifyReviewProductOrigin({
+            runtimeRoot: context.runtimeRoot,
+            ledger: context.ledger,
+            contract,
+            intent,
+            assertOwner,
+            afterApply: appliedPlanDigest !== undefined,
+          });
+          assert.notEqual(
+            staged.tree,
+            origin.staged.tree,
+            "revised product is unchanged",
+          );
+          return {
+            productRevision: {
+              intentDigest: digest(intent),
+              previousExecutionId: intent.previousExecutionId,
+              oldTree: origin.staged.tree,
+              newTree: staged.tree,
+              oldPatchSha256: intent.oldPatchSha256,
+              oldPatchRef: intent.oldPatchRef,
+              oldCandidateRoot: origin.staged.cwd,
+            },
+            priorBlockedReview: {
+              kind: "product",
+              previousExecutionId: intent.previousExecutionId,
+              requestDigest: origin.request.digest,
+              rootRunIds: intent.waves.map((wave) => wave.rootRunId),
+              reports: intent.waves.flatMap((wave) =>
+                wave.reports.map((report) => {
+                  const complete = origin.mailbox.readJson(
+                    `integration/reviews/${wave.key}/complete.json`,
+                  );
+                  const row = complete.reports.find(
+                    (item) => item.key === report.key,
+                  );
+                  assert.ok(
+                    row && row.runId === report.runId,
+                    "old review report changed",
+                  );
+                  return {
+                    key: `${wave.key}/${report.key}`,
+                    runId: report.runId,
+                    sessionId: report.sessionId,
+                    sessionFile: report.sessionFile,
+                    verdict: row.report.verdict,
+                    findings: row.report.findings,
+                    completionDigest: wave.completionDigest,
+                  };
+                }),
+              ),
+            },
+          };
+        })()
+      : {}),
+    ...(mailbox.readJson("bootstrap.json").repairIntentDigest &&
+    mailbox.readJson("receipts/repair-intent.json").schemaVersion ===
+      "teams-candidate-repair-intent/3"
+      ? (() => {
+          const intent = mailbox.readJson("receipts/repair-intent.json");
+          assert.equal(
+            digest(intent),
+            mailbox.readJson("bootstrap.json").repairIntentDigest,
+          );
+          verifyConflictRepairBinding({
+            runtimeRoot: context.runtimeRoot,
+            projectId: contract.identity.projectId,
+            contract,
+            intent,
+            afterApply: appliedPlanDigest !== undefined,
+          });
+          return {
+            conflictRevision: {
+              intentDigest: digest(intent),
+              previousExecutionId: intent.previousExecutionId,
+              failureReceiptRef: intent.failureReceiptRef,
+              failureReceiptSha256: intent.failureReceiptSha256,
+              conflictPaths: intent.conflictPaths,
+              failedLaneIndex: intent.failedLaneIndex,
+              inputPatches: intent.patches,
+              newTree: staged.tree,
+            },
+          };
+        })()
+      : {}),
+    ...(staged.inheritedFrom
+      ? (() => {
+          const intent = mailbox.readJson(
+            "receipts/report-revision-intent.json",
+          );
+          const origin = verifyReportOrigin({
+            runtimeRoot: context.runtimeRoot,
+            ledger: context.ledger,
+            contract,
+            intent,
+            assertOwner,
+          });
+          return {
+            reportRevision: {
+              resultRef: path.join(
+                mailbox.root,
+                "results",
+                `r${String(result.resultRevision).padStart(4, "0")}.json`,
+              ),
+              resultDigest: digest(result),
+              previousResultDigest: intent.previousResultDigest,
+            },
+            priorBlockedReview: {
+              previousExecutionId: intent.previousExecutionId,
+              completionRef: path.join(
+                origin.mailbox.root,
+                intent.reviewFailureRelative,
+              ),
+              completionSha256: intent.reviewFailureSha256,
+              requestDigest: origin.request.digest,
+              rootRunId: origin.complete.runId,
+              reports: origin.complete.reports.map(
+                ({ key, runId, sessionId, sessionFile, report }) => ({
+                  key,
+                  runId,
+                  sessionId,
+                  sessionFile,
+                  verdict: report.verdict,
+                  findings: report.findings,
+                }),
+              ),
+            },
+          };
+        })()
+      : {}),
   };
   const request = {
     schemaVersion: "teams-integration-review-request/1",
@@ -178,9 +348,7 @@ function integrationReview(context, appliedPlanDigest) {
   const file = path.join(mailbox.root, "integration/review-request.json");
   function fresh() {
     assertOwner();
-    if (appliedPlanDigest !== undefined) {
-      verifyIntegrationApply(context, appliedPlanDigest);
-    } else {
+    if (appliedPlanDigest === undefined) {
       inspectWorktreeBase(
         contract.workspace.sourceRoot,
         contract.workspace.baseCommit,
@@ -191,6 +359,8 @@ function integrationReview(context, appliedPlanDigest) {
         result.source.sourceDigest,
         "target source changed before review",
       );
+    } else {
+      verifyIntegrationApply(context, appliedPlanDigest);
     }
     assert.equal(
       digest(readIntegrationRehearsal(context)),
@@ -243,6 +413,137 @@ function integrationReview(context, appliedPlanDigest) {
   return request;
 }
 
+// The same effective public inventory is compared before Task sealing and again
+// against the exact review launch. The early read-only projection is advisory about
+// the future profile; the later source-bound check remains authoritative.
+function reviewToolDiagnostics(approved, tools, role) {
+  assert.equal(
+    tools?.explicitAllowlist,
+    true,
+    "explicit review tool allowlist required",
+  );
+  assert.equal(
+    tools.disableAmbientExtensions,
+    true,
+    "ambient extensions forbidden for review",
+  );
+  assert.equal(tools.fanoutAuthorized, false, "reviewer nesting forbidden");
+  assert.ok(
+    Array.isArray(tools.effectiveAllowlist) &&
+      tools.effectiveAllowlist.length > 0 &&
+      Array.isArray(tools.effectiveMcpTools),
+    "resolved review tools required",
+  );
+  assert.ok(
+    tools.internalTools === undefined || Array.isArray(tools.internalTools),
+    "resolved internal tools must be an array",
+  );
+  const internalTools = tools.internalTools ?? [];
+  const effective = [
+    ...new Set([
+      ...tools.effectiveAllowlist,
+      ...tools.effectiveMcpTools,
+      ...internalTools,
+    ]),
+  ];
+  const excess = effective.filter((name) => !approved.includes(name));
+  if (excess.length)
+    throw new TaskInputRejection(
+      "review-tools",
+      new Error("review tools exceed approved read-only ceiling"),
+      { role, approved, effective, internalTools, excess },
+    );
+  return { approved, effective, internalTools, excess };
+}
+
+// Resolve the selected USER review role(s) with outputSchema, so native internal
+// structured-output tools are visible before any Task reservation/Worker launch.
+// A stale/different profile will still be refused by validateReviewLaunch later.
+export async function preflightTaskReviewPolicy(
+  spec,
+  cwd,
+  resolve,
+  sessionDir = path.join(os.tmpdir(), `teams-review-preflight-${process.pid}`),
+) {
+  if (spec?.schemaVersion !== "teams-task-runtime/3") return [];
+  const review = spec.policy?.review;
+  if (
+    !Array.isArray(review?.allowedRoles) ||
+    !review.allowedRoles.length ||
+    review.allowedRoles.length > 16 ||
+    !Array.isArray(review.allowedTools) ||
+    !review.allowedTools.length ||
+    review.allowedTools.length > 128
+  )
+    return []; // Contract validation reports malformed draft fields.
+  assert.equal(typeof resolve, "function", "public review resolver required");
+  const rows = [];
+  for (const role of review.allowedRoles) {
+    assert.ok(
+      typeof role === "string" && role.length <= 128,
+      "bounded review role required",
+    );
+    const resolution = await resolve({
+      agent: role,
+      agentScope: "user",
+      cwd,
+      task: "Read-only Task reviewer capability preflight; do not launch.",
+      context: "fresh",
+      output: false,
+      outputMode: "inline",
+      outputSchema: {
+        type: "object",
+        properties: { verdict: { type: "string" } },
+        required: ["verdict"],
+        additionalProperties: false,
+      },
+      sessionDir: path.join(sessionDir, role),
+    });
+    assert.equal(resolution?.ok, true, "public review preflight unavailable");
+    const launch = resolution.contract;
+    assert.equal(
+      launch?.version,
+      2,
+      "unsupported public launch contract schema",
+    );
+    assert.equal(
+      launch.agent?.name,
+      role,
+      "resolved reviewer differs from approved role",
+    );
+    assert.ok(
+      ["user", "package", "builtin"].includes(launch.agent.source),
+      "source-controlled or unknown review agent is forbidden",
+    );
+    assert.equal(launch.context, "fresh", "fresh review context required");
+    assert.equal(launch.roots?.cwd, path.resolve(cwd), "review cwd mismatch");
+    assert.ok(
+      Array.isArray(launch.diagnostics) &&
+        launch.diagnostics.every((row) => row.severity === "warning"),
+      "unresolved public review preflight",
+    );
+    try {
+      rows.push({
+        role,
+        toolDiagnostics: reviewToolDiagnostics(
+          review.allowedTools,
+          launch.tools,
+          role,
+        ),
+      });
+    } catch (error) {
+      if (
+        !(error instanceof TaskInputRejection) ||
+        error.phase !== "review-tools"
+      )
+        throw error;
+      // Only a proven, pre-reservation policy mismatch is a correctable draft.
+      throw new TaskInputRejection("task-spec", error, error.diagnostics);
+    }
+  }
+  return rows;
+}
+
 // The host must resolve this public contract from its exact planned launch input.
 // An allowlist is a trusted-policy ceiling, NOT a filesystem sandbox or proof that
 // an extension has no OS side effects. This is not evidence of an actual launch.
@@ -277,35 +578,17 @@ export function validateReviewLaunch(request, resolution) {
       launch.diagnostics.every((row) => row.severity === "warning"),
     "unresolved public review preflight",
   );
-  const tools = launch.tools;
-  assert.equal(
-    tools?.explicitAllowlist,
-    true,
-    "explicit review tool allowlist required",
-  );
-  assert.equal(
-    tools.disableAmbientExtensions,
-    true,
-    "ambient extensions forbidden for review",
-  );
-  assert.equal(tools.fanoutAuthorized, false, "reviewer nesting forbidden");
-  assert.ok(
-    Array.isArray(tools.effectiveAllowlist) &&
-      tools.effectiveAllowlist.length > 0 &&
-      Array.isArray(tools.effectiveMcpTools),
-    "resolved review tools required",
-  );
-  assert.ok(
-    [...tools.effectiveAllowlist, ...tools.effectiveMcpTools].every((name) =>
-      request.subject.policy.allowedTools.includes(name),
-    ),
-    "review tools exceed approved read-only ceiling",
+  const toolDiagnostics = reviewToolDiagnostics(
+    request.subject.policy.allowedTools,
+    launch.tools,
+    role,
   );
   return {
     role,
     definitionDigest: launch.agent.definitionDigest,
     launchContractDigest: launch.launchContractDigest,
     requestDigest: request.digest,
+    toolDiagnostics,
     acceptance: "not-assessed",
   };
 }
@@ -341,6 +624,11 @@ export function integrationReviewSchema(request) {
     required: Object.keys(properties),
     properties,
   });
+  const prior = request.subject.priorBlockedReview;
+  const priorIds =
+    prior?.reports.flatMap(({ key, findings }) =>
+      findings.map((_, index) => `${key}:${index}`),
+    ) ?? [];
   return object({
     schemaVersion: {
       type: "string",
@@ -370,6 +658,35 @@ export function integrationReviewSchema(request) {
         sourcePaths: paths,
       }),
     },
+    ...(prior
+      ? {
+          priorResolutions: object(
+            Object.fromEntries(
+              priorIds.map((id) => [
+                id,
+                prior.kind === "product"
+                  ? object({
+                      reason: explanation,
+                      sourcePaths: paths,
+                      checkIds: {
+                        type: "array",
+                        minItems: 1,
+                        maxItems: 30,
+                        uniqueItems: true,
+                        items: {
+                          type: "string",
+                          enum: request.subject.hostChecks.map(
+                            (check) => check.commandId,
+                          ),
+                        },
+                      },
+                    })
+                  : explanation,
+              ]),
+            ),
+          ),
+        }
+      : {}),
   });
 }
 
@@ -377,13 +694,42 @@ export function integrationReviewSchema(request) {
 // native run, terminal/usage evidence and before/after source before acceptance.
 export function validateReviewReport(request, report) {
   checkRequest(request);
+  const prior = request.subject.priorBlockedReview;
+  const priorIds =
+    prior?.reports.flatMap(({ key, findings }) =>
+      findings.map((_, index) => `${key}:${index}`),
+    ) ?? [];
   exact(report, [
     "schemaVersion",
     "requestDigest",
     "verdict",
     "criteria",
     "findings",
+    ...(prior ? ["priorResolutions"] : []),
   ]);
+  if (prior) {
+    exact(report.priorResolutions, priorIds);
+    for (const resolution of Object.values(report.priorResolutions)) {
+      if (prior.kind === "product") {
+        exact(resolution, ["reason", "sourcePaths", "checkIds"]);
+        text(resolution.reason);
+        assert.ok(
+          Array.isArray(resolution.checkIds) &&
+            resolution.checkIds.length > 0 &&
+            resolution.checkIds.length <= 30 &&
+            new Set(resolution.checkIds).size === resolution.checkIds.length,
+          "product resolution needs new checks",
+        );
+        for (const id of resolution.checkIds)
+          assert.ok(
+            request.subject.hostChecks.some(
+              (check) => check.commandId === id && check.status === "verified",
+            ),
+            "product resolution cites a missing or failed new check",
+          );
+      } else text(resolution);
+    }
+  }
   assert.ok(
     canonicalBytes(report).length <= 1024 * 1024,
     "review report exceeds 1 MiB",
@@ -419,6 +765,9 @@ export function validateReviewReport(request, report) {
       assert.ok(files.has(value), "review source path outside frozen subject");
     }
   }
+  if (prior?.kind === "product")
+    for (const resolution of Object.values(report.priorResolutions))
+      paths(resolution.sourcePaths);
   for (const row of Object.values(report.criteria)) {
     exact(row, ["status", "reason", "sourcePaths"]);
     assert.ok(

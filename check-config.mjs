@@ -79,38 +79,23 @@ assert.equal(
 assert.equal(loadedConfig.maxSubagentSpawnsPerRun, 8);
 assert.equal(
   settings.defaultProvider + "/" + settings.defaultModel,
-  "openai-codex/gpt-5.6-sol",
+  "openai-codex/gpt-5.6-luna",
 );
 assert.equal(settings.defaultThinkingLevel, "high");
 assert.equal(settings.subagents.disableBuiltins, true);
 assert.deepEqual(settings.subagents.defaultExtensions, []);
-assert.equal(settings.subagents.defaultModel, "antigravity/gemini-3.7-flash");
+assert.equal(settings.subagents.defaultModel, "openai-codex/gpt-5.6-luna");
 assert.equal(settings.subagents.modelScope.enforce, true);
 assert.equal(settings.subagents.modelScope.strict, true);
-assert.ok(
-  ["antigravity/gemini-3.7-flash", "antigravity/gemini-3.8-flash"].every((m) =>
-    settings.subagents.modelScope.allow.includes(m),
-  ),
-);
+assert.deepEqual(settings.subagents.modelScope.allow, [
+  "openai-codex/gpt-5.6-luna",
+]);
 assert.equal(settings.subagents.maxThinking, "max");
 const models = await ModelRuntime.create({ allowModelNetwork: false });
-const antigravityExt = (
-  await jiti.import(
-    "/home/timmypai/.pi/agent/npm/node_modules/pi-antigravity/src/index.ts",
-  )
-).default;
-antigravityExt({
-  registerProvider(name, config) {
-    models.registerProvider(name, config);
-  },
-  registerCommand() {},
-  registerTool() {},
-});
-for (const id of ["gemini-3.7-flash", "gemini-3.8-flash"])
-  assert.ok(
-    models.getModel("antigravity", id),
-    id + " must exist in the local registry",
-  );
+assert.ok(
+  models.getModel("openai-codex", "gpt-5.6-luna"),
+  "GPT-5.6 Luna must exist in the local registry",
+);
 assert.equal(config.maxSubagentDepth, 1);
 assert.equal(config.maxActiveAsyncRunsPerSession, 1);
 assert.equal(config.scheduledRuns.enabled, false);
@@ -166,16 +151,7 @@ const failures = [];
 for (const agent of agentsToCheck) {
   try {
     const advisor = agent.name === "team.advisor";
-    const deep = [
-      "team.planner",
-      "team.challenger",
-      "team.reviewer",
-      "team.security",
-    ].includes(agent.name);
-    const expectedModel =
-      advisor || deep
-        ? "antigravity/gemini-3.8-flash"
-        : "antigravity/gemini-3.7-flash";
+    const expectedModel = "openai-codex/gpt-5.6-luna";
     const expectedThinking =
       agent.name === "team.advisor"
         ? "medium"
@@ -206,7 +182,7 @@ for (const agent of agentsToCheck) {
       );
       for (const forbidden of [
         "github-copilot/gpt-5.6-luna",
-        ...(!advisor ? ["openai-codex/gpt-6-astra:high"] : []),
+        ...(advisor ? [] : ["openai-codex/gpt-6-astra:high"]),
       ]) {
         assert.ok(
           scopes.some(

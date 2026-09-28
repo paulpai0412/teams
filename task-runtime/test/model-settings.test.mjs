@@ -14,24 +14,12 @@ function fixture(t) {
   return root;
 }
 
-test("persistent defaults use Antigravity Flash models with explicit planner and no inherited model", () => {
+test("all persistent Task defaults use GPT-5.6 Luna without inheriting a model", () => {
   const models = readTaskModels();
-  assert.equal(models.l0, "antigravity/gemini-3.8-flash");
-  assert.equal(models.taskPi, "antigravity/gemini-3.7-flash");
-  for (const role of [
-    "team.planner",
-    "team.reviewer",
-    "team.security",
-    "team.challenger",
-  ])
-    assert.equal(taskRoleModel(role, models), "antigravity/gemini-3.8-flash");
-  for (const role of [
-    "team.implementer",
-    "team.verifier",
-    "team.e2e",
-    "team.qa",
-  ])
-    assert.equal(taskRoleModel(role, models), "antigravity/gemini-3.7-flash");
+  assert.equal(models.l0, "openai-codex/gpt-5.6-luna");
+  assert.equal(models.taskPi, "openai-codex/gpt-5.6-luna");
+  for (const role of Object.keys(models.roles))
+    assert.equal(taskRoleModel(role, models), "openai-codex/gpt-5.6-luna");
   assert.throws(() => taskRoleModel("team.advisor", models), /no configured/);
   assert.throws(() => modelId("luna"), /explicit/);
   assert.throws(
@@ -44,7 +32,7 @@ test("model settings are editable data; malformed, missing and linked settings n
   const root = fixture(t),
     file = path.join(root, "models.json");
   const config = readTaskModels();
-  config.taskPi = "antigravity/gemini-3.8-flash";
+  config.taskPi = "openai-codex/gpt-5.6-sol";
   fs.writeFileSync(file, JSON.stringify(config));
   assert.equal(readTaskModels(file).taskPi, config.taskPi);
   for (const value of [
@@ -74,7 +62,7 @@ test("Task Pi shell command passes the selected model to the actual argv consume
   );
   const extension = path.join(root, "extension.mjs");
   fs.writeFileSync(extension, "");
-  for (const selected of [undefined, "antigravity/gemini-3.8-flash"]) {
+  for (const selected of [undefined, "openai-codex/gpt-5.6-sol"]) {
     const command = workerCommand({
       piExecutable: binary,
       workerExtension: extension,
@@ -90,7 +78,7 @@ test("Task Pi shell command passes the selected model to the actual argv consume
     const receipt = JSON.parse(run.stdout);
     assert.equal(
       receipt.args[receipt.args.indexOf("--model") + 1],
-      selected ?? "antigravity/gemini-3.7-flash",
+      selected ?? "openai-codex/gpt-5.6-luna",
     );
     assert.equal(receipt.execution, root);
     assert.equal(
@@ -128,9 +116,9 @@ test("role waves explicitly pass configured models without changing roles or aut
   assert.deepEqual(
     plan.children.map((child) => child.model),
     [
-      "antigravity/gemini-3.8-flash",
-      "antigravity/gemini-3.8-flash",
-      "antigravity/gemini-3.7-flash",
+      "openai-codex/gpt-5.6-luna",
+      "openai-codex/gpt-5.6-luna",
+      "openai-codex/gpt-5.6-luna",
     ],
   );
   assert.deepEqual(
@@ -138,7 +126,7 @@ test("role waves explicitly pass configured models without changing roles or aut
     contract.policy.allowedRoles,
   );
   assert.ok(
-    plan.workflowScript.includes('"model":"antigravity/gemini-3.8-flash"'),
+    plan.workflowScript.includes('"model":"openai-codex/gpt-5.6-luna"'),
   );
   assert.ok(
     plan.children.every(

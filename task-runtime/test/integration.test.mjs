@@ -6,9 +6,23 @@ import path from "node:path";
 import test from "node:test";
 import { TaskOrchestrator } from "../orchestrator.mjs";
 import { WorkerRuntime } from "../worker-runtime.mjs";
+import { RoleController } from "../role-controller.mjs";
 import { HostAcceptance } from "../acceptance.mjs";
-import { digest } from "../contracts.mjs";
+import { digest, bytesDigest } from "../contracts.mjs";
+import {
+  CompletedIntegrationConflict,
+  completedIntegrationConflict,
+  conflictRepairCommand,
+  isCompletedIntegrationConflict,
+} from "../integration-conflict.mjs";
+import { runCheck, snapshot } from "../../host-evidence.mjs";
+import { taskDeadlineAt, taskMemberTimeoutMs } from "../task-deadline.mjs";
 import { inspectNativeHandoffs } from "../native-handoff.mjs";
+import {
+  integrationReviewSchema,
+  validateReviewReport,
+} from "../integration-review.mjs";
+import { readCompletedReviewWave } from "../review-runs.mjs";
 import { readNativeTerminal, readReviewLifecycle } from "../role-lifecycle.mjs";
 import { SubagentsRpcClient } from "../capabilities.mjs";
 import {
@@ -23,6 +37,16 @@ import {
   TASK_BUDGET_EXTENSION,
 } from "../task-budget.mjs";
 import { failingNativeBus } from "./native-launch-fixture.mjs";
+import {
+  publicTaskFixture,
+  observePublicTaskEvents,
+} from "./public-task-fixture.mjs";
+import { isInputRejection } from "../input-rejection.mjs";
+import { modelToolOutput } from "./public-recovery-fixture.mjs";
+import {
+  installReconstructionHooks,
+  reconstructionBinding,
+} from "../reconstruction-input.mjs";
 
 function git(cwd, ...args) {
   const r = spawnSync(
@@ -104,6 +128,41 @@ function asHostedStatus(status, declaration) {
   }
 }
 
+function meterMember(
+  context,
+  key,
+  file,
+  estimate,
+  register = true,
+  finish = true,
+) {
+  const measured = measureSessionBytes(fs.readFileSync(file));
+  if (register)
+    registerTaskBudgetMembers(context, [
+      { key, estimate, sessionRoot: path.dirname(file) },
+    ]);
+  const binding = taskBudgetBinding(context, key);
+  const identity = { sessionId: measured.sessionId, sessionFile: file };
+  changeTaskBudget(binding, { type: "bind", ...identity });
+  changeTaskBudget(binding, {
+    type: "request",
+    ...identity,
+    used: 0,
+    allowance: 20,
+  });
+  changeTaskBudget(binding, {
+    type: "settle",
+    ...identity,
+    used: measured.usage.total,
+  });
+  if (finish)
+    changeTaskBudget(binding, {
+      type: "finish",
+      ...identity,
+      used: measured.usage.total,
+    });
+}
+
 async function fixture(
   t,
   edits = ["alpha", "beta"],
@@ -114,15 +173,17 @@ async function fixture(
   const source = path.join(root, "source");
   fs.mkdirSync(source);
   git(source, "init", "-q");
-  fs.mkdirSync(path.join(source, "src"));
-  fs.writeFileSync(path.join(source, "README.md"), "baseline\n");
-  fs.writeFileSync(path.join(source, "src/main.txt"), "base\n");
-  fs.writeFileSync(path.join(source, "src/remove.txt"), "remove me\n");
-  fs.writeFileSync(
-    path.join(source, "src/lines.txt"),
-    `${Array.from({ length: 20 }, (_, i) => `line-${i}`).join("\n")}\n`,
-  );
-  git(source, "add", ".");
+  if (!options.emptyBase) {
+    fs.mkdirSync(path.join(source, "src"));
+    fs.writeFileSync(path.join(source, "README.md"), "baseline\n");
+    fs.writeFileSync(path.join(source, "src/main.txt"), "base\n");
+    fs.writeFileSync(path.join(source, "src/remove.txt"), "remove me\n");
+    fs.writeFileSync(
+      path.join(source, "src/lines.txt"),
+      `${Array.from({ length: 20 }, (_, i) => `line-${i}`).join("\n")}\n`,
+    );
+    git(source, "add", ".");
+  }
   git(
     source,
     "-c",
@@ -130,6 +191,7 @@ async function fixture(
     "-c",
     "user.email=fixture@example.invalid",
     "commit",
+    ...(options.emptyBase ? ["--allow-empty"] : []),
     "-qm",
     "base",
   );
@@ -146,26 +208,40 @@ async function fixture(
     );
     fs.writeFileSync(path.join(source, ".pi/.goals-pool-snapshot.json"), "{}");
   }
-  let worker, timer;
-  const orchestrator = new TaskOrchestrator({
-    runtimeRoot: path.join(
-      root,
-      options.extensionRuntime ? "teams-task-runtime-v1" : "runtime",
-    ),
-    ownerSessionId: "owner",
-    herdr: {
-      async start(input) {
+  let worker,
+    publicWorker,
+    timer,
+    launchCount = 0;
+  const herdr = {
+    async start(input) {
+      const sessionId =
+        options.distinctWorkerSessions && launchCount++
+          ? `worker-${launchCount}`
+          : "worker";
+      const sessionFile = meteredSession(
+        path.join(input.executionRoot, "worker-sessions/worker.jsonl"),
+        sessionId,
+        source,
+      );
+      if (options.publicSeam && sessionId === "worker") {
+        const { publicWorkerFixture } = await import(
+          "./public-recovery-fixture.mjs"
+        );
+        publicWorker = await publicWorkerFixture(t, {
+          executionRoot: input.executionRoot,
+          source,
+          sessionFile,
+          stoppedWorker: options.stoppedWorker,
+        });
+        worker = publicWorker.runtime;
+      } else {
         worker = new WorkerRuntime({ executionRoot: input.executionRoot });
         worker.boot({
-          sessionId: "worker",
+          sessionId,
           ...(options.stoppedWorker
             ? { processId: 99_999_999, processStartedAtTicks: "1" }
             : {}),
-          sessionFile: meteredSession(
-            path.join(input.executionRoot, "worker-sessions/worker.jsonl"),
-            "worker",
-            source,
-          ),
+          sessionFile,
           cwd: source,
           activeTools: ["read", "team_role_spawn", "team_task_result"],
           extensions: ["teams-worker", "pi-subagents"],
@@ -175,19 +251,39 @@ async function fixture(
             ping: { version: 1 },
           },
         });
-        timer = setInterval(() => worker.processControls(), 5);
-        return { paneId: "w1:p2", agentName: "worker" };
-      },
+      }
+      const launchedWorker = worker;
+      timer = setInterval(() => launchedWorker.processControls(), 5);
+      return { paneId: "w1:p2", agentName: "worker" };
     },
-  });
-  t.after(() => {
+  };
+  const publicApi = options.publicEntry
+    ? await publicTaskFixture(t, {
+        root,
+        source,
+        herdr,
+        nativeGoal: options.publicSeam,
+      })
+    : null;
+  let orchestrator = publicApi
+    ? null
+    : new TaskOrchestrator({
+        runtimeRoot: path.join(
+          root,
+          options.extensionRuntime ? "teams-task-runtime-v1" : "runtime",
+        ),
+        ownerSessionId: "owner",
+        herdr,
+      });
+  t.after(async () => {
     clearInterval(timer);
-    orchestrator.close();
+    await publicWorker?.close();
+    orchestrator?.close();
     fs.rmSync(root, { recursive: true, force: true });
   });
-  const prepared = orchestrator.prepare({
+  const spec = {
     ...(options.review ? { schemaVersion: "teams-task-runtime/3" } : {}),
-    goalId: "goal",
+    goalId: publicApi?.goalFixture?.id ?? "goal",
     taskId: "task",
     taskRevision: 1,
     objective:
@@ -200,7 +296,7 @@ async function fixture(
       worktreePath: null,
       baseCommit: base,
       sourcePaths: options.sourcePaths ?? ["src"],
-      allowedWritePaths: ["src"],
+      allowedWritePaths: options.allowedWritePaths ?? ["src"],
     },
     criteria: [
       {
@@ -217,7 +313,8 @@ async function fixture(
           "-e",
           checkScript ??
             "const fs=require('node:fs'),a=require('node:assert/strict');a.equal(fs.readFileSync('src/main.txt','utf8'),'base\\n');" +
-              edits
+              (options.extraOldFeature ? [...edits, "beta"] : edits)
+                .filter((edit) => edit !== null)
                 .map((edit) =>
                   edit === "binary"
                     ? "a.deepEqual([...fs.readFileSync('src/binary.bin')],[0,255,1,0]);"
@@ -245,26 +342,48 @@ async function fixture(
             tokenBudgetMode: options.tokenBudgetMode ?? "member-hard",
           }
         : {}),
+      ...(options.workerAllowedRoles
+        ? { workerAllowedRoles: options.workerAllowedRoles }
+        : {}),
       maxActiveRoleRuns: 4,
-      maxRoleSpawnsPerTask: 4,
+      maxRoleSpawnsPerTask: options.maxRoleSpawnsPerTask ?? 4,
       maxProductRepairsPerRole: 1,
       maxReportRepairs: 1,
       maxProcessRestarts: options.maxProcessRestarts ?? 0,
+      ...(options.reviewProductRevision
+        ? { reviewProductRevision: "within-scope-once" }
+        : {}),
       maxTaskTokens: 1000,
-      deadlineMs: 60000,
+      deadlineMs: options.deadlineMs ?? 60000,
       integrationMode: options.integrationMode ?? "verify-only",
     },
     contextRefs: [],
-  });
-  await orchestrator.launch(prepared.executionId, { timeoutMs: 1000 });
+  };
+  let prepared;
+  if (publicApi) {
+    const specPath = path.join(source, ".git/public-task.json");
+    fs.writeFileSync(specPath, JSON.stringify(spec));
+    const event = await publicApi.call("team_task_dispatch", {
+      spec_path: specPath,
+      benefit: "worktree-isolation",
+      benefit_detail: "Offline public handler and native handoff regression.",
+    });
+    assert.equal(event.isError, false, JSON.stringify(event.result));
+    orchestrator = publicApi.orchestrator;
+    prepared = publicApi.prepared;
+    assert.equal(event.result.details.executionId, prepared.executionId);
+  } else {
+    prepared = orchestrator.prepare(spec);
+    await orchestrator.launch(prepared.executionId, { timeoutMs: 1000 });
+  }
   clearInterval(timer);
   const native = path.join(root, "native");
   fs.mkdirSync(native);
   const members = edits.map((_, i) => ({
     key: `lane-${i}`,
     role: "team.implementer",
-    mode: "mutation",
-    isolation: "worktree",
+    mode: options.roleMode ?? "mutation",
+    isolation: options.roleIsolation ?? "worktree",
     maxTokens: options.roleEstimate ?? 100,
     taskDigest: digest("Fixture bounded writer."),
   }));
@@ -289,17 +408,23 @@ async function fixture(
       fs.writeFileSync(path.join(lane, "outside.txt"), "forbidden\n");
     else if (edit === "symlink")
       fs.symlinkSync("/tmp", path.join(lane, "src/link"));
+    else if (edit === "remove-all") git(lane, "rm", "-qr", ".");
     else if (edit === "binary") {
       fs.writeFileSync(
         path.join(lane, "src/binary.bin"),
         Buffer.from([0, 255, 1, 0]),
       );
       fs.unlinkSync(path.join(lane, "src/remove.txt"));
-    } else
+    } else if (edit !== null) {
+      if (options.extraOldFeature)
+        fs.writeFileSync(path.join(lane, "src/beta space.txt"), "beta\n");
+      const file = path.join(lane, `src/${edit} space.txt`);
+      fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.writeFileSync(
-        path.join(lane, `src/${edit} space.txt`),
+        file,
         edit === "octets" ? Buffer.from([255, 254, 253, 10]) : `${edit}\n`,
       );
+    }
     git(lane, "add", "-A");
     const patch = spawnSync(
       "git",
@@ -307,6 +432,16 @@ async function fixture(
       { encoding: "buffer" },
     );
     assert.equal(patch.status, 0);
+    const changedFiles = git(
+      lane,
+      "diff",
+      "--cached",
+      "--name-only",
+      "-z",
+      base,
+    )
+      .split("\0")
+      .filter(Boolean);
     const patchPath = path.join(native, `patch-${i}.patch`);
     fs.writeFileSync(patchPath, patch.stdout);
     const runId = `child-${i}`;
@@ -333,9 +468,9 @@ async function fixture(
               patch: {
                 path: patchPath,
                 branch: `lane-${i}`,
-                changed: true,
-                filesChanged: 1,
-                insertions: 1,
+                changed: patch.stdout.length > 0,
+                filesChanged: changedFiles.length,
+                insertions: patch.stdout.length ? 1 : 0,
                 deletions: 0,
                 diffStat: "fixture",
               },
@@ -359,7 +494,12 @@ async function fixture(
     };
     const manifestPath = path.join(native, `handoff-${i}.json`);
     fs.writeFileSync(manifestPath, JSON.stringify(handoff));
-    manifests.push({ path: manifestPath, value: handoff, patchPath });
+    manifests.push({
+      path: manifestPath,
+      value: handoff,
+      patchPath,
+      changedFiles,
+    });
     fs.rmSync(lane, { recursive: true }); // Native worktree no longer needs to exist.
     return {
       key: members[i].key,
@@ -373,7 +513,7 @@ async function fixture(
   const workflow = {
     version: 1,
     workflowRunId: "wave",
-    state: "complete",
+    state: options.failedRoot ? "failed" : "complete",
     createdAt: 2,
     entries: Object.fromEntries(
       rows.map((row) => [
@@ -433,7 +573,40 @@ async function fixture(
         pid: worker.mailbox.readJson("receipts/boot.json").processId,
       }
     : null;
+  if (options.writerEvidence) {
+    status.steps.forEach((step, i) => {
+      step.exitCode = 0;
+      Object.assign(step.acceptance, {
+        childReport: { changedFiles: manifests[i].changedFiles },
+        runtimeChecks: [
+          { id: "changed-files", status: "passed", message: "fixture" },
+        ],
+        verifyRuns: [],
+        criteria: [],
+      });
+      Object.assign(step.acceptance.effectiveAcceptance, {
+        level: "checked",
+        criteria: [],
+        evidence: ["changed-files"],
+        verify: [],
+      });
+    });
+  }
   if (hostedWorkflow) asHostedStatus(status, hostedWorkflow);
+  if (options.failedRoot) {
+    status.state = "failed";
+    if (hostedWorkflow) status.workflowChildren.workflowState = "failed";
+  }
+  if (options.failedMember !== undefined) {
+    const i = options.failedMember;
+    status.steps[i].status = "failed";
+    status.steps[i].exitCode = 1;
+    rows[i].ok = false;
+    if (hostedWorkflow) {
+      status.workflowChildren.children[i].state = "failed";
+      rows[i].nativeResults[0].exitCode = 1;
+    }
+  }
   const saveStatus = () =>
     fs.writeFileSync(path.join(native, "status.json"), JSON.stringify(status));
   saveStatus();
@@ -475,13 +648,13 @@ async function fixture(
     kind: "role-completion",
     launchId: "launch",
     runId: "wave",
-    completion: "completed",
+    completion: options.failedRoot ? "failed" : "completed",
   });
   worker.recordProgress("launch-terminal", {
     kind: "role-terminal",
     launchId: "launch",
     runId: "wave",
-    completion: "completed",
+    completion: options.failedRoot ? "failed" : "completed",
     processTerminal: status.processTerminal ?? null,
     ...(hostedWorkflow
       ? {
@@ -498,29 +671,74 @@ async function fixture(
         }
       : {}),
   });
-  options.beforeResult?.({ source, prepared, worker });
-  worker.sealResult({
+  const candidateWorker = worker;
+  await options.beforeResult?.({
+    root,
+    source,
+    base,
+    prepared,
+    worker,
+    orchestrator,
+    native,
+    members,
+    manifests,
+    status,
+    saveStatus,
+    publicApi,
+    publicWorker,
+    getActiveWorker: () => worker,
+  });
+  worker = candidateWorker;
+  const candidate = {
     schemaVersion: "teams-task-result/1",
     identity: prepared.contract.identity,
     requestDigest: prepared.requestDigest,
     resultRevision: 1,
     outcome: options.resultOutcome ?? "ready_for_acceptance",
     summary: "Isolated candidates; host validation pending.",
-    source: worker.captureSource(1),
+    source: publicWorker ? null : worker.captureSource(1),
     criterionResults: [
       {
         criterionId: "outcome",
-        status: "indeterminate",
-        observation: "Pending host checks.",
+        status: options.criterionStatus ?? "indeterminate",
+        observation: options.criterionObservation ?? "Pending host checks.",
         evidenceIds: [],
       },
     ],
     evidence: [],
-    childRunRefs: ["wave"],
+    childRunRefs: worker.mailbox
+      .listEvents()
+      .filter((event) => event.type === "progress")
+      .map((event) => worker.mailbox.readJson(event.payloadRef))
+      .filter((row) => row.kind === "role-started")
+      .map((row) => row.runId),
     unresolvedRunCount: 0,
     risks: [],
     usage: { inputTokens: null, outputTokens: null },
-  });
+  };
+  if (publicWorker) {
+    const {
+      resultRevision,
+      outcome,
+      summary,
+      criterionResults,
+      evidence,
+      risks,
+      usage,
+    } = candidate;
+    const sealed = await publicWorker.call("team_task_result", {
+      resultRevision,
+      outcome,
+      summary,
+      criterionResults,
+      evidence,
+      risks,
+      usage,
+    });
+    assert.equal(sealed.isError, false, JSON.stringify(sealed.result));
+    // Real ctx.shutdown drains Worker hooks before L0 collect/accept/Goal close.
+    await publicWorker.close();
+  } else worker.sealResult(candidate);
   orchestrator.collect(prepared.executionId);
   return {
     root,
@@ -534,9 +752,274 @@ async function fixture(
     workflowPath,
     prepared,
     worker,
+    getActiveWorker: () => worker,
     orchestrator,
     host: new HostAcceptance({ orchestrator }),
+    publicApi,
   };
+}
+
+// Fresh synthetic native-format handoff for a revised execution: new run,
+// sessions and artifact refs, with the same legitimate patch content. The
+// known defect in this fixture is the old host checker, not that patch.
+function publishRepairedCandidate(f, worker, prepared, options = {}) {
+  const native = path.join(f.root, "revision-native");
+  fs.mkdirSync(native);
+  const patchPath = path.join(native, "repaired.patch");
+  fs.copyFileSync(options.patchPath ?? f.manifests[0].patchPath, patchPath);
+  const handoff = structuredClone(f.manifests[0].value);
+  handoff.runId = "repair-leaf";
+  handoff.groups[0].children[0].patch.path = patchPath;
+  handoff.groups[0].children[0].patch.branch = "repair-lane";
+  const manifest = path.join(native, "handoff.json");
+  fs.writeFileSync(manifest, JSON.stringify(handoff));
+  const workflow = {
+    version: 1,
+    workflowRunId: "repair-wave",
+    state: "complete",
+    entries: {
+      repair: {
+        key: "repair",
+        agent: "team.implementer",
+        latestRunId: "repair-leaf",
+        continuation: { runIds: ["repair-leaf"] },
+      },
+    },
+  };
+  const workflowReceiptPath = path.join(native, "workflow.json");
+  fs.writeFileSync(workflowReceiptPath, JSON.stringify(workflow));
+  const sessionDir = path.join(
+    prepared.executionRoot,
+    "role-sessions/repair-launch",
+  );
+  const roleSession = meteredSession(
+    path.join(sessionDir, "repair-leaf.jsonl"),
+    "repair-leaf",
+    f.source,
+  );
+  if (options.repairCommand) {
+    if (options.rejectedReconstruction) {
+      const entries = [],
+        hooks = new Map();
+      const input = {
+        command: "incorrect reconstruction input (never executed)",
+      };
+      const ctx = {
+        sessionManager: {
+          getSessionId: () => "repair-leaf",
+          getBranch: () => entries,
+        },
+        abort() {
+          assert.fail("a pre-tool rejection must not abort this writer");
+        },
+      };
+      installReconstructionHooks(
+        {
+          on: (name, handler) => hooks.set(name, handler),
+          appendEntry: (customType, data) =>
+            entries.push({ type: "custom", customType, data }),
+        },
+        () =>
+          reconstructionBinding(
+            options.repairCommand,
+            `TASK_PI_REVIEW_PRODUCT_BASE_READY:${options.oldTree}\n`,
+          ),
+      );
+      entries.push({
+        type: "message",
+        message: {
+          role: "assistant",
+          usage: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 0,
+          },
+          content: [
+            {
+              type: "toolCall",
+              id: "rejected-reconstruction",
+              name: "bash",
+              arguments: input,
+            },
+          ],
+        },
+      });
+      const blocked = hooks.get("tool_call")(
+        { toolName: "bash", toolCallId: "rejected-reconstruction", input },
+        ctx,
+      );
+      assert.equal(blocked.block, true);
+      entries.push({
+        type: "message",
+        message: {
+          role: "toolResult",
+          toolName: "bash",
+          toolCallId: "rejected-reconstruction",
+          isError: true,
+          content: [{ type: "text", text: blocked.reason }],
+        },
+      });
+      fs.appendFileSync(
+        roleSession,
+        entries
+          .map((e, index) =>
+            JSON.stringify({ id: `input-rejection-${index}`, ...e }),
+          )
+          .join("\n") + "\n",
+      );
+    }
+    fs.appendFileSync(
+      roleSession,
+      [
+        {
+          type: "message",
+          id: "reconstruct-call",
+          message: {
+            role: "assistant",
+            usage: {
+              input: 1,
+              output: 1,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 2,
+            },
+            content: [
+              {
+                type: "toolCall",
+                id: "reconstruct-one",
+                name: "bash",
+                arguments: { command: options.repairCommand },
+              },
+            ],
+          },
+        },
+        {
+          type: "message",
+          id: "reconstruct-result",
+          message: {
+            role: "toolResult",
+            toolCallId: "reconstruct-one",
+            toolName: "bash",
+            isError: false,
+            content: [
+              {
+                type: "text",
+                text:
+                  options.repairOutput ??
+                  `TASK_PI_REVIEW_PRODUCT_BASE_READY:${options.oldTree}\n`,
+              },
+            ],
+          },
+        },
+      ]
+        .map((row) => JSON.stringify(row))
+        .join("\n") + "\n",
+    );
+  }
+  const status = structuredClone(f.status);
+  status.runId = "repair-wave";
+  status.sessionId = worker.workerSessionId;
+  status.processTerminal.runId = "repair-wave";
+  status.workflowReceiptPath = workflowReceiptPath;
+  status.workflow = {
+    value: [
+      {
+        key: "repair",
+        ok: true,
+        runId: "repair-leaf",
+        artifactPaths: [manifest],
+        outputReference: null,
+        structuredOutput: null,
+      },
+    ],
+  };
+  status.steps = [
+    {
+      ...status.steps[0],
+      workflowKey: "repair",
+      runId: "repair-leaf",
+      sessionFile: roleSession,
+    },
+  ];
+  const saveStatus = () =>
+    fs.writeFileSync(path.join(native, "status.json"), JSON.stringify(status));
+  saveStatus();
+  const member = {
+    key: "repair",
+    role: "team.implementer",
+    mode: "mutation",
+    isolation: "worktree",
+    maxTokens: 100,
+    taskDigest: digest("Fixture bounded writer."),
+  };
+  worker.mailbox.writeReceipt("wave-plan-repair-launch", {
+    key: "repair-writer",
+    reason: "Fresh candidate for corrected host check.",
+    runs: [{ ...member, task: "Fixture bounded writer." }],
+  });
+  worker.recordProgress("repair-launch", {
+    kind: "role-wave-launch-intent",
+    members: [member],
+    waveKey: "repair-writer",
+  });
+  worker.recordProgress("repair-admission", {
+    kind: "role-launch-intent",
+    rootLaunchId: "repair-launch",
+    role: member.role,
+    mode: member.mode,
+    maxTokens: member.maxTokens,
+  });
+  worker.recordProgress("repair-started", {
+    kind: "role-started",
+    launchId: "repair-launch",
+    runId: "repair-wave",
+    asyncDir: native,
+    sessionDir,
+    role: null,
+    mode: "wave",
+    members: [member],
+    baseCommit: f.base,
+  });
+  worker.recordProgress("repair-completion", {
+    kind: "role-completion",
+    launchId: "repair-launch",
+    runId: "repair-wave",
+    completion: "completed",
+  });
+  worker.recordProgress("repair-terminal", {
+    kind: "role-terminal",
+    launchId: "repair-launch",
+    runId: "repair-wave",
+    completion: "completed",
+    processTerminal: status.processTerminal,
+  });
+  worker.sealResult({
+    schemaVersion: "teams-task-result/1",
+    identity: prepared.contract.identity,
+    requestDigest: prepared.requestDigest,
+    resultRevision: 1,
+    outcome: "ready_for_acceptance",
+    summary:
+      "New candidate; corrected host check and independent review still required.",
+    source: worker.captureSource(1),
+    criterionResults: [
+      {
+        criterionId: "outcome",
+        status: "indeterminate",
+        observation: "Pending host check.",
+        evidenceIds: [],
+      },
+    ],
+    evidence: [],
+    childRunRefs: ["repair-wave"],
+    unresolvedRunCount: 0,
+    risks: [],
+    usage: { inputTokens: null, outputTokens: null },
+  });
+  f.orchestrator.collect(prepared.executionId);
+  return { native, status, saveStatus, roleSession };
 }
 
 async function applyFixture(t) {
@@ -662,6 +1145,144 @@ test("D3b explicit digest and UI approval are required; changes during confirmat
   );
   assert.equal(
     fs.existsSync(path.join(f.applyDir, "apply-intent.json")),
+    false,
+  );
+});
+
+test("D3b approved apply refreshes stale index stat data only after confirmation", async (t) => {
+  const f = await fixture(
+    t,
+    ["conflict-a"],
+    "require('node:assert/strict').equal(require('node:fs').readFileSync('src/main.txt','utf8'),'conflict-a\\n')",
+    {
+      integrationMode: "approved-integration",
+      nativeReviewRequired: false,
+    },
+  );
+  const id = f.prepared.executionId;
+  const file = path.join(f.source, "src/main.txt");
+  const index = path.join(f.source, ".git/index");
+  fs.writeFileSync(file, "base\n");
+  const past = new Date(Date.now() - 60_000);
+  fs.utimesSync(file, past, past);
+  const originalIndex = fs.readFileSync(index);
+  f.host.stageIntegration(id);
+  const plan = f.host.prepareIntegrationApply(id);
+  assert.deepEqual(
+    fs.readFileSync(index),
+    originalIndex,
+    "read-only gates must not refresh the target index",
+  );
+  assert.equal(
+    (await f.host.applyIntegration(id, plan.planDigest, () => false)).status,
+    "declined",
+  );
+  assert.deepEqual(fs.readFileSync(index), originalIndex);
+  const applied = await f.host.applyIntegration(
+    id,
+    plan.planDigest,
+    () => true,
+  );
+  assert.equal(applied.status, "applied");
+  assert.deepEqual(
+    f.worker.mailbox.readJson("integration/target-apply/apply-command.json")
+      .indexRefreshTerminal,
+    { observed: true, code: 0, signal: null, error: null },
+  );
+  assert.equal(fs.readFileSync(file, "utf8"), "conflict-a\n");
+  assert.equal(git(f.source, "rev-parse", "HEAD"), f.base);
+  assert.equal(
+    f.host.inspectIntegrationApply(id, plan.planDigest).disposition,
+    "applied",
+  );
+});
+
+test("D3b scratch Git baseline preserves tracked file and directory modes under umask 077", async (t) => {
+  const f = await fixture(t, ["alpha"], undefined, {
+    integrationMode: "approved-integration",
+    nativeReviewRequired: false,
+  });
+  f.host.stageIntegration(f.prepared.executionId);
+  const original = process.umask(0o077);
+  let plan;
+  try {
+    plan = f.host.prepareIntegrationApply(f.prepared.executionId);
+  } finally {
+    process.umask(original);
+  }
+  assert.match(plan.planDigest, /^[a-f0-9]{64}$/);
+  const baseline = path.join(
+    f.prepared.executionRoot,
+    "integration/target-apply/baseline",
+  );
+  assert.equal(
+    fs.statSync(path.join(baseline, "README.md")).mode & 0o777,
+    0o644,
+  );
+  assert.equal(fs.statSync(path.join(baseline, "src")).mode & 0o777, 0o755);
+  assert.equal(git(f.source, "status", "--porcelain"), "");
+  assert.equal(
+    fs.readFileSync(path.join(f.source, "README.md"), "utf8"),
+    "baseline\n",
+  );
+});
+
+test("D3b restrictive umask keeps pre-existing Git modes through stage, plan, approved apply and readback", async (t) => {
+  const f = await fixture(t, ["new/task"], undefined, {
+    integrationMode: "approved-integration",
+    nativeReviewRequired: false,
+  });
+  const original = process.umask(0o077);
+  try {
+    const id = f.prepared.executionId;
+    assert.equal(f.host.stageIntegration(id).status, "checks-passed");
+    const plan = f.host.prepareIntegrationApply(id);
+    assert.match(plan.planDigest, /^[a-f0-9]{64}$/);
+    const applied = await f.host.applyIntegration(
+      id,
+      plan.planDigest,
+      async () => true,
+    );
+    assert.equal(applied.status, "applied");
+    const observed = f.host.inspectIntegrationApply(id, plan.planDigest);
+    assert.equal(observed.disposition, "applied");
+    assert.equal(observed.applyReceipt, true);
+    assert.equal(
+      fs.statSync(path.join(f.source, "README.md")).mode & 0o777,
+      0o644,
+    );
+    assert.equal(
+      fs.statSync(path.join(f.source, "src/new")).mode & 0o777,
+      0o700,
+    );
+    assert.equal(git(f.source, "rev-parse", "HEAD"), f.base);
+    assert.equal(git(f.source, "write-tree"), plan.mergedTree);
+  } finally {
+    process.umask(original);
+  }
+});
+
+test("D3b canonical scratch modes do not hide an unscoped target chmod", async (t) => {
+  const f = await fixture(t, ["alpha"], undefined, {
+    integrationMode: "approved-integration",
+    nativeReviewRequired: false,
+  });
+  f.host.stageIntegration(f.prepared.executionId);
+  fs.chmodSync(path.join(f.source, "README.md"), 0o600);
+  assert.equal(git(f.source, "status", "--porcelain"), "");
+  const original = process.umask(0o077);
+  try {
+    assert.throws(
+      () => f.host.prepareIntegrationApply(f.prepared.executionId),
+      /complete Git baseline/,
+    );
+  } finally {
+    process.umask(original);
+  }
+  assert.equal(
+    fs.existsSync(
+      path.join(f.prepared.executionRoot, "integration/target-apply/plan.json"),
+    ),
     false,
   );
 });
@@ -1475,11 +2096,32 @@ test("D3 durable capture tampering invalidates a successful rehearsal", async (t
 });
 
 test("D3 failed host checks retain their intent and never replay automatically", async (t) => {
+  const { CompletedCheckFailure, checkFailureReply, isCompletedCheckFailure } =
+    await import("../check-failure.mjs");
   const f = await fixture(t, ["alpha"], "process.exit(7)");
+  let failure;
   assert.throws(
     () => f.host.stageIntegration(f.prepared.executionId),
-    /host check failed/,
+    (error) => {
+      failure = error;
+      return error instanceof CompletedCheckFailure;
+    },
   );
+  const args = { execution_id: f.prepared.executionId, action: "stage" };
+  const reply = checkFailureReply(failure, "check-1", args);
+  assert.equal(reply.isError, true);
+  assert.equal(reply.details.checkFailure.exitCode, 7);
+  assert.equal(
+    isCompletedCheckFailure(
+      reply.details.checkFailure,
+      { tool: "team_task_stage_integration", input: args },
+      "team_task_stage_integration",
+      "check-1",
+    ),
+    true,
+  );
+  assert.throws(() => f.host.prepareIntegrationReview(f.prepared.executionId));
+  assert.throws(() => f.host.accept(f.prepared.executionId));
   const checkFile = path.join(
     f.prepared.executionRoot,
     "integration/check-check.json",
@@ -1492,6 +2134,501 @@ test("D3 failed host checks retain their intent and never replay automatically",
   );
   assert.deepEqual(fs.readFileSync(checkFile), original);
   assert.equal(git(f.source, "status", "--porcelain"), "");
+});
+
+test("R31-H a failed staged check permits only one source-bound, cost-carrying candidate revision", async (t) => {
+  const { buildTaskPrompt } = await import("../worker-runtime.mjs");
+  const { bytesDigest } = await import("../contracts.mjs");
+  const f = await fixture(t, ["alpha"], "process.exit(7)", {
+    review: {
+      authority: "l0-source-bound",
+      allowedRoles: ["team.reviewer"],
+      allowedTools: ["read", "structured_output"],
+    },
+    tokenBudgetMode: "shared",
+    maxProcessRestarts: 1,
+    stoppedWorker: true,
+  });
+  const previousId = f.prepared.executionId;
+  const previousResult = f.worker.mailbox.listResults().at(-1);
+  const checkRef = path.join(
+    f.prepared.executionRoot,
+    "integration/check-check.json",
+  );
+  assert.throws(
+    () => f.host.stageIntegration(previousId),
+    /check.*exit|check|failed/i,
+  );
+  const before = fs.readFileSync(checkRef);
+  const failureSha = bytesDigest(before);
+  const revised = {
+    ...f.prepared.contract,
+    ...f.prepared.contract.identity,
+    taskRevision: 2,
+    checks: f.prepared.contract.checks.map((check) => ({
+      ...check,
+      argv: [
+        "-e",
+        "require('node:assert/strict').ok(require('node:fs').existsSync('src/alpha space.txt'))",
+      ],
+    })),
+  };
+  const repair = {
+    previousExecutionId: previousId,
+    expectedPreviousResultDigest: digest(previousResult),
+    failureReceiptRef: checkRef,
+    failureReceiptSha256: failureSha,
+    repairReason:
+      "Inspect the failed integration check and repair the candidate or check without weakening criteria.",
+  };
+  assert.throws(
+    () => f.orchestrator.prepare(revised, { repairOf: repair }),
+    /closed after failure/,
+  );
+  f.orchestrator.requestCancel(
+    previousId,
+    "candidate check failed; preserve evidence",
+  );
+  f.worker.processControls();
+  f.worker.confirmCancelled(0);
+  f.orchestrator.herdr = {
+    closeIdle: (paneId) => ({ paneId, disposition: "closed" }),
+  };
+  assert.equal(
+    f.orchestrator.reconcile(previousId).execution.reservationOpen,
+    false,
+  );
+  for (const [variant, message] of [
+    [
+      { ...repair, expectedPreviousResultDigest: "f".repeat(64) },
+      /previous result changed/,
+    ],
+    [
+      { ...repair, failureReceiptSha256: "f".repeat(64) },
+      /failure receipt changed/,
+    ],
+  ])
+    assert.throws(
+      () => f.orchestrator.prepare(revised, { repairOf: variant }),
+      message,
+    );
+  assert.throws(
+    () =>
+      f.orchestrator.prepare(
+        { ...revised, policy: { ...revised.policy, maxTaskTokens: 1001 } },
+        { repairOf: repair },
+      ),
+    /repair policy changed/,
+  );
+  assert.throws(
+    () =>
+      f.orchestrator.prepare(revised, {
+        repairOf: {
+          ...repair,
+          failureReceiptRef: path.join(
+            f.prepared.executionRoot,
+            "results/r0001.json",
+          ),
+        },
+      }),
+    /only an integration failed-check receipt/,
+  );
+  fs.writeFileSync(path.join(f.source, "src/main.txt"), "drift\n");
+  assert.throws(
+    () => f.orchestrator.prepare(revised, { repairOf: repair }),
+    /candidate source changed|baseline drifted/,
+  );
+  fs.writeFileSync(path.join(f.source, "src/main.txt"), "base\n");
+  assert.throws(
+    () => f.orchestrator.prepare(revised),
+    /failed sealed integration requires explicit candidate revision/,
+  );
+  assert.throws(
+    () =>
+      f.orchestrator.prepare({
+        ...revised,
+        policy: { ...revised.policy, maxTaskTokens: 1001 },
+      }),
+    /failed sealed integration requires explicit candidate revision/,
+  );
+  const { candidateRepairIntent } = await import("../task-revision.mjs");
+  assert.throws(
+    () =>
+      candidateRepairIntent({
+        previous: f.orchestrator.ledger.getExecution(previousId),
+        oldContract: f.prepared.contract,
+        previousMailbox: f.worker.mailbox,
+        spec: revised,
+        revision: repair,
+        ownerSessionId: "foreign",
+        baseline: f.worker.mailbox.readJson("receipts/workspace-baseline.json"),
+      }),
+    /repair owner changed/,
+  );
+  const next = f.orchestrator.prepare(revised, { repairOf: repair });
+  const receipt = JSON.parse(
+    fs.readFileSync(
+      path.join(next.executionRoot, "receipts/repair-intent.json"),
+      "utf8",
+    ),
+  );
+  const boot = JSON.parse(
+    fs.readFileSync(path.join(next.executionRoot, "bootstrap.json"), "utf8"),
+  );
+  const prior = JSON.parse(
+    fs.readFileSync(
+      path.join(next.executionRoot, "receipts/prior-usage.json"),
+      "utf8",
+    ),
+  );
+  assert.equal(receipt.previousExecutionId, previousId);
+  assert.equal(receipt.failureReceiptSha256, failureSha);
+  assert.equal(boot.repairIntentDigest, digest(receipt));
+  assert.equal(prior.totals.total, 20); // Worker and native leaf; no new allocation resets it.
+  assert.equal(
+    f.orchestrator.ledger.readTaskPool(next.executionId).priorTokens,
+    prior.totals.total,
+  );
+  assert.match(
+    buildTaskPrompt(
+      next.contract,
+      path.join(next.executionRoot, "task-request.json"),
+      path.join(next.executionRoot, "receipts/repair-intent.json"),
+    ),
+    /Bounded candidate revision/,
+  );
+  assert.deepEqual(fs.readFileSync(checkRef), before);
+  assert.throws(
+    () =>
+      f.orchestrator.prepare(
+        { ...revised, taskRevision: 3 },
+        { repairOf: { ...repair, previousExecutionId: next.executionId } },
+      ),
+    /restart budget/,
+  );
+  let repairedWorker;
+  f.orchestrator.herdr = {
+    async start(input) {
+      repairedWorker = new WorkerRuntime({
+        executionRoot: input.executionRoot,
+      });
+      repairedWorker.boot({
+        sessionId: "repaired-worker",
+        processId: 99_999_999,
+        processStartedAtTicks: "1",
+        sessionFile: meteredSession(
+          path.join(input.executionRoot, "worker-sessions/repaired.jsonl"),
+          "repaired-worker",
+          f.source,
+        ),
+        cwd: f.source,
+        activeTools: ["read", "team_role_spawn", "team_task_result"],
+        extensions: ["teams-worker", "pi-subagents"],
+        subagents: {
+          compatible: true,
+          checks: { protocolV1: true, status: true, spawn: true, stop: true },
+          ping: { version: 1 },
+        },
+      });
+      return { paneId: "w3:p4", agentName: "worker" };
+    },
+    closeIdle: (paneId) => ({ paneId, disposition: "closed" }),
+  };
+  const bindingTimer = setInterval(() => repairedWorker?.processControls(), 5);
+  t.after(() => clearInterval(bindingTimer));
+  const launched = await f.orchestrator.launch(next.executionId, {
+    timeoutMs: 1000,
+  });
+  assert.equal(launched.state, "RUNNING");
+  assert.match(repairedWorker.taskPrompt(), /Bounded candidate revision/);
+  repairedWorker.assertAdmission();
+  const oldCandidateFile = path.join(
+    f.prepared.executionRoot,
+    "integration/repo/src/main.txt",
+  );
+  const oldCandidateBytes = fs.readFileSync(oldCandidateFile);
+  fs.writeFileSync(oldCandidateFile, "late drift\n");
+  assert.throws(
+    () => repairedWorker.taskPrompt(),
+    /previous staged candidate changed/,
+  );
+  assert.throws(
+    () => repairedWorker.assertAdmission(),
+    /previous staged candidate changed/,
+  );
+  fs.writeFileSync(oldCandidateFile, oldCandidateBytes);
+  repairedWorker.assertAdmission();
+  assert.throws(
+    () => f.host.accept(next.executionId),
+    /sealed patch review|result|candidate|integration/i,
+  );
+  const fresh = publishRepairedCandidate(f, repairedWorker, next);
+  f.prepared = next;
+  f.worker = repairedWorker;
+  f.native = fresh.native;
+  f.status = fresh.status;
+  f.saveStatus = fresh.saveStatus;
+  const meter = { contract: next.contract, mailbox: repairedWorker.mailbox };
+  function finish(key, file, estimate, register = true) {
+    const measured = measureSessionBytes(fs.readFileSync(file));
+    if (register)
+      registerTaskBudgetMembers(meter, [
+        { key, estimate, sessionRoot: path.dirname(file) },
+      ]);
+    const binding = taskBudgetBinding(meter, key);
+    const identity = { sessionId: measured.sessionId, sessionFile: file };
+    changeTaskBudget(binding, { type: "bind", ...identity });
+    changeTaskBudget(binding, {
+      type: "request",
+      ...identity,
+      used: 0,
+      allowance: 20,
+    });
+    changeTaskBudget(binding, {
+      type: "settle",
+      ...identity,
+      used: measured.usage.total,
+    });
+    changeTaskBudget(binding, {
+      type: "finish",
+      ...identity,
+      used: measured.usage.total,
+    });
+  }
+  finish(
+    "worker",
+    repairedWorker.mailbox.readJson("receipts/boot.json").workerSessionFile,
+    0,
+    false,
+  );
+  finish("role.repair-launch.repair", fresh.roleSession, 100);
+  const reviewed = await reviewWaveFixture(t, 1, {
+    existing: f,
+    tokenBudgetMode: "shared",
+    stoppedWorker: true,
+    writerEvidence: true,
+    reviewSourcePaths: ["src/alpha space.txt"],
+  });
+  const newCheck = reviewed.worker.mailbox.readJson(
+    "integration/check-check.json",
+  );
+  assert.equal(
+    newCheck.status,
+    "verified",
+    "corrected checker must recover the original alpha candidate behavior",
+  );
+  assert.deepEqual(
+    fs.readFileSync(checkRef),
+    before,
+    "old failed check remains sealed",
+  );
+  reviewed.adapter.assertAdmission = () =>
+    f.orchestrator.assertReviewAdmission(next.executionId);
+  await f.host.startIntegrationReview(
+    next.executionId,
+    reviewed.wave.key,
+    reviewed.plan.planDigest,
+    reviewed.adapter,
+  );
+  const reviewStatus = reviewed.publish();
+  finish(
+    `review.${reviewed.wave.key}.view-0`,
+    reviewStatus.steps[0].sessionFile,
+    100,
+    false,
+  );
+  const collectedReview = await f.host.collectIntegrationReview(
+    next.executionId,
+    reviewed.wave.key,
+    reviewed.plan.planDigest,
+  );
+  assert.equal(collectedReview.verdict, "pass");
+  await f.host.sealIntegrationReview(next.executionId);
+  const { receipt: accepted } = await f.host.accept(next.executionId);
+  assert.equal(accepted.schemaVersion, "teams-task-acceptance/3");
+  assert.equal(accepted.finalEvidence.delivery.targetModified, false);
+  assert.equal(f.orchestrator.ledger.getAcceptance(previousId), null);
+  assert.equal(
+    f.orchestrator.ledger.getExecution(next.executionId).state,
+    "ACCEPTED",
+  );
+  // Simulated matching external Goal tool result, not a real Goal-X readback.
+  const { createGoalGuard } = await import("../goal-guard.mjs");
+  const guard = createGoalGuard(f.orchestrator, f.source);
+  const goalGate = await guard.beforeTaskCompletion({
+    goalId: "goal",
+    taskId: "task",
+  });
+  assert.equal(goalGate.ok, true);
+  await guard.afterTaskCompletion({
+    goalId: "goal",
+    taskId: "task",
+    evidence: goalGate.evidence,
+  });
+  assert.equal(
+    f.orchestrator.ledger.getExecution(next.executionId).reservationOpen,
+    false,
+  );
+  const { historicalUsage } = await import("../e2e/run-todo-flow.mjs");
+  const campaign = historicalUsage([], "separate-parent", [
+    { runtimeRoot: f.orchestrator.runtimeRoot, executionId: previousId },
+    { runtimeRoot: f.orchestrator.runtimeRoot, executionId: next.executionId },
+  ]);
+  assert.equal(
+    campaign.totals.total,
+    50,
+    "old 20 plus fresh 30; new priorUsage must not count twice",
+  );
+});
+
+test("R31-H unknown/check-signal and half-published revision cannot become a second repaired candidate", async (t) => {
+  const review = {
+    authority: "l0-source-bound",
+    allowedRoles: ["team.reviewer"],
+    allowedTools: ["read", "structured_output"],
+  };
+  const options = {
+    review,
+    tokenBudgetMode: "shared",
+    maxProcessRestarts: 1,
+    stoppedWorker: true,
+  };
+  const signaled = await fixture(
+    t,
+    ["alpha"],
+    "process.kill(process.pid, 'SIGTERM')",
+    options,
+  );
+  const signalId = signaled.prepared.executionId;
+  assert.throws(() => signaled.host.stageIntegration(signalId));
+  const signalRef = path.join(
+    signaled.prepared.executionRoot,
+    "integration/check-check.json",
+  );
+  const signalBytes = fs.readFileSync(signalRef);
+  signaled.orchestrator.requestCancel(
+    signalId,
+    "signaled check is not a completed product defect",
+  );
+  signaled.worker.processControls();
+  signaled.worker.confirmCancelled(0);
+  signaled.orchestrator.herdr = {
+    closeIdle: (paneId) => ({ paneId, disposition: "closed" }),
+  };
+  assert.equal(
+    signaled.orchestrator.reconcile(signalId).execution.reservationOpen,
+    false,
+  );
+  const signaledSpec = {
+    ...signaled.prepared.contract,
+    ...signaled.prepared.contract.identity,
+    taskRevision: 2,
+  };
+  const signalResult = signaled.worker.mailbox.listResults().at(-1);
+  const signalRepair = {
+    previousExecutionId: signalId,
+    expectedPreviousResultDigest: digest(signalResult),
+    failureReceiptRef: signalRef,
+    failureReceiptSha256: (await import("../contracts.mjs")).bytesDigest(
+      signalBytes,
+    ),
+    repairReason:
+      "A signal is unknown, never treat it as a product check failure.",
+  };
+  assert.throws(
+    () =>
+      signaled.orchestrator.prepare(signaledSpec, { repairOf: signalRepair }),
+    /not a completed nonzero check|signaled check/,
+  );
+  assert.equal(
+    signaled.orchestrator.ledger.listTaskExecutions(
+      signaled.prepared.projectId,
+      "goal",
+      "task",
+    ).length,
+    1,
+  );
+  assert.deepEqual(fs.readFileSync(signalRef), signalBytes);
+
+  const partial = await fixture(t, ["alpha"], "process.exit(7)", options);
+  const oldId = partial.prepared.executionId;
+  assert.throws(() => partial.host.stageIntegration(oldId));
+  const failureRef = path.join(
+    partial.prepared.executionRoot,
+    "integration/check-check.json",
+  );
+  partial.orchestrator.requestCancel(oldId, "fixture candidate failure");
+  partial.worker.processControls();
+  partial.worker.confirmCancelled(0);
+  partial.orchestrator.herdr = {
+    closeIdle: (paneId) => ({ paneId, disposition: "closed" }),
+  };
+  assert.equal(
+    partial.orchestrator.reconcile(oldId).execution.reservationOpen,
+    false,
+  );
+  const original = partial.worker.mailbox.listResults().at(-1);
+  const revision = {
+    ...partial.prepared.contract,
+    ...partial.prepared.contract.identity,
+    taskRevision: 2,
+  };
+  const intent = {
+    previousExecutionId: oldId,
+    expectedPreviousResultDigest: digest(original),
+    failureReceiptRef: failureRef,
+    failureReceiptSha256: (await import("../contracts.mjs")).bytesDigest(
+      fs.readFileSync(failureRef),
+    ),
+    repairReason: "Precisely correct the known check failure.",
+  };
+  const reserved = partial.orchestrator.prepare(revision, { repairOf: intent });
+  fs.unlinkSync(
+    path.join(reserved.executionRoot, "receipts/repair-intent.json"),
+  ); // disposable crash seam only
+  assert.throws(
+    () =>
+      new WorkerRuntime({ executionRoot: reserved.executionRoot }).taskPrompt(),
+    /ENOENT|repair-intent/,
+  );
+  assert.equal(
+    partial.orchestrator.ledger.getExecution(reserved.executionId)
+      .reservationOpen,
+    true,
+  );
+  assert.throws(
+    () =>
+      partial.orchestrator.prepare(
+        { ...revision, taskRevision: 3 },
+        { repairOf: { ...intent, previousExecutionId: reserved.executionId } },
+      ),
+    /restart budget/,
+  );
+  assert.equal(
+    partial.orchestrator.ledger.getAcceptance(reserved.executionId),
+    null,
+  );
+});
+
+test("D3 signaled checks and nonzero checks that mutate source stay runtime failures", async (t) => {
+  const { CompletedCheckFailure } = await import("../check-failure.mjs");
+  for (const script of [
+    "process.kill(process.pid, 'SIGTERM')",
+    "require('node:fs').writeFileSync('src/main.txt','changed');process.exit(7)",
+  ]) {
+    const f = await fixture(t, ["alpha"], script);
+    assert.throws(
+      () => f.host.stageIntegration(f.prepared.executionId),
+      (error) => {
+        assert.equal(error instanceof CompletedCheckFailure, false);
+        return true;
+      },
+    );
+    assert.throws(
+      () => f.host.stageIntegration(f.prepared.executionId),
+      /reconcile/,
+    );
+  }
 });
 
 test("D3 stale/dirty targets and existing incomplete intents reject without retry", async (t) => {
@@ -1582,6 +2719,84 @@ test("C2 candidate readiness permits pending host criteria without accepting blo
       assert.equal(git(f.source, "status", "--porcelain"), "");
     });
   }
+});
+
+test("fresh output directory absent at baseline survives Worker result and verify-only staging", async (t) => {
+  const f = await fixture(t, ["new/task"], undefined, {
+    review: reviewPolicy,
+    sourcePaths: ["src/new"],
+  });
+  const id = f.prepared.executionId;
+  const sourceManifest = f.worker.mailbox.readJson(
+    "receipts/source-manifest-r0001.json",
+  );
+  assert.deepEqual(sourceManifest.files, [{ path: "src/new", kind: "absent" }]);
+  assert.equal(fs.existsSync(path.join(f.source, "src/new")), false);
+  const staged = f.host.stageIntegration(id);
+  assert.equal(staged.status, "checks-passed");
+  assert.equal(staged.targetModified, false);
+  assert.equal(
+    fs.readFileSync(path.join(staged.cwd, "src/new/task space.txt"), "utf8"),
+    "new/task\n",
+  );
+  assert.equal(git(f.source, "status", "--porcelain"), "");
+  // Git ignores an empty directory, but its appearance invalidates the sealed absence.
+  fs.mkdirSync(path.join(f.source, "src/new"));
+  assert.throws(
+    () => f.host.stageIntegration(id),
+    /workspace changed|source changed|candidate source/,
+  );
+});
+
+test("a genuinely empty Git base can stage a nonempty native candidate without weakening target freshness", async (t) => {
+  const f = await fixture(
+    t,
+    ["new/task"],
+    "const fs=require('node:fs'),a=require('node:assert/strict');a.ok(fs.existsSync('src/new/task space.txt'));",
+    { review: reviewPolicy, emptyBase: true, sourcePaths: ["src/new"] },
+  );
+  assert.equal(git(f.source, "ls-tree", "HEAD"), "");
+  const id = f.prepared.executionId;
+  const sourceManifest = f.worker.mailbox.readJson(
+    "receipts/source-manifest-r0001.json",
+  );
+  assert.deepEqual(sourceManifest.files, [{ path: "src/new", kind: "absent" }]);
+  const staged = f.host.stageIntegration(id);
+  assert.equal(staged.status, "checks-passed");
+  assert.equal(staged.targetModified, false);
+  assert.equal(
+    fs.readFileSync(path.join(staged.cwd, "src/new/task space.txt"), "utf8"),
+    "new/task\n",
+  );
+  assert.equal(git(f.source, "status", "--porcelain"), "");
+});
+
+test("staging still rejects an empty candidate tree after removing all tracked files", async (t) => {
+  const f = await fixture(t, ["remove-all"], "process.exit(0)", {
+    review: reviewPolicy,
+    allowedWritePaths: ["README.md", "src"],
+  });
+  assert.throws(
+    () => f.host.stageIntegration(f.prepared.executionId),
+    /bounded nonempty Git tree required/,
+  );
+  assert.equal(git(f.source, "status", "--porcelain"), "");
+});
+
+test("absent source entries stay scoped and reject symlink ancestors and credential paths", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "task-absent-source-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const before = snapshot(root, ["app"]);
+  assert.deepEqual(before.files, [{ path: "app", kind: "absent" }]);
+  fs.symlinkSync("not-created", path.join(root, "link"));
+  assert.throws(
+    () => snapshot(root, ["link/app"]),
+    /source path parent|symlink|ENOENT/,
+  );
+  assert.throws(() => snapshot(root, ["../escape"]), /relative source path/);
+  assert.throws(() => snapshot(root, [".env"]), /credential paths/);
+  fs.mkdirSync(path.join(root, "app"));
+  assert.notEqual(snapshot(root, ["app"]).digest, before.digest);
 });
 
 test("D6 baseline-to-result-to-host checks bind the whole workspace", async (t) => {
@@ -1882,6 +3097,198 @@ test("D4a refuses legacy policy, foreign owner and modified review request", asy
   );
 });
 
+test("review plan input correction preserves source, policy and unconsumed launch intent", async (t) => {
+  const { TaskInputRejection } = await import("../input-rejection.mjs");
+  const f = await reviewWaveFixture(t, 1);
+  const wave = { ...f.wave, key: "second-view" };
+  const dir = path.join(
+    f.prepared.executionRoot,
+    "integration/reviews",
+    wave.key,
+  );
+  const requestBytes = fs.readFileSync(
+    path.join(f.prepared.executionRoot, "integration/review-request.json"),
+  );
+  await assert.rejects(
+    f.host.planIntegrationReview(f.id, { ...wave, reason: "" }, f.adapter),
+    (error) =>
+      error instanceof TaskInputRejection && error.phase === "review-wave",
+  );
+  const resolve = f.adapter.resolve;
+  f.adapter.resolve = async (input) => {
+    const value = await resolve(input);
+    value.contract.tools.effectiveAllowlist.push("extra_builtin");
+    value.contract.tools.effectiveMcpTools.push("resolved_mcp_reader");
+    return value;
+  };
+  await assert.rejects(
+    f.host.planIntegrationReview(f.id, wave, f.adapter),
+    (error) => {
+      assert.ok(error instanceof TaskInputRejection);
+      assert.deepEqual(error.diagnostics.excess, [
+        "extra_builtin",
+        "resolved_mcp_reader",
+      ]);
+      assert.ok(error.diagnostics.effective.includes("structured_output"));
+      return true;
+    },
+  );
+  assert.equal(fs.existsSync(dir), false);
+  assert.equal(f.counts().spawns, 0);
+  // Restore the fixture's authorized profile, not a changed contract/ceiling.
+  f.adapter.resolve = resolve;
+  const plan = await f.host.planIntegrationReview(f.id, wave, f.adapter);
+  assert.equal(plan.key, wave.key);
+  assert.equal(fs.existsSync(path.join(dir, "launch-intent.json")), false);
+  assert.deepEqual(
+    fs.readFileSync(
+      path.join(f.prepared.executionRoot, "integration/review-request.json"),
+    ),
+    requestBytes,
+  );
+  assert.equal(f.counts().spawns, 0);
+  await assert.rejects(
+    f.host.planIntegrationReview(
+      f.id,
+      { ...wave, reason: "changed" },
+      f.adapter,
+    ),
+    (error) => !(error instanceof TaskInputRejection),
+  );
+  fs.writeFileSync(
+    path.join(f.prepared.executionRoot, "integration/check-check.json"),
+    "{",
+  );
+  await assert.rejects(
+    f.host.planIntegrationReview(
+      f.id,
+      { ...wave, key: "third-view" },
+      f.adapter,
+    ),
+    (error) => !(error instanceof TaskInputRejection),
+  );
+  assert.equal(
+    f.counts().spawns,
+    0,
+    "corrupt host evidence never becomes input-repair permission",
+  );
+});
+
+test("closed usage includes the final native leaf and review; history reuses it without a controller", async (t) => {
+  const { readClosedExecutionUsage } = await import("../orchestrator.mjs");
+  const { historicalUsage, reconcileDrainedUsage } = await import(
+    "../e2e/run-todo-flow.mjs"
+  );
+  const f = await reviewWaveFixture(t, 1, { stoppedWorker: true });
+  await f.host.startIntegrationReview(
+    f.id,
+    f.wave.key,
+    f.plan.planDigest,
+    f.adapter,
+  );
+  f.publish();
+  await f.host.collectIntegrationReview(f.id, f.wave.key, f.plan.planDigest);
+  Object.assign(f.orchestrator.herdr, {
+    isIdle: () => true,
+    closeIdle: (paneId) => ({ paneId, disposition: "closed" }),
+  });
+  assert.throws(
+    () => readClosedExecutionUsage(f.orchestrator.runtimeRoot, f.id),
+    /not closed/,
+  );
+  const cancelled = await f.orchestrator.cancel(f.id, "fixture complete");
+  assert.equal(cancelled.execution.reservationOpen, false);
+  const closed = f.orchestrator.captureClosedUsage(f.id);
+  assert.deepEqual(
+    closed.usage.sources.map((row) => row.kind),
+    ["worker", "leaf", "review"],
+  );
+  assert.equal(closed.usage.totals.total, 30);
+  assert.deepEqual(f.orchestrator.captureClosedUsage(f.id), closed);
+  const refs = [{ runtimeRoot: f.orchestrator.runtimeRoot, executionId: f.id }];
+  const worker = closed.usage.sources[0];
+  const oldSnapshot = [
+    { file: worker.sessionFile, sha256: worker.usage.sourceSha256 },
+  ];
+  const history = historicalUsage(oldSnapshot, "parent", refs);
+  assert.equal(history.sources.length, 3);
+  assert.equal(
+    history.totals.total,
+    30,
+    "neither omitted final roles nor double-charged Worker",
+  );
+  const rows = [
+    { executionId: f.id, reservationOpen: false, closedUsage: closed },
+  ];
+  assert.equal(reconcileDrainedUsage(rows, "owner").totals.total, 30);
+  assert.throws(
+    () => historicalUsage([], "parent", [...refs, ...refs]),
+    /duplicate historical execution/,
+  );
+  assert.throws(() => reconcileDrainedUsage(rows, "foreign"), /owner changed/);
+  f.orchestrator.close();
+  assert.equal(
+    readClosedExecutionUsage(refs[0].runtimeRoot, f.id).usage.totals.total,
+    30,
+  );
+  assert.throws(
+    () => f.orchestrator.captureClosedUsage(f.id),
+    /original live instance/,
+  );
+  fs.writeFileSync(closed.receiptRef, "{}");
+  assert.throws(() => reconcileDrainedUsage(rows, "owner"), /receipt changed/);
+  fs.unlinkSync(worker.sessionFile);
+  assert.throws(
+    () => historicalUsage([], "parent", refs),
+    /ENOENT|no such file/,
+  );
+});
+
+test("original owner retains unstaged terminal evidence before native temp cleanup; history stays read-only", async (t) => {
+  const { readClosedExecutionUsage } = await import("../orchestrator.mjs");
+  const f = await fixture(t, ["alpha"], undefined, {
+    stoppedWorker: true,
+    resultOutcome: "blocked",
+    review: reviewPolicy,
+  });
+  Object.assign(f.orchestrator.herdr, {
+    isIdle: () => true,
+    closeIdle: (paneId) => ({ paneId, disposition: "closed" }),
+  });
+  const id = f.prepared.executionId;
+  await f.orchestrator.cancel(id, "fixture blocked without stage");
+  const nativeCapture = path.join(
+    f.prepared.executionRoot,
+    "receipts/cancel-native-role-launch.json",
+  );
+  assert.equal(
+    readClosedExecutionUsage(f.orchestrator.runtimeRoot, id).usage.totals.total,
+    20,
+  );
+  assert.equal(
+    fs.existsSync(nativeCapture),
+    false,
+    "historical reader cannot backfill owner evidence",
+  );
+  const closed = f.orchestrator.captureClosedUsage(id);
+  assert.equal(fs.existsSync(nativeCapture), true);
+  fs.rmSync(f.native, { recursive: true });
+  assert.deepEqual(
+    readClosedExecutionUsage(f.orchestrator.runtimeRoot, id).usage,
+    closed.usage,
+  );
+  assert.deepEqual(
+    f.orchestrator.captureClosedUsage(id),
+    closed,
+    "sealed usage survives temporary runner cleanup",
+  );
+  fs.writeFileSync(nativeCapture, "{}");
+  assert.throws(
+    () => readClosedExecutionUsage(f.orchestrator.runtimeRoot, id),
+    /binding changed/,
+  );
+});
+
 test("D4a public launch contract requires fresh approved read-only exposure", async (t) => {
   const { validateReviewLaunch } = await import("../integration-review.mjs");
   const f = await fixture(t, ["alpha"], undefined, {
@@ -1910,7 +3317,21 @@ test("D4a public launch contract requires fresh approved read-only exposure", as
   const result = validateReviewLaunch(request, { ok: true, contract: launch });
   assert.equal(result.launchContractDigest, launch.launchContractDigest);
   assert.equal(result.acceptance, "not-assessed");
+  assert.deepEqual(result.toolDiagnostics.effective, [
+    "read",
+    "structured_output",
+  ]);
+  assert.deepEqual(result.toolDiagnostics.excess, []);
+  launch.tools.internalTools = ["structured_output"];
+  assert.deepEqual(
+    validateReviewLaunch(request, { ok: true, contract: launch })
+      .toolDiagnostics.internalTools,
+    ["structured_output"],
+  );
   for (const change of [
+    (c) => {
+      c.tools.internalTools = ["write"];
+    }, // Internal capabilities have no ceiling exemption.
     (c) => {
       c.context = "fork";
     },
@@ -2124,10 +3545,12 @@ test("D4a retains exact merged patch bytes and refuses damaged or partial prepar
 // Simulated public preflight/RPC producer; actual Git/FS, never a model launch.
 async function reviewWaveFixture(t, count = 2, options = {}) {
   const { digest } = await import("../contracts.mjs");
-  const f = await fixture(t, ["alpha"], options.checkScript, {
-    ...options,
-    review: reviewPolicy,
-  });
+  const f =
+    options.existing ??
+    (await fixture(t, ["alpha"], options.checkScript, {
+      ...options,
+      review: reviewPolicy,
+    }));
   const id = f.prepared.executionId;
   if (options.writerEvidence) {
     f.status.usageBudget = {
@@ -2140,10 +3563,10 @@ async function reviewWaveFixture(t, count = 2, options = {}) {
         outcome: "within-budget",
       },
     };
-    for (const step of f.status.steps) {
+    for (const [index, step] of f.status.steps.entries()) {
       step.exitCode = 0;
       Object.assign(step.acceptance, {
-        childReport: { changedFiles: ["src/alpha space.txt"] },
+        childReport: { changedFiles: f.manifests[index].changedFiles },
         runtimeChecks: [
           { id: "changed-files", status: "passed", message: "fixture" },
         ],
@@ -2164,7 +3587,7 @@ async function reviewWaveFixture(t, count = 2, options = {}) {
   f.host.stageIntegration(id);
   const request = f.host.prepareIntegrationReview(id);
   const wave = {
-    key: "review-one",
+    key: options.reviewKey ?? "review-one",
     reason: "Independent views of the frozen integration.",
     runs: Array.from({ length: count }, (_, i) => ({
       key: `view-${i}`,
@@ -2175,6 +3598,7 @@ async function reviewWaveFixture(t, count = 2, options = {}) {
       maxTokens: options.reviewEstimate ?? 100,
     })),
   };
+  const reviewPrefix = options.reviewRunPrefix ?? "review";
   let resolves = 0,
     spawns = 0,
     admissions = 0;
@@ -2183,7 +3607,7 @@ async function reviewWaveFixture(t, count = 2, options = {}) {
     nativeOwner: "owner",
     resolve: async (input) => {
       resolves++;
-      assert.equal(input.model, "antigravity/gemini-3.8-flash");
+      assert.equal(input.model, "openai-codex/gpt-5.6-luna");
       return {
         ok: true,
         contract: {
@@ -2225,19 +3649,17 @@ async function reviewWaveFixture(t, count = 2, options = {}) {
         spawns++;
         assert.equal(params.sessionDir, plan.sessionDir);
         assert.ok(
-          params.workflowScript.includes(
-            '"model":"antigravity/gemini-3.8-flash"',
-          ),
+          params.workflowScript.includes('"model":"openai-codex/gpt-5.6-luna"'),
         );
         return {
-          runId: "review-root",
-          asyncDir: path.join(f.root, "native-review"),
+          runId: `${reviewPrefix}-root`,
+          asyncDir: path.join(f.root, `native-${reviewPrefix}`),
         };
       },
     },
   };
   plan = await f.host.planIntegrationReview(id, wave, adapter);
-  const native = path.join(f.root, "native-review");
+  const native = path.join(f.root, `native-${reviewPrefix}`);
   function publish(
     mutate = () => {},
     usage = {
@@ -2252,7 +3674,7 @@ async function reviewWaveFixture(t, count = 2, options = {}) {
     const rows = plan.children.map((child, i) => ({
       key: child.key,
       ok: true,
-      runId: `review-child-${i}`,
+      runId: `${reviewPrefix}-child-${i}`,
       structuredOutput: {
         schemaVersion: "teams-integration-review-report/1",
         requestDigest: request.digest,
@@ -2261,7 +3683,7 @@ async function reviewWaveFixture(t, count = 2, options = {}) {
           outcome: {
             status: "met",
             reason: "Synthetic review of the frozen source.",
-            sourcePaths: ["src/main.txt"],
+            sourcePaths: options.reviewSourcePaths ?? ["src/main.txt"],
           },
         },
         findings: [],
@@ -2280,7 +3702,7 @@ async function reviewWaveFixture(t, count = 2, options = {}) {
     );
     const workflow = {
       version: 1,
-      workflowRunId: "review-root",
+      workflowRunId: `${reviewPrefix}-root`,
       state: "complete",
       entries,
     };
@@ -2298,7 +3720,9 @@ async function reviewWaveFixture(t, count = 2, options = {}) {
           JSON.stringify({
             type: "session",
             version: 3,
-            id: `session-${i}`,
+            id: options.reviewRunPrefix
+              ? `${reviewPrefix}-session-${i}`
+              : `session-${i}`,
             cwd: request.subject.cwd,
           }),
           JSON.stringify({
@@ -2344,15 +3768,15 @@ async function reviewWaveFixture(t, count = 2, options = {}) {
       };
     });
     const status = {
-      runId: "review-root",
+      runId: `${reviewPrefix}-root`,
       cwd: request.subject.cwd,
       sessionId: "owner",
       state: "complete",
       processTerminal: {
         version: 1,
         state: "observed",
-        runId: "review-root",
-        runnerProcessInstanceId: "review-runner",
+        runId: `${reviewPrefix}-root`,
+        runnerProcessInstanceId: `${reviewPrefix}-runner`,
       },
       usageBudget: { exhausted: false },
       workflowReceiptPath,
@@ -2376,6 +3800,112 @@ async function reviewWaveFixture(t, count = 2, options = {}) {
     counts: () => ({ resolves, spawns, admissions }),
   };
 }
+
+test("zero-write isolated read-only handoff reaches staged checks, source-bound review and fixture acceptance", async (t) => {
+  // Real temporary Git/filesystem and host boundaries; synthetic native records,
+  // not a model run or an independent review of a live product.
+  const f = await fixture(t, [null], undefined, {
+    review: reviewPolicy,
+    allowedWritePaths: [],
+    roleMode: "read-only",
+    nativeReviewRequired: false,
+    stoppedWorker: true,
+  });
+  const id = f.prepared.executionId;
+  const candidate = f.worker.mailbox.readJson("results/r0001.json");
+  assert.equal(candidate.criterionResults[0].status, "indeterminate");
+  assert.equal(fs.readFileSync(f.manifests[0].patchPath).length, 0);
+  const r = await reviewWaveFixture(t, 1, {
+    existing: f,
+    writerEvidence: true,
+  });
+  const staged = f.host.stageIntegration(id);
+  assert.equal(staged.status, "checks-passed");
+  assert.equal(staged.tree, git(f.source, "rev-parse", `${f.base}^{tree}`));
+  assert.deepEqual(staged.lanes[0].changedPaths, []);
+  assert.equal(staged.lanes[0].mode, "read-only");
+  const checkPath = path.join(
+    f.prepared.executionRoot,
+    "integration/check-check.json",
+  );
+  const checkBytes = fs.readFileSync(checkPath);
+  assert.equal(JSON.parse(checkBytes).status, "verified");
+  assert.throws(() => f.host.accept(id), /review/);
+  assert.deepEqual(r.request.subject.changedPaths, []);
+  assert.deepEqual(r.request.subject.writerRoles, []);
+  assert.equal(r.request.subject.tree, staged.tree);
+  r.adapter.assertAdmission = () => f.orchestrator.assertReviewAdmission(id);
+  await f.host.startIntegrationReview(
+    id,
+    r.wave.key,
+    r.plan.planDigest,
+    r.adapter,
+  );
+  r.publish();
+  const review = await f.host.collectIntegrationReview(
+    id,
+    r.wave.key,
+    r.plan.planDigest,
+  );
+  assert.equal(review.verdict, "pass");
+  await f.host.sealIntegrationReview(id);
+  await f.host.runChecks(id);
+  const accepted = await f.host.accept(id);
+  assert.equal(accepted.receipt.decision, "accepted");
+  assert.equal(accepted.receipt.schemaVersion, "teams-task-acceptance/3");
+  assert.deepEqual(
+    fs.readFileSync(checkPath),
+    checkBytes,
+    "stored host check is verified, not replayed",
+  );
+  assert.equal(
+    f.worker.mailbox.readJson("results/r0001.json").criterionResults[0].status,
+    "indeterminate",
+    "host evidence does not rewrite the Worker claim",
+  );
+  assert.equal(git(f.source, "rev-parse", "HEAD"), f.base);
+  assert.equal(git(f.source, "status", "--porcelain"), "");
+});
+
+test("read-only integration rejects changed source and shared-only handoffs", async (t) => {
+  for (const [name, edits, options, error] of [
+    [
+      "zero write scope",
+      ["alpha"],
+      { allowedWritePaths: [] },
+      /read-only lane changed source/,
+    ],
+    [
+      "write scope does not grant a reader writes",
+      ["alpha"],
+      { allowedWritePaths: ["src"] },
+      /read-only lane changed source/,
+    ],
+    [
+      "shared is not an isolated candidate",
+      [null],
+      { allowedWritePaths: [], roleIsolation: "shared" },
+      /isolated lane inventory required/,
+    ],
+  ]) {
+    await t.test(name, async (t) => {
+      const f = await fixture(t, edits, undefined, {
+        review: reviewPolicy,
+        roleMode: "read-only",
+        ...options,
+      });
+      assert.throws(
+        () => f.host.stageIntegration(f.prepared.executionId),
+        error,
+      );
+      assert.equal(
+        fs.existsSync(path.join(f.prepared.executionRoot, "integration")),
+        false,
+      );
+      assert.equal(git(f.source, "status", "--porcelain"), "");
+    });
+  }
+});
 
 test("public review collection observes running without capturing or sealing, then binds the same completed run", async (t) => {
   const f = await reviewWaveFixture(t, 1);
@@ -2721,6 +4251,17 @@ test("D5 one retry carries closed Worker/leaf/review usage and allocations after
   fs.rmSync(f.plan.sessionDir, { recursive: true });
   const contract = f.prepared.contract;
   const nextSpec = { ...contract, ...contract.identity, taskRevision: 2 };
+  assert.throws(
+    () =>
+      f.orchestrator.prepare({
+        ...nextSpec,
+        policy: {
+          ...nextSpec.policy,
+          maxTaskTokens: nextSpec.policy.maxTaskTokens + 1,
+        },
+      }),
+    /process restart policy changed; new authority required/,
+  );
   const next = f.orchestrator.prepare(nextSpec);
   const prior = JSON.parse(
     fs.readFileSync(
@@ -3203,6 +4744,11 @@ test("D4b prior reservations and identities survive wave boundaries", async (t) 
     runs: [0, 1, 2].map((i) => ({ ...f.wave.runs[0], key: `extra-${i}` })),
   };
   const over = await f.host.planIntegrationReview(f.id, tooMany, f.adapter);
+  assert.equal(over.allocationDiagnostics.roleSpawns, 1);
+  assert.equal(over.allocationDiagnostics.reviewSpawns, 1);
+  assert.equal(over.allocationDiagnostics.requestedSpawns, 3);
+  assert.equal(over.allocationDiagnostics.spawnFits, false);
+  assert.equal(over.allocationDiagnostics.admission, "not-assessed");
   await assert.rejects(
     f.host.startIntegrationReview(f.id, over.key, over.planDigest, f.adapter),
     /spawn budget exhausted/,
@@ -3498,10 +5044,44 @@ test("D4c does not select only PASS: unstarted, unknown and blocked waves preven
     status.workflow.value[0].structuredOutput;
   fs.writeFileSync(session, entries.map(JSON.stringify).join("\n") + "\n");
   await f.host.collectIntegrationReview(f.id, f.wave.key, f.plan.planDigest);
-  await assert.rejects(
-    f.host.sealIntegrationReview(f.id),
-    /review wave did not pass/,
+  const complete = path.join(
+    f.prepared.executionRoot,
+    "integration/reviews",
+    f.wave.key,
+    "complete.json",
   );
+  const before = fs.readFileSync(complete);
+  await assert.rejects(f.host.sealIntegrationReview(f.id), (error) => {
+    assert.equal(error.phase, "review-seal");
+    assert.match(
+      error.message,
+      /BLOCKED review wave.*cannot be sealed as PASS/,
+    );
+    return true;
+  });
+  assert.deepEqual(fs.readFileSync(complete), before);
+  assert.equal(fs.existsSync(file), false);
+  assert.equal(
+    fs.existsSync(
+      path.join(path.dirname(file), "review-candidate-intent.json"),
+    ),
+    false,
+  );
+  await f.host.planIntegrationReview(
+    f.id,
+    {
+      ...f.wave,
+      key: "second-uncollected",
+      runs: [{ ...f.wave.runs[0], key: "second-view" }],
+    },
+    f.adapter,
+  );
+  await assert.rejects(f.host.sealIntegrationReview(f.id), (error) => {
+    assert.notEqual(error.phase, "review-seal");
+    assert.match(error.message, /uncollected review wave: second-uncollected/);
+    return true;
+  });
+  assert.deepEqual(fs.readFileSync(complete), before);
   assert.equal(fs.existsSync(file), false);
 });
 
@@ -3768,6 +5348,7 @@ for (const reuse of ["none", "root", "run", "session"]) {
 }
 
 for (const action of [
+  "check-failure",
   "seal-review",
   "read-applied-review",
   "final-acceptance",
@@ -3778,17 +5359,21 @@ for (const action of [
       "../../extensions/teams-orchestrator/index.mjs"
     );
     const f =
-      action === "verified-patch"
-        ? await sealedReviewFixture(t, {
+      action === "check-failure"
+        ? await fixture(t, ["alpha"], "process.exit(7)", {
             extensionRuntime: true,
-            stoppedWorker: true,
           })
-        : action === "seal-review"
-          ? await reviewWaveFixture(t, 1, { extensionRuntime: true })
-          : await appliedReviewFixture(t, {
+        : action === "verified-patch"
+          ? await sealedReviewFixture(t, {
               extensionRuntime: true,
-              stoppedWorker: action === "final-acceptance",
-            });
+              stoppedWorker: true,
+            })
+          : action === "seal-review"
+            ? await reviewWaveFixture(t, 1, { extensionRuntime: true })
+            : await appliedReviewFixture(t, {
+                extensionRuntime: true,
+                stoppedWorker: action === "final-acceptance",
+              });
     if (["final-acceptance", "verified-patch"].includes(action))
       f.host.runChecks(f.id);
     if (action === "seal-review") {
@@ -3884,7 +5469,16 @@ for (const action of [
     try {
       const ctx = {
         cwd: f.source,
-        sessionManager: { getSessionId: () => "owner" },
+        sessionManager: {
+          getSessionId: () => "owner",
+          getBranch: () => [
+            {
+              type: "custom",
+              customType: "pi-goal-focus",
+              data: { version: 1, focusedGoalId: "goal" },
+            },
+          ],
+        },
         modelRegistry: {
           getAvailable() {
             throw new Error("seal must not query models");
@@ -3893,6 +5487,39 @@ for (const action of [
         ui: { setStatus() {} },
       };
       await handlers.get("session_start")({}, ctx); // Isolated temp ledger; no runtime reload.
+      if (action === "check-failure") {
+        const input = { execution_id: f.prepared.executionId, action: "stage" };
+        const reply = await tools
+          .get("team_task_stage_integration")
+          .execute("check-public", input, undefined, undefined, ctx);
+        const { isCompletedCheckFailure } = await import(
+          "../check-failure.mjs"
+        );
+        assert.equal(reply.isError, true);
+        assert.equal(
+          isCompletedCheckFailure(
+            reply.details.checkFailure,
+            { tool: "team_task_stage_integration", input },
+            "team_task_stage_integration",
+            "check-public",
+          ),
+          true,
+        );
+        assert.equal(reply.details.checkFailure.exitCode, 7);
+        const bytes = fs.readFileSync(reply.details.checkFailure.receiptRef);
+        await assert.rejects(
+          tools
+            .get("team_task_stage_integration")
+            .execute("no-replay", input, undefined, undefined, ctx),
+          /reconcile/,
+        );
+        assert.deepEqual(
+          fs.readFileSync(reply.details.checkFailure.receiptRef),
+          bytes,
+        );
+        assert.deepEqual(rpcCalls, ["ping"]);
+        return;
+      }
       if (["final-acceptance", "verified-patch"].includes(action)) {
         const accepted = await tools
           .get("team_task_accept")
@@ -3913,7 +5540,7 @@ for (const action of [
           toolCallId: "goal-write",
           input: { task_id: "task", status: "complete" },
         };
-        assert.equal(await handlers.get("tool_call")(event), undefined);
+        assert.equal(await handlers.get("tool_call")(event, ctx), undefined);
         assert.equal(
           event.input.evidence,
           `task-runtime:${accepted.details.receipt.acceptanceId}`,
@@ -3921,10 +5548,13 @@ for (const action of [
         const receipt = accepted.details.receipt;
         receipt.finalEvidence.sourceDigest = "0".repeat(64);
         fs.writeFileSync(receipt.receiptRef, JSON.stringify(receipt));
-        const blocked = await handlers.get("tool_call")({
-          ...event,
-          toolCallId: "second-write",
-        });
+        const blocked = await handlers.get("tool_call")(
+          {
+            ...event,
+            toolCallId: "second-write",
+          },
+          ctx,
+        );
         assert.equal(
           blocked.block,
           true,
@@ -4317,6 +5947,551 @@ test("D5a blocked previous review still consumes the next admission budget", asy
     /budget/,
   );
   assert.equal(f.counts().spawns, 1);
+});
+
+test("R31-H read-only sealed BLOCKED review revalidates native capture without old writes", async (t) => {
+  const f = await reviewWaveFixture(t, 1);
+  await f.host.startIntegrationReview(
+    f.id,
+    f.wave.key,
+    f.plan.planDigest,
+    f.adapter,
+  );
+  f.publish((status) => {
+    status.steps[0].structuredOutput.verdict = "blocked";
+    status.workflow.value[0].structuredOutput.verdict = "blocked";
+    const file = status.steps[0].sessionFile;
+    const rows = fs
+      .readFileSync(file, "utf8")
+      .trim()
+      .split("\n")
+      .map(JSON.parse);
+    rows[1].message.content[0].arguments.value.verdict = "blocked";
+    fs.writeFileSync(
+      file,
+      rows.map((row) => JSON.stringify(row)).join("\n") + "\n",
+    );
+  });
+  const original = await f.host.collectIntegrationReview(
+    f.id,
+    f.wave.key,
+    f.plan.planDigest,
+  );
+  assert.equal(original.verdict, "blocked");
+  const dir = path.join(
+    f.worker.mailbox.root,
+    "integration/reviews",
+    f.wave.key,
+  );
+  const before = fs.readdirSync(dir).sort();
+  const context = {
+    mailbox: f.worker.mailbox,
+    contract: f.prepared.contract,
+    result: f.worker.mailbox.listResults().at(-1),
+    ownerSessionId: "owner",
+    assertOwner: () => f.orchestrator.assertController(f.prepared.projectId),
+  };
+  // Public collect adds visible result/completion selectors; the sealed reader
+  // returns the underlying native completion without those presentation fields.
+  const {
+    resultDigest,
+    resultOutcome,
+    completionRef,
+    completionSha256,
+    ...nativeCompletion
+  } = original;
+  assert.equal(resultDigest, digest(context.result));
+  assert.equal(resultOutcome, context.result.outcome);
+  assert.equal(completionRef, path.join(dir, "complete.json"));
+  assert.equal(completionSha256, bytesDigest(fs.readFileSync(completionRef)));
+  assert.deepEqual(
+    await readCompletedReviewWave(context, f.wave.key, f.plan.planDigest),
+    nativeCompletion,
+  );
+  assert.deepEqual(fs.readdirSync(dir).sort(), before);
+  assert.ok(!fs.existsSync(path.join(dir, "operation.lock")));
+  const file = path.join(dir, original.captures[0].saved);
+  const originalBytes = fs.readFileSync(file);
+  fs.writeFileSync(file, "tampered");
+  await assert.rejects(
+    readCompletedReviewWave(context, f.wave.key, f.plan.planDigest),
+    (error) =>
+      error.message === "invalid native review JSON" &&
+      error.cause?.message?.includes("native review capture changed"),
+  );
+  fs.writeFileSync(file, originalBytes);
+  assert.deepEqual(
+    await readCompletedReviewWave(context, f.wave.key, f.plan.planDigest),
+    nativeCompletion,
+  );
+});
+
+test("R31-H report-only closed BLOCKED review stages the same writer/check without another role", async (t) => {
+  function finishMeter(context, key, file, estimate, register = true) {
+    const measured = measureSessionBytes(fs.readFileSync(file));
+    if (register)
+      registerTaskBudgetMembers(context, [
+        { key, estimate, sessionRoot: path.dirname(file) },
+      ]);
+    const binding = taskBudgetBinding(context, key);
+    const identity = { sessionId: measured.sessionId, sessionFile: file };
+    changeTaskBudget(binding, { type: "bind", ...identity });
+    changeTaskBudget(binding, {
+      type: "request",
+      ...identity,
+      used: 0,
+      allowance: 20,
+    });
+    changeTaskBudget(binding, {
+      type: "settle",
+      ...identity,
+      used: measured.usage.total,
+    });
+    changeTaskBudget(binding, {
+      type: "finish",
+      ...identity,
+      used: measured.usage.total,
+    });
+  }
+  const f = await reviewWaveFixture(t, 1, {
+    writerEvidence: true,
+    nativeReviewRequired: false,
+    stoppedWorker: true,
+    maxProcessRestarts: 1,
+    tokenBudgetMode: "shared",
+    distinctWorkerSessions: true,
+    mutateMeter(f) {
+      const context = {
+        contract: f.prepared.contract,
+        mailbox: f.worker.mailbox,
+      };
+      finishMeter(
+        context,
+        "worker",
+        f.worker.mailbox.readJson("receipts/boot.json").workerSessionFile,
+        0,
+        false,
+      );
+      finishMeter(
+        context,
+        "role.launch.lane-0",
+        f.status.steps[0].sessionFile,
+        100,
+      );
+    },
+  });
+  await f.host.startIntegrationReview(
+    f.id,
+    f.wave.key,
+    f.plan.planDigest,
+    f.adapter,
+  );
+  const oldReviewStatus = f.publish((status) => {
+    for (const step of status.steps) {
+      step.structuredOutput.verdict = "blocked";
+      step.structuredOutput.findings = [
+        {
+          severity: "blocker",
+          issue: "The report omitted the checked behavior.",
+          rationale:
+            "The source is unchanged; explain the check before acceptance.",
+          sourcePaths: ["src/main.txt"],
+        },
+      ];
+      const rows = fs
+        .readFileSync(step.sessionFile, "utf8")
+        .trim()
+        .split("\n")
+        .map(JSON.parse);
+      rows[1].message.content[0].arguments.value = step.structuredOutput;
+      fs.writeFileSync(
+        step.sessionFile,
+        rows.map((row) => JSON.stringify(row)).join("\n") + "\n",
+      );
+      status.workflow.value.find(
+        (row) => row.key === step.workflowKey,
+      ).structuredOutput = step.structuredOutput;
+    }
+  });
+  finishMeter(
+    { contract: f.prepared.contract, mailbox: f.worker.mailbox },
+    `review.${f.wave.key}.view-0`,
+    oldReviewStatus.steps[0].sessionFile,
+    100,
+    false,
+  );
+  const blocked = await f.host.collectIntegrationReview(
+    f.id,
+    f.wave.key,
+    f.plan.planDigest,
+  );
+  assert.equal(blocked.verdict, "blocked");
+  const oldBytes = fs.readFileSync(
+    path.join(
+      f.worker.mailbox.root,
+      "integration/reviews",
+      f.wave.key,
+      "complete.json",
+    ),
+  );
+  f.orchestrator.requestCancel(f.id, "sealed report is blocked");
+  f.worker.processControls();
+  f.worker.confirmCancelled(0);
+  f.orchestrator.herdr.closeIdle = (paneId) => ({
+    paneId,
+    disposition: "closed",
+  });
+  const closed = f.orchestrator.reconcile(f.id);
+  assert.equal(closed.execution.state, "CANCELLED");
+  assert.equal(closed.execution.reservationOpen, false);
+  await assert.rejects(async () => f.host.accept(f.id));
+  assert.equal(f.orchestrator.ledger.getAcceptance(f.id), null);
+  assert.equal(f.orchestrator.ledger.getExecution(f.id).state, "CANCELLED");
+  assert.deepEqual(
+    fs.readFileSync(
+      path.join(
+        f.worker.mailbox.root,
+        "integration/reviews",
+        f.wave.key,
+        "complete.json",
+      ),
+    ),
+    oldBytes,
+  );
+  const original = f.prepared.contract;
+  const spec = {
+    ...original,
+    goalId: original.identity.goalId,
+    taskId: original.identity.taskId,
+    taskRevision: 2,
+  };
+  const revisionInput = {
+    previousExecutionId: f.id,
+    expectedPreviousResultDigest: digest(f.worker.mailbox.listResults().at(-1)),
+    reviewFailureRef: path.join(
+      f.worker.mailbox.root,
+      "integration/reviews",
+      f.wave.key,
+      "complete.json",
+    ),
+    reviewFailureSha256: f.worker.mailbox.digestRelative(
+      `integration/reviews/${f.wave.key}/complete.json`,
+    ),
+    reportReason:
+      "Add the missing checked-behavior explanation without changing source.",
+  };
+  await assert.rejects(
+    f.orchestrator.prepareReviewProductRevision(spec, {
+      ...revisionInput,
+      repairReason:
+        "Attempt unauthorized product modification from a report-only predecessor.",
+    }),
+    /did not authorize review-origin product repair/,
+  );
+  await assert.rejects(
+    f.orchestrator.prepareReportRevision(spec, {
+      ...revisionInput,
+      expectedPreviousResultDigest: "0".repeat(64),
+    }),
+    /previous result|Expected values to be strictly equal/,
+  );
+  await assert.rejects(
+    f.orchestrator.prepareReportRevision(spec, {
+      ...revisionInput,
+      reviewFailureSha256: "0".repeat(64),
+    }),
+    /Expected values to be strictly equal|review/,
+  );
+  await assert.rejects(
+    f.orchestrator.prepareReportRevision(spec, {
+      ...revisionInput,
+      reviewFailureRef: path.join(f.root, "forged.json"),
+    }),
+    /sealed review completion reference/,
+  );
+  const halfPublished = path.join(
+    f.worker.mailbox.root,
+    "integration/review-candidate-intent.json",
+  );
+  fs.writeFileSync(halfPublished, "{}");
+  await assert.rejects(
+    f.orchestrator.prepareReportRevision(spec, revisionInput),
+    /old review has failure, seal or target journal/,
+  );
+  fs.unlinkSync(halfPublished);
+  const unknownWave = path.join(
+    f.worker.mailbox.root,
+    "integration/reviews/unknown-wave",
+  );
+  fs.mkdirSync(unknownWave);
+  await assert.rejects(
+    f.orchestrator.prepareReportRevision(spec, revisionInput),
+    /another\/unknown wave/,
+  );
+  fs.rmdirSync(unknownWave);
+  await assert.rejects(
+    f.orchestrator.prepareReportRevision(
+      {
+        ...spec,
+        policy: {
+          ...spec.policy,
+          maxTaskTokens: spec.policy.maxTaskTokens + 1,
+        },
+      },
+      revisionInput,
+    ),
+    /report revision policy changed/,
+  );
+  await assert.rejects(
+    f.orchestrator.prepareReportRevision(
+      {
+        ...spec,
+        workspace: {
+          ...spec.workspace,
+          allowedWritePaths: ["src", "README.md"],
+        },
+      },
+      revisionInput,
+    ),
+    /report revision workspace changed/,
+  );
+  const unchanged = fs.readFileSync(path.join(f.source, "src/main.txt"));
+  fs.writeFileSync(path.join(f.source, "src/main.txt"), "late drift\n");
+  await assert.rejects(
+    f.orchestrator.prepareReportRevision(spec, revisionInput),
+    /baseline drifted/,
+  );
+  fs.writeFileSync(path.join(f.source, "src/main.txt"), unchanged);
+  assert.equal(
+    f.orchestrator.ledger.listTaskExecutions(
+      f.prepared.projectId,
+      "goal",
+      "task",
+    ).length,
+    1,
+  );
+  const revision = await f.orchestrator.prepareReportRevision(
+    spec,
+    revisionInput,
+  );
+  assert.equal(
+    f.orchestrator.ledger.getExecution(revision.executionId).state,
+    "RESERVED",
+  );
+  await f.orchestrator.launch(revision.executionId, { timeoutMs: 1000 });
+  const next = f.getActiveWorker();
+  assert.notEqual(next, f.worker);
+  finishMeter(
+    { contract: revision.contract, mailbox: next.mailbox },
+    "worker",
+    next.mailbox.readJson("receipts/boot.json").workerSessionFile,
+    0,
+    false,
+  );
+  let nativeDispatches = 0;
+  const roles = new RoleController({
+    runtime: next,
+    cwd: f.source,
+    rpc: {
+      request: async () => {
+        nativeDispatches++;
+      },
+    },
+  });
+  await assert.rejects(
+    roles.spawn({
+      role: "team.implementer",
+      task: "Do not spawn",
+      mode: "mutation",
+      maxTokens: 100,
+    }),
+    /report-only revision cannot dispatch/,
+  );
+  assert.equal(nativeDispatches, 0);
+  const corrected = {
+    schemaVersion: "teams-task-result/1",
+    identity: revision.contract.identity,
+    requestDigest: revision.requestDigest,
+    resultRevision: 1,
+    outcome: "ready_for_acceptance",
+    summary: "Corrected report cites the original check.",
+    source: next.captureSource(1),
+    criterionResults: [
+      {
+        criterionId: "outcome",
+        status: "indeterminate",
+        observation: "Original check proven; new review pending.",
+        evidenceIds: [],
+      },
+    ],
+    evidence: [],
+    childRunRefs: [],
+    unresolvedRunCount: 0,
+    risks: [],
+    usage: { inputTokens: null, outputTokens: null },
+  };
+  assert.throws(
+    () => next.sealResult({ ...corrected, childRunRefs: ["invented"] }),
+    /report-only revision cannot claim writer runs/,
+  );
+  next.sealResult(corrected);
+  f.orchestrator.collect(revision.executionId);
+  const stage = f.host.stageIntegration(revision.executionId);
+  assert.equal(
+    stage.tree,
+    f.worker.mailbox.readJson("integration/receipt.json").tree,
+  );
+  assert.equal(stage.inheritedFrom.previousExecutionId, f.id);
+  assert.ok(
+    !fs.existsSync(
+      path.join(next.mailbox.root, "integration/check-check.json"),
+    ),
+    "report revision must not rerun the check",
+  );
+  assert.equal(f.host.runChecks(revision.executionId)[0].status, "verified");
+  assert.throws(
+    () => f.host.accept(revision.executionId),
+    /sealed patch review|review candidate|final review binding/,
+  );
+  assert.deepEqual(
+    fs.readFileSync(
+      path.join(
+        f.worker.mailbox.root,
+        "integration/reviews",
+        f.wave.key,
+        "complete.json",
+      ),
+    ),
+    oldBytes,
+  );
+  const revised = await reviewWaveFixture(t, 1, {
+    existing: { ...f, prepared: revision, worker: next },
+    tokenBudgetMode: "shared",
+    reviewRunPrefix: "fresh",
+    reviewSourcePaths: ["src/main.txt"],
+  });
+  assert.equal(
+    revised.request.subject.priorBlockedReview.rootRunId,
+    "review-root",
+  );
+  assert.equal(
+    revised.request.subject.reportRevision.resultDigest,
+    digest(next.mailbox.listResults().at(-1)),
+  );
+  await revised.host.startIntegrationReview(
+    revised.id,
+    revised.wave.key,
+    revised.plan.planDigest,
+    revised.adapter,
+  );
+  const status = revised.publish((status) => {
+    for (const step of status.steps) {
+      step.structuredOutput.priorResolutions = {
+        "view-0:0":
+          "Original source/check were correct; the corrected Worker result now identifies the checked behavior without changing the tree.",
+      };
+      const rows = fs
+        .readFileSync(step.sessionFile, "utf8")
+        .trim()
+        .split("\n")
+        .map(JSON.parse);
+      rows[1].message.content[0].arguments.value = step.structuredOutput;
+      fs.writeFileSync(
+        step.sessionFile,
+        rows.map((row) => JSON.stringify(row)).join("\n") + "\n",
+      );
+    }
+  });
+  assert.ok(
+    integrationReviewSchema(revised.request).required.includes(
+      "priorResolutions",
+    ),
+  );
+  const missingResolution = structuredClone(status.steps[0].structuredOutput);
+  delete missingResolution.priorResolutions;
+  assert.throws(
+    () => validateReviewReport(revised.request, missingResolution),
+    /review fields changed/,
+  );
+  assert.throws(
+    () =>
+      validateReviewReport(revised.request, {
+        ...status.steps[0].structuredOutput,
+        priorResolutions: { "view-0:0": "" },
+      }),
+    /bounded review explanation/,
+  );
+  finishMeter(
+    { contract: revision.contract, mailbox: next.mailbox },
+    `review.${revised.wave.key}.view-0`,
+    status.steps[0].sessionFile,
+    100,
+    false,
+  );
+  const reviewed = await revised.host.collectIntegrationReview(
+    revised.id,
+    revised.wave.key,
+    revised.plan.planDigest,
+  );
+  assert.equal(reviewed.verdict, "pass");
+  await revised.host.sealIntegrationReview(revised.id);
+  const accepted = await revised.host.accept(revised.id);
+  assert.equal(accepted.receipt.schemaVersion, "teams-task-acceptance/3");
+  assert.equal(accepted.receipt.finalEvidence.delivery.targetModified, false);
+  assert.equal(
+    accepted.receipt.finalEvidence.checks[0].receiptRef,
+    path.join(f.worker.mailbox.root, "integration/check-check.json"),
+  );
+  assert.equal(
+    accepted.receipt.finalEvidence.reviewBinding.writerEvidenceDigest,
+    next.mailbox.readJson("receipts/report-revision-intent.json")
+      .writerEvidenceDigest,
+  );
+  assert.equal(
+    accepted.receipt.finalEvidence.usage.taskTotals.total,
+    next.mailbox.readJson("receipts/prior-usage.json").totals.total + 20,
+  );
+  assert.equal(f.orchestrator.ledger.getAcceptance(f.id), null);
+  const { createGoalGuard } = await import("../goal-guard.mjs");
+  const gate = await createGoalGuard(
+    f.orchestrator,
+    f.source,
+  ).beforeTaskCompletion({ goalId: "goal", taskId: "task" });
+  assert.ok(gate.evidence, "synthetic Goal matching gate needs new acceptance");
+  fs.rmSync(f.native, { recursive: true });
+  fs.rmSync(f.reviewNative, { recursive: true });
+  assert.deepEqual(
+    (await revised.host.accept(revised.id)).receipt,
+    accepted.receipt,
+  );
+  const sealedCapture = path.join(
+    f.worker.mailbox.root,
+    "integration/reviews",
+    f.wave.key,
+    blocked.captures[0].saved,
+  );
+  const captureBytes = fs.readFileSync(sealedCapture);
+  fs.writeFileSync(sealedCapture, "late drift");
+  await assert.rejects(
+    revised.host.accept(revised.id),
+    /native review capture changed|invalid native review JSON/,
+  );
+  fs.writeFileSync(sealedCapture, captureBytes);
+  assert.deepEqual(
+    (await revised.host.accept(revised.id)).receipt,
+    accepted.receipt,
+  );
+  assert.deepEqual(
+    fs.readFileSync(
+      path.join(
+        f.worker.mailbox.root,
+        "integration/reviews",
+        f.wave.key,
+        "complete.json",
+      ),
+    ),
+    oldBytes,
+  );
 });
 
 test("D5a unknown review entries cannot silently omit usage", async (t) => {
@@ -5021,6 +7196,37 @@ async function appliedReviewFixture(t, options = {}) {
   return { ...f, candidate, applyPlan, application };
 }
 
+test("approved-integration never runs final host checks on the original target before apply", async (t) => {
+  const f = await sealedReviewFixture(t, {
+    integrationMode: "approved-integration",
+  });
+  const staged = JSON.parse(
+    fs.readFileSync(
+      path.join(f.prepared.executionRoot, "integration/receipt.json"),
+    ),
+  );
+  assert.equal(staged.status, "checks-passed");
+  const originalCheck = path.join(
+    f.prepared.executionRoot,
+    "evidence/host-check-check.json",
+  );
+  assert.throws(
+    () => f.host.runChecks(f.id),
+    /approved-integration.*apply.*before.*checks/i,
+  );
+  assert.equal(
+    fs.existsSync(originalCheck),
+    false,
+    "pre-apply must have no host-check effect",
+  );
+  assert.equal(git(f.source, "status", "--porcelain"), "");
+  const plan = f.host.prepareIntegrationApply(f.id);
+  await f.host.applyIntegration(f.id, plan.planDigest, () => true);
+  const checks = f.host.runChecks(f.id);
+  assert.equal(checks[0].status, "verified");
+  assert.match(checks[0].receipt, /host-final-check-check\.json$/);
+});
+
 test("D4d reads a sealed review against actual applied target proof, without re-sealing or acceptance", async (t) => {
   const f = await appliedReviewFixture(t);
   const before = fs.readFileSync(
@@ -5377,4 +7583,2645 @@ test("D4e readback rejects altered binding even with recomputed command digest",
       /authority binding changed/,
     );
   }
+});
+
+test("public completed check failure stays diagnostic, but invalid later conflict input stays unclassified", async (t) => {
+  for (const kind of ["check", "invalid-lane"])
+    await t.test(kind, async (sub) => {
+      const f = await fixture(
+        sub,
+        kind === "check" ? ["alpha"] : ["conflict-a", "conflict-b", "outside"],
+        "process.exit(7)",
+        {
+          publicEntry: true,
+          stoppedWorker: true,
+          review: reviewPolicy,
+          tokenBudgetMode: "shared",
+          maxProcessRestarts: 1,
+        },
+      );
+      const event = await f.publicApi.call("team_task_stage_integration", {
+        execution_id: f.prepared.executionId,
+        action: "stage",
+      });
+      assert.equal(event.isError, true, JSON.stringify(event.result));
+      const known = kind === "check";
+      assert.equal(Boolean(event.result.details?.checkFailure), known);
+      assert.equal(event.result.details?.integrationConflict, undefined);
+      const failure = f.worker.mailbox.readJson("integration/failure.json");
+      assert.equal(
+        failure.conflict,
+        undefined,
+        "a later invalid input must not be hidden by the earlier merge conflict",
+      );
+      const observed = await observePublicTaskEvents(
+        f.root,
+        f.source,
+        f.publicApi.events,
+        `public-${kind}`,
+      );
+      assert.equal(
+        observed.stopReason,
+        known ? "check-failed" : "task-tool-failure",
+      );
+      assert.equal(git(f.source, "status", "--porcelain"), "");
+    });
+});
+
+test("known isolated conflict returns through public L0 revision to one full candidate and fresh acceptance", async (t) => {
+  for (const integrationMode of ["verify-only", "approved-integration"])
+    await t.test(integrationMode, async (t) => {
+      const checkScript =
+        "const fs=require('node:fs'),a=require('node:assert/strict');a.equal(fs.readFileSync('src/main.txt','utf8'),'conflict-a\\nconflict-b\\n');for(const n of ['alpha','gamma'])a.equal(fs.readFileSync('src/'+n+' space.txt','utf8'),n+'\\n')";
+      const f = await fixture(
+        t,
+        ["alpha", "conflict-a", "conflict-b", "gamma"],
+        checkScript,
+        {
+          publicEntry: true,
+          stoppedWorker: true,
+          distinctWorkerSessions: true,
+          review: reviewPolicy,
+          nativeReviewRequired: false,
+          tokenBudgetMode: "shared",
+          maxProcessRestarts: 1,
+          maxRoleSpawnsPerTask: 6,
+          integrationMode,
+        },
+      );
+      const original = f.prepared.contract,
+        id = f.prepared.executionId;
+      const oldWorker = f.worker;
+      const oldContext = { contract: original, mailbox: oldWorker.mailbox };
+      meterMember(
+        oldContext,
+        "worker",
+        oldWorker.mailbox.readJson("receipts/boot.json").workerSessionFile,
+        0,
+        false,
+      );
+      for (const [i, step] of f.status.steps.entries())
+        meterMember(oldContext, `role.launch.lane-${i}`, step.sessionFile, 100);
+      const indexBefore = fs.readFileSync(path.join(f.source, ".git/index"));
+      const sourceBefore = snapshot(f.source, ["src"]);
+      const event = await f.publicApi.call("team_task_stage_integration", {
+        execution_id: id,
+        action: "stage",
+      });
+      assert.equal(event.isError, true);
+      const fact = event.result.details?.integrationConflict;
+      assert.equal(
+        isCompletedIntegrationConflict(
+          fact,
+          {
+            tool: event.toolName,
+            input: { execution_id: id, action: "stage" },
+          },
+          event.toolName,
+          event.toolCallId,
+        ),
+        true,
+        JSON.stringify(event.result),
+      );
+      assert.deepEqual(fact.conflictPaths, ["src/main.txt"]);
+      const failureBytes = fs.readFileSync(fact.receiptRef);
+      assert.equal(bytesDigest(failureBytes), fact.receiptSha256);
+      const failure = JSON.parse(failureBytes);
+      assert.equal(failure.conflict.failedLaneIndex, 2);
+      assert.equal(
+        failure.conflict.lanes.length,
+        4,
+        "pending contributions must be captured before the conflict",
+      );
+      assert.equal(
+        fs.existsSync(
+          path.join(oldWorker.mailbox.root, "integration/receipt.json"),
+        ),
+        false,
+      );
+      assert.deepEqual(
+        fs.readFileSync(path.join(f.source, ".git/index")),
+        indexBefore,
+      );
+      assert.deepEqual(snapshot(f.source, ["src"]), sourceBefore);
+      assert.throws(
+        () => f.host.stageIntegration(id),
+        /failed integration; reconcile/,
+      );
+      assert.throws(() => f.host.prepareIntegrationReview(id));
+      assert.throws(() => f.host.accept(id));
+      const publicInput = {
+        origin: "integration-conflict",
+        previous_execution_id: id,
+        expected_previous_result_digest: digest(
+          oldWorker.mailbox.listResults().at(-1),
+        ),
+        failure_receipt_ref: fact.receiptRef,
+        failure_receipt_sha256: fact.receiptSha256,
+        repair_reason:
+          "Resolve both conflicting contributions, preserving alpha and the unapplied gamma lane.",
+      };
+      const revision = {
+        origin: publicInput.origin,
+        previousExecutionId: id,
+        expectedPreviousResultDigest:
+          publicInput.expected_previous_result_digest,
+        failureReceiptRef: fact.receiptRef,
+        failureReceiptSha256: fact.receiptSha256,
+        repairReason: publicInput.repair_reason,
+        additionalChecks: [],
+      };
+      await assert.rejects(
+        f.orchestrator.prepareProductRevision(null, revision),
+        /closed|reservation|still|open/,
+      );
+      const cancelTimer = setInterval(() => {
+        if (oldWorker.processControls().cancelRequested)
+          oldWorker.confirmCancelled(0);
+      }, 5);
+      try {
+        const cancelled = await f.publicApi.call("team_task_cancel", {
+          execution_id: id,
+          reason: "Preserve the known isolated conflict before bounded repair.",
+        });
+        assert.equal(
+          cancelled.isError,
+          false,
+          JSON.stringify(cancelled.result),
+        );
+        assert.equal(cancelled.result.details.closedUsage.status, "measured");
+      } finally {
+        clearInterval(cancelTimer);
+      }
+      const ownerInstance = f.orchestrator.instanceId;
+      f.orchestrator.instanceId = "different-live-instance";
+      try {
+        await assert.rejects(
+          f.orchestrator.prepareProductRevision(null, revision),
+          /fresh L0 instance/,
+        );
+      } finally {
+        f.orchestrator.instanceId = ownerInstance;
+      }
+      const oldBootRef = path.join(
+        oldWorker.mailbox.root,
+        "receipts/boot.json",
+      );
+      const oldBootBytes = fs.readFileSync(oldBootRef);
+      fs.writeFileSync(
+        oldBootRef,
+        JSON.stringify({
+          ...JSON.parse(oldBootBytes),
+          processId: process.pid,
+          processStartedAtTicks: null,
+        }),
+      );
+      try {
+        await assert.rejects(
+          f.orchestrator.prepareProductRevision(null, revision),
+          /not terminal|termination|usage/,
+        );
+      } finally {
+        fs.writeFileSync(oldBootRef, oldBootBytes);
+      }
+      const time = t.mock.method(
+        Date,
+        "now",
+        () =>
+          Date.parse(f.orchestrator.ledger.getExecution(id).createdAt) +
+          original.policy.deadlineMs +
+          1,
+      );
+      try {
+        await assert.rejects(
+          f.orchestrator.prepareProductRevision(null, revision),
+          /deadline exhausted/,
+        );
+      } finally {
+        time.mock.restore();
+      }
+      const { identity, ...fields } = structuredClone(original);
+      const bad = {
+        ...fields,
+        goalId: identity.goalId,
+        taskId: identity.taskId,
+        taskRevision: identity.taskRevision + 1,
+        objective: "Changed scope is forbidden.",
+      };
+      fs.writeFileSync(path.join(f.source, "src/main.txt"), "external drift\n");
+      await assert.rejects(
+        f.orchestrator.prepareProductRevision(bad, {
+          ...revision,
+          additionalChecks: undefined,
+        }),
+        (error) => {
+          assert.notEqual(
+            error.name,
+            "TaskInputRejection",
+            `source drift must not be downgraded to a draft error: ${error.message}`,
+          );
+          return /baseline|source|clean|drift/.test(error.message);
+        },
+      );
+      fs.writeFileSync(path.join(f.source, "src/main.txt"), "base\n");
+      for (const change of [
+        { goalId: "foreign-goal" },
+        { taskId: "foreign-task" },
+        {
+          workspace: {
+            ...original.workspace,
+            sourceRoot: path.join(f.root, "unowned-missing-source"),
+          },
+        },
+      ])
+        await assert.rejects(
+          f.orchestrator.prepareProductRevision(
+            { ...bad, objective: original.objective, ...change },
+            { ...revision, additionalChecks: undefined },
+          ),
+          (error) => error.name === "TaskInputRejection",
+        );
+      assert.equal(
+        f.orchestrator.ledger.db
+          .prepare("SELECT count(*) AS total FROM controllers")
+          .get().total,
+        1,
+        "legacy draft cannot select a different controller/workspace",
+      );
+      await assert.rejects(
+        f.orchestrator.prepareProductRevision(null, {
+          ...revision,
+          failureReceiptSha256: "0".repeat(64),
+        }),
+        /receipt changed/,
+      );
+      const latePatch = path.join(
+        oldWorker.mailbox.root,
+        "integration",
+        oldWorker.mailbox
+          .readJson("integration/native.json")
+          .captures.find((row) => row.origin === f.manifests[3].patchPath)
+          .saved,
+      );
+      const lateBytes = fs.readFileSync(latePatch);
+      fs.appendFileSync(latePatch, "tampered");
+      await assert.rejects(
+        f.orchestrator.prepareProductRevision(null, revision),
+        /capture changed/,
+      );
+      fs.writeFileSync(latePatch, lateBytes);
+      const draftPath = path.join(f.source, ".git/bad-conflict-draft.json");
+      fs.writeFileSync(draftPath, JSON.stringify(bad));
+      const rejected = await f.publicApi.call("team_task_revise", {
+        ...publicInput,
+        spec_path: draftPath,
+      });
+      assert.equal(rejected.isError, true);
+      assert.equal(rejected.result.details.rejection.phase, "task-spec");
+      assert.equal(
+        f.orchestrator.ledger.listTaskExecutions(
+          identity.projectId,
+          identity.goalId,
+          identity.taskId,
+        ).length,
+        1,
+      );
+      const revised = await f.publicApi.call("team_task_revise", {
+        ...publicInput,
+        additional_checks: [],
+      });
+      assert.equal(revised.isError, false, JSON.stringify(revised.result));
+      const next = f.publicApi.prepared,
+        nextWorker = f.getActiveWorker();
+      assert.notEqual(next.executionId, id);
+      for (const key of [
+        "objective",
+        "nonGoals",
+        "workspace",
+        "criteria",
+        "checks",
+        "policy",
+        "contextRefs",
+      ])
+        assert.deepEqual(next.contract[key], original[key]);
+      const intent = nextWorker.mailbox.readJson("receipts/repair-intent.json");
+      assert.equal(intent.schemaVersion, "teams-candidate-repair-intent/3");
+      assert.equal(intent.patches.length, 4);
+      assert.equal(
+        f.orchestrator.ledger.readTaskPool(next.executionId).priorTokens,
+        50,
+      );
+      assert.equal(
+        taskDeadlineAt(
+          f.orchestrator.ledger,
+          f.orchestrator.ledger.getExecution(next.executionId),
+          next.contract,
+        ),
+        intent.deadlineAt,
+      );
+      assert.match(nextWorker.taskPrompt(), /Conflict-origin product revision/);
+      const script = conflictRepairCommand(intent, next.contract);
+      const wide = {
+        ...intent,
+        patches: Array.from({ length: 64 }, () => ({
+          ...intent.patches[0],
+          path: `/long/${"a".repeat(500)}`,
+        })),
+      };
+      assert.ok(
+        Buffer.byteLength(conflictRepairCommand(wide, next.contract)) < 4096,
+        "large captured inventories must remain references, not overflow the 16 KiB role task",
+      );
+      const repairedRoot = path.join(f.root, "resolved-writer");
+      git(f.root, "clone", "-q", "--no-local", f.source, repairedRoot);
+      const reconstructed = spawnSync("bash", ["-c", script], {
+        cwd: repairedRoot,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          GIT_DIR: path.join(f.source, ".git"),
+          GIT_WORK_TREE: repairedRoot,
+          GIT_INDEX_FILE: path.join(f.source, ".git/index"),
+        },
+      });
+      assert.equal(reconstructed.status, 0, reconstructed.stderr);
+      assert.match(reconstructed.stdout, /TASK_PI_CONFLICT_BASE_READY/);
+      assert.deepEqual(
+        fs.readFileSync(path.join(f.source, ".git/index")),
+        indexBefore,
+        "Git overrides cannot redirect reconstruction into target index",
+      );
+      assert.equal(
+        fs.readFileSync(path.join(repairedRoot, "src/main.txt"), "utf8"),
+        "base\n",
+      );
+      assert.equal(
+        spawnSync("bash", ["-c", script], { cwd: repairedRoot }).status,
+        1,
+        "reconstruction is not replayable over the partial index",
+      );
+      fs.writeFileSync(
+        path.join(repairedRoot, "src/main.txt"),
+        "conflict-a\nconflict-b\n",
+      );
+      git(repairedRoot, "add", "src/main.txt");
+      git(
+        repairedRoot,
+        "checkout-index",
+        "--force",
+        "--",
+        "src/alpha space.txt",
+      );
+      assert.notEqual(
+        spawnSync(process.execPath, original.checks[0].argv, {
+          cwd: repairedRoot,
+        }).status,
+        0,
+        "a conflict-only resolution still lacks the later lane",
+      );
+      git(repairedRoot, "apply", "--index", "--binary", intent.patches[3].path);
+      assert.equal(
+        spawnSync(process.execPath, original.checks[0].argv, {
+          cwd: repairedRoot,
+        }).status,
+        0,
+      );
+      const patchPath = path.join(f.root, "full-resolved.patch");
+      fs.writeFileSync(
+        patchPath,
+        git(
+          repairedRoot,
+          "diff",
+          "--cached",
+          "--binary",
+          "--full-index",
+          f.base,
+        ) + "\n",
+      );
+      const fresh = publishRepairedCandidate(f, nextWorker, next, {
+        patchPath,
+        repairCommand: script,
+        repairOutput: reconstructed.stdout,
+      });
+      const nativeSession = fs.readFileSync(fresh.roleSession);
+      fs.writeFileSync(
+        fresh.roleSession,
+        nativeSession
+          .toString()
+          .split("\n")
+          .filter((line) => !line.includes("reconstruct-"))
+          .join("\n"),
+      );
+      assert.throws(
+        () => f.host.stageIntegration(next.executionId),
+        /reconstruction|proof/,
+      );
+      assert.equal(
+        fs.existsSync(path.join(next.executionRoot, "integration")),
+        false,
+      );
+      fs.writeFileSync(fresh.roleSession, nativeSession);
+      const context = { contract: next.contract, mailbox: nextWorker.mailbox };
+      meterMember(
+        context,
+        "worker",
+        nextWorker.mailbox.readJson("receipts/boot.json").workerSessionFile,
+        0,
+        false,
+      );
+      meterMember(context, "role.repair-launch.repair", fresh.roleSession, 100);
+      f.prepared = next;
+      f.worker = nextWorker;
+      f.native = fresh.native;
+      f.status = fresh.status;
+      f.saveStatus = fresh.saveStatus;
+      const checked = await reviewWaveFixture(t, 1, {
+        existing: f,
+        tokenBudgetMode: "shared",
+        writerEvidence: true,
+        nativeReviewRequired: false,
+        reviewRunPrefix: "resolved-review",
+        mutateWriter(status) {
+          status.steps[0].acceptance.childReport.changedFiles = [
+            "src/main.txt",
+            "src/alpha space.txt",
+            "src/gamma space.txt",
+          ];
+        },
+      });
+      assert.equal(
+        checked.request.subject.conflictRevision.inputPatches.length,
+        4,
+      );
+      assert.match(
+        checked.plan.children[0].task,
+        /ALL original captured lane patches/,
+      );
+      assert.throws(
+        () => checked.host.accept(next.executionId),
+        /review|candidate|sealed/,
+      );
+      await checked.host.startIntegrationReview(
+        next.executionId,
+        checked.wave.key,
+        checked.plan.planDigest,
+        checked.adapter,
+      );
+      const reviewed = checked.publish();
+      meterMember(
+        context,
+        `review.${checked.wave.key}.view-0`,
+        reviewed.steps[0].sessionFile,
+        100,
+        false,
+      );
+      assert.equal(
+        (
+          await checked.host.collectIntegrationReview(
+            next.executionId,
+            checked.wave.key,
+            checked.plan.planDigest,
+          )
+        ).verdict,
+        "pass",
+      );
+      await checked.host.sealIntegrationReview(next.executionId);
+      if (integrationMode === "approved-integration") {
+        const plan = checked.host.prepareIntegrationApply(next.executionId);
+        assert.equal(
+          (
+            await checked.host.applyIntegration(
+              next.executionId,
+              plan.planDigest,
+              () => true,
+            )
+          ).status,
+          "applied",
+        );
+        await checked.host.readAppliedIntegrationReview(
+          next.executionId,
+          plan.planDigest,
+        );
+        assert.equal(checked.host.runChecks(next.executionId).length, 1);
+      }
+      const acceptedEvent = await f.publicApi.call("team_task_accept", {
+        execution_id: next.executionId,
+      });
+      assert.equal(
+        acceptedEvent.isError,
+        false,
+        JSON.stringify(acceptedEvent.result),
+      );
+      const accepted = acceptedEvent.result.details.receipt;
+      assert.equal(
+        accepted.schemaVersion,
+        integrationMode === "verify-only"
+          ? "teams-task-acceptance/3"
+          : "teams-task-acceptance/2",
+      );
+      assert.equal(
+        accepted.finalEvidence.conflictRevision.previousExecutionId,
+        id,
+      );
+      assert.equal(
+        accepted.finalEvidence.conflictRevision.repairedTree,
+        git(repairedRoot, "write-tree"),
+      );
+      if (integrationMode === "verify-only")
+        assert.equal(accepted.finalEvidence.delivery.targetModified, false);
+      assert.equal(f.orchestrator.ledger.getAcceptance(id), null);
+      assert.deepEqual(fs.readFileSync(fact.receiptRef), failureBytes);
+      assert.deepEqual(fs.readFileSync(latePatch), lateBytes);
+      if (integrationMode === "verify-only") {
+        assert.deepEqual(snapshot(f.source, ["src"]), sourceBefore);
+        assert.equal(git(f.source, "status", "--porcelain"), "");
+      } else {
+        assert.equal(
+          git(f.source, "rev-parse", "HEAD"),
+          f.base,
+          "fixture apply never commits",
+        );
+        assert.equal(
+          spawnSync(process.execPath, original.checks[0].argv, {
+            cwd: f.source,
+          }).status,
+          0,
+        );
+      }
+      const { createGoalGuard } = await import("../goal-guard.mjs");
+      assert.equal(
+        (
+          await createGoalGuard(f.orchestrator, f.source).beforeTaskCompletion({
+            goalId: identity.goalId,
+            taskId: identity.taskId,
+          })
+        ).ok,
+        true,
+      );
+      const observer = await observePublicTaskEvents(
+        f.root,
+        f.source,
+        f.publicApi.events,
+        "conflict-recovered",
+        { finalStatus: "complete" },
+      );
+      assert.equal(
+        observer.stopReason,
+        "goal-complete",
+        JSON.stringify(observer.faults),
+      );
+      assert.equal(
+        observer.integrationConflicts.length,
+        1,
+        "failure evidence remains visible",
+      );
+      assert.equal(observer.acceptedRepairs[0].executionId, next.executionId);
+      const withoutAcceptance = f.publicApi.events.filter(
+        (row) => row.toolName !== "team_task_accept",
+      );
+      const falseCompletion = await observePublicTaskEvents(
+        f.root,
+        f.source,
+        withoutAcceptance,
+        "conflict-false-complete",
+        { finalStatus: "complete" },
+      );
+      assert.equal(
+        falseCompletion.stopReason,
+        "integration-conflict",
+        "Goal/prose alone must not clear the failure",
+      );
+      assert.equal(
+        f.orchestrator.ledger.listTaskExecutions(
+          identity.projectId,
+          identity.goalId,
+          identity.taskId,
+        ).length,
+        2,
+      );
+      await assert.rejects(
+        f.orchestrator.prepareProductRevision(null, revision),
+        /revision|latest|one/,
+      );
+      for (const result of [
+        { status: null, signal: "SIGTERM", error: null },
+        { status: 1, signal: null, error: new Error("ETIMEDOUT") },
+        { status: 128, signal: null, error: null },
+      ]) {
+        assert.throws(
+          () =>
+            completedIntegrationConflict({ contract: original }, { result }),
+          (error) => !(error instanceof CompletedIntegrationConflict),
+        );
+      }
+    });
+});
+
+test("review-only product defect cannot pass acceptance or target gates even after a PASS review", async (t) => {
+  const f = await reviewWaveFixture(t, 1, {
+    writerEvidence: true,
+    nativeReviewRequired: false,
+    stoppedWorker: true,
+    integrationMode: "verify-only",
+    resultOutcome: "ready_for_review",
+    criterionStatus: "not_met",
+    criterionObservation: "A disclosed product defect remains.",
+  });
+  await f.host.startIntegrationReview(
+    f.id,
+    f.wave.key,
+    f.plan.planDigest,
+    f.adapter,
+  );
+  f.publish();
+  await f.host.collectIntegrationReview(f.id, f.wave.key, f.plan.planDigest);
+  await f.host.sealIntegrationReview(f.id);
+  assert.throws(() => f.host.prepareIntegrationApply(f.id), /ready candidate/);
+  await assert.rejects(
+    f.host.applyIntegration(f.id, "a".repeat(64), () => true),
+    /ready candidate/,
+  );
+  await assert.rejects(
+    Promise.resolve().then(() => f.host.runChecks(f.id)),
+    /ready candidate/,
+  );
+  await assert.rejects(Promise.resolve().then(() => f.host.accept(f.id)));
+  assert.equal(
+    fs.existsSync(path.join(f.worker.mailbox.root, "integration/target-apply")),
+    false,
+  );
+  assert.equal(
+    fs
+      .readdirSync(path.join(f.worker.mailbox.root, "receipts"))
+      .some((name) => name.startsWith("acceptance-")),
+    false,
+  );
+  assert.equal(f.orchestrator.ledger.getExecution(f.id).state, "RESULT_READY");
+});
+
+test("review-origin product revision preserves complete old candidate, reruns new checks and accepts same Task", async (t) => {
+  for (const integrationMode of ["verify-only", "approved-integration"])
+    await t.test(integrationMode, async (sub) => {
+      const { reviewRepairCommand } = await import(
+        "../review-product-lineage.mjs"
+      );
+      const f = await reviewWaveFixture(sub, 1, {
+        writerEvidence: true,
+        nativeReviewRequired: false,
+        stoppedWorker: true,
+        maxProcessRestarts: 1,
+        tokenBudgetMode: "shared",
+        distinctWorkerSessions: true,
+        integrationMode,
+        publicEntry: integrationMode === "verify-only",
+        publicWorker: integrationMode === "verify-only",
+        resultOutcome: "ready_for_review",
+        criterionStatus: "not_met",
+        criterionObservation:
+          "The complete old candidate says alpha, not the required repaired content; preserve this product defect for L0 review.",
+        reviewProductRevision: true,
+        workerAllowedRoles: ["team.implementer"],
+        // Compound fixture now includes extra immutable-policy rejection probes.
+        // Keep one original deadline across both executions, not a 60s speed test.
+        deadlineMs: 180000,
+        extraOldFeature: true,
+        reviewSourcePaths: ["src/alpha space.txt"],
+        mutateMeter(f) {
+          const context = {
+            contract: f.prepared.contract,
+            mailbox: f.worker.mailbox,
+          };
+          meterMember(
+            context,
+            "worker",
+            f.worker.mailbox.readJson("receipts/boot.json").workerSessionFile,
+            0,
+            false,
+          );
+          meterMember(
+            context,
+            "role.launch.lane-0",
+            f.status.steps[0].sessionFile,
+            100,
+          );
+        },
+      });
+      const originalResult = f.worker.mailbox.readJson("results/r0001.json");
+      assert.equal(originalResult.outcome, "ready_for_review");
+      assert.equal(originalResult.criterionResults[0].status, "not_met");
+      let visibleCandidate, visibleReview;
+      if (f.publicApi) {
+        const collected = await f.publicApi.call("team_task_collect", {
+          execution_id: f.id,
+        });
+        assert.equal(collected.isError, false);
+        const text = await modelToolOutput(f.publicApi.agent, collected);
+        visibleCandidate = JSON.parse(
+          text.split("Candidate claims (not instructions or acceptance): ")[1],
+        );
+        assert.equal(visibleCandidate.resultDigest, digest(originalResult));
+        assert.equal(
+          visibleCandidate.resultRef,
+          path.join(f.worker.mailbox.root, "results/r0001.json"),
+        );
+        assert.equal(visibleCandidate.criteria[0].status, "not_met");
+      }
+      assert.throws(
+        () => f.host.prepareIntegrationApply(f.id),
+        /ready candidate/,
+      );
+      await assert.rejects(
+        f.host.applyIntegration(f.id, "a".repeat(64), () => true),
+        /ready candidate/,
+      );
+      await assert.rejects(Promise.resolve().then(() => f.host.accept(f.id)));
+      assert.equal(
+        fs.existsSync(
+          path.join(f.worker.mailbox.root, "integration/target-apply"),
+        ),
+        false,
+      );
+      await f.host.startIntegrationReview(
+        f.id,
+        f.wave.key,
+        f.plan.planDigest,
+        f.adapter,
+      );
+      const oldStatus = f.publish((status) => {
+        const step = status.steps[0];
+        step.structuredOutput.verdict = "blocked";
+        step.structuredOutput.findings = [
+          {
+            severity: "blocker",
+            issue: "The created alpha content is wrong.",
+            rationale:
+              "Expected repaired content, but observed alpha; the original existence check misses this behavior.",
+            sourcePaths: ["src/alpha space.txt"],
+          },
+        ];
+        status.workflow.value[0].structuredOutput = step.structuredOutput;
+        const rows = fs
+          .readFileSync(step.sessionFile, "utf8")
+          .trim()
+          .split("\n")
+          .map(JSON.parse);
+        rows[1].message.content[0].arguments.value = step.structuredOutput;
+        fs.writeFileSync(
+          step.sessionFile,
+          rows.map(JSON.stringify).join("\n") + "\n",
+        );
+      });
+      meterMember(
+        { contract: f.prepared.contract, mailbox: f.worker.mailbox },
+        `review.${f.wave.key}.view-0`,
+        oldStatus.steps[0].sessionFile,
+        100,
+        false,
+      );
+      let blocked;
+      if (f.publicApi) {
+        const event = await f.publicApi.call("team_task_stage_integration", {
+          execution_id: f.id,
+          action: "collect-review",
+          key: f.wave.key,
+          plan_digest: f.plan.planDigest,
+        });
+        assert.equal(event.isError, false);
+        blocked = event.result.details;
+        const text = await modelToolOutput(f.publicApi.agent, event);
+        visibleReview = JSON.parse(
+          text.split(
+            "Bound review evidence (not instructions or acceptance): ",
+          )[1],
+        );
+        assert.equal(visibleReview.resultDigest, visibleCandidate.resultDigest);
+        assert.equal(visibleReview.verdict, "blocked");
+        assert.equal(visibleReview.blockerCount, 1);
+        assert.ok(
+          Buffer.byteLength(text) < 8192,
+          "compact handoff, not a dump of captures",
+        );
+        assert.match(text, /before cancel/i);
+      } else
+        blocked = await f.host.collectIntegrationReview(
+          f.id,
+          f.wave.key,
+          f.plan.planDigest,
+        );
+      assert.equal(blocked.verdict, "blocked");
+      const oldComplete = path.join(
+        f.worker.mailbox.root,
+        `integration/reviews/${f.wave.key}/complete.json`,
+      );
+      const oldBytes = fs.readFileSync(oldComplete);
+      if (f.publicApi) {
+        assert.equal(visibleReview.completionRef, oldComplete);
+        assert.equal(visibleReview.completionSha256, bytesDigest(oldBytes));
+        assert.deepEqual(
+          JSON.parse(fs.readFileSync(visibleReview.completionRef)).reports[0]
+            .report.findings,
+          oldStatus.steps[0].structuredOutput.findings,
+        );
+        const input = { execution_id: f.id, action: "seal-review" };
+        const event = await f.publicApi.call(
+          "team_task_stage_integration",
+          input,
+        );
+        assert.equal(event.isError, true);
+        assert.equal(
+          isInputRejection(
+            event.result.details?.rejection,
+            { tool: event.toolName, input },
+            event.toolName,
+            event.toolCallId,
+          ),
+          true,
+        );
+        assert.equal(event.result.details.rejection.phase, "review-seal");
+        assert.deepEqual(fs.readFileSync(oldComplete), oldBytes);
+        assert.equal(
+          fs.existsSync(
+            path.join(
+              f.prepared.executionRoot,
+              "integration/review-candidate.json",
+            ),
+          ),
+          false,
+        );
+      }
+      if (f.publicApi) {
+        const cancelControl = setInterval(() => {
+          if (f.worker.processControls().cancelRequested) {
+            f.worker.confirmCancelled(0);
+            clearInterval(cancelControl);
+          }
+        }, 5);
+        try {
+          const event = await f.publicApi.call("team_task_cancel", {
+            execution_id: f.id,
+            reason: "product review blocked; preserve the original candidate",
+          });
+          assert.equal(event.isError, false, JSON.stringify(event.result));
+          assert.equal(event.result.details.execution.state, "CANCELLED");
+          assert.equal(event.result.details.closedUsage.status, "measured");
+          assert.match(
+            await modelToolOutput(f.publicApi.agent, event),
+            /do not collect.*closed/i,
+          );
+          const status = await f.publicApi.call("team_task_status", {
+            execution_id: f.id,
+          });
+          assert.ok(
+            (await modelToolOutput(f.publicApi.agent, status)).includes(
+              visibleCandidate.resultDigest,
+            ),
+          );
+          assert.throws(
+            () =>
+              f.host.collectIntegrationReview(
+                f.id,
+                f.wave.key,
+                f.plan.planDigest,
+              ),
+            /expected execution state/,
+          );
+          assert.deepEqual(
+            fs.readFileSync(visibleReview.completionRef),
+            oldBytes,
+          );
+        } finally {
+          clearInterval(cancelControl);
+        }
+      } else {
+        f.orchestrator.requestCancel(
+          f.id,
+          "product review blocked; preserve the original candidate",
+        );
+        f.worker.processControls();
+        f.worker.confirmCancelled(0);
+        f.orchestrator.herdr.closeIdle = (paneId) => ({
+          paneId,
+          disposition: "closed",
+        });
+        assert.equal(
+          f.orchestrator.reconcile(f.id).execution.state,
+          "CANCELLED",
+        );
+      }
+      const original = f.prepared.contract;
+      const regression = {
+        ...original.checks[0],
+        commandId: "content-regression",
+        argv: [
+          "-e",
+          "require('node:assert/strict').equal(require('node:fs').readFileSync('src/alpha space.txt','utf8'),'repaired\\n')",
+        ],
+      };
+      const spec = {
+        ...original,
+        goalId: "goal",
+        taskId: "task",
+        taskRevision: 2,
+        checks: [...original.checks, regression],
+      };
+      const revisionInput = {
+        previousExecutionId: f.id,
+        expectedPreviousResultDigest: digest(
+          f.worker.mailbox.listResults().at(-1),
+        ),
+        reviewFailureRef: oldComplete,
+        reviewFailureSha256: f.worker.mailbox.digestRelative(
+          `integration/reviews/${f.wave.key}/complete.json`,
+        ),
+        repairReason:
+          "Repair the incorrect alpha content while preserving the original feature and checking it.",
+      };
+      await assert.rejects(
+        f.orchestrator.prepareReviewProductRevision(
+          { ...spec, checks: [regression] },
+          revisionInput,
+        ),
+        /original checks changed/,
+      );
+      await assert.rejects(
+        f.orchestrator.prepareReviewProductRevision(spec, {
+          ...revisionInput,
+          reviewFailureSha256: "0".repeat(64),
+        }),
+        /Expected values to be strictly equal|review artifact/,
+      );
+      assert.throws(
+        () => f.orchestrator.prepare(spec),
+        /reviewed execution requires explicit review revision/,
+      );
+      await assert.rejects(
+        f.orchestrator.prepareReviewProductRevision(spec, {
+          ...revisionInput,
+          reviewFailureRef: path.join(f.root, "unrelated-complete.json"),
+        }),
+        /frozen BLOCKED review completion required/,
+      );
+      const oldPatchRef = path.join(
+        f.worker.mailbox.root,
+        "integration/review.patch",
+      );
+      const oldPatchBytes = fs.readFileSync(oldPatchRef);
+      fs.appendFileSync(oldPatchRef, "tampered");
+      await assert.rejects(
+        f.orchestrator.prepareReviewProductRevision(spec, revisionInput),
+        /patch|capture|changed/,
+      );
+      fs.writeFileSync(oldPatchRef, oldPatchBytes);
+      const partialReview = path.join(
+        f.worker.mailbox.root,
+        "integration/reviews/uncollected-wave",
+      );
+      fs.mkdirSync(partialReview);
+      await assert.rejects(
+        f.orchestrator.prepareReviewProductRevision(spec, revisionInput),
+        /plan\.json|unknown|review/,
+      );
+      fs.rmdirSync(partialReview);
+      const targetJournal = path.join(
+        f.worker.mailbox.root,
+        "integration/target-apply",
+      );
+      fs.mkdirSync(targetJournal);
+      await assert.rejects(
+        f.orchestrator.prepareReviewProductRevision(spec, revisionInput),
+        /review seal|target journal/,
+      );
+      fs.rmdirSync(targetJournal);
+      await assert.rejects(
+        f.orchestrator.prepareReviewProductRevision(
+          { ...spec, policy: { ...spec.policy, maxTaskTokens: 1001 } },
+          revisionInput,
+        ),
+        /policy changed/,
+      );
+      for (const roles of [
+        spec.policy.allowedRoles,
+        ["team.reviewer"],
+        undefined,
+      ]) {
+        const changed = { ...spec, policy: { ...spec.policy } };
+        if (roles === undefined) delete changed.policy.workerAllowedRoles;
+        else changed.policy.workerAllowedRoles = roles;
+        await assert.rejects(
+          f.orchestrator.prepareReviewProductRevision(changed, revisionInput),
+          /policy changed/,
+        );
+      }
+      const hiddenDrift = path.join(f.source, ".hidden-drift");
+      fs.writeFileSync(hiddenDrift, "unrelated target change\n");
+      await assert.rejects(
+        f.orchestrator.prepareReviewProductRevision(
+          { ...spec, objective: "wrong draft as well" },
+          revisionInput,
+        ),
+        (error) =>
+          error.phase === undefined &&
+          /baseline|workspace|clean/.test(error.message),
+      );
+      fs.unlinkSync(hiddenDrift);
+      let nextWorker;
+      f.orchestrator.herdr.start = async (input) => {
+        nextWorker = new WorkerRuntime({ executionRoot: input.executionRoot });
+        nextWorker.boot({
+          sessionId: "worker-2",
+          processId: 99_999_999,
+          processStartedAtTicks: "1",
+          sessionFile: meteredSession(
+            path.join(input.executionRoot, "worker-sessions/worker-2.jsonl"),
+            "worker-2",
+            f.source,
+          ),
+          cwd: f.source,
+          activeTools: ["read", "team_role_spawn", "team_task_result"],
+          extensions: ["teams-worker", "pi-subagents"],
+          subagents: {
+            compatible: true,
+            checks: { protocolV1: true, status: true, spawn: true, stop: true },
+            ping: { version: 1 },
+          },
+        });
+        return { paneId: "w2:p2", agentName: "worker" };
+      };
+      const timer = setInterval(() => nextWorker?.processControls(), 5);
+      sub.after(() => clearInterval(timer));
+      let next;
+      if (f.publicApi) {
+        const input = {
+          previous_execution_id: f.id,
+          // Selectors come ONLY from the provider-visible handoff, not details/files/ledger.
+          expected_previous_result_digest: visibleCandidate.resultDigest,
+          origin: "blocked-review",
+          review_failure_ref: visibleReview.completionRef,
+          review_failure_sha256: visibleReview.completionSha256,
+          repair_reason: revisionInput.repairReason,
+        };
+        const draft = path.join(f.source, ".git/revision-draft.json");
+        fs.writeFileSync(
+          draft,
+          JSON.stringify({
+            ...spec,
+            objective: "accidentally rewritten scope",
+          }),
+        );
+        const wrong = { ...input, spec_path: draft };
+        const rejected = await f.publicApi.call("team_task_revise", wrong);
+        assert.equal(rejected.isError, true);
+        assert.equal(
+          isInputRejection(
+            rejected.result.details?.rejection,
+            { tool: rejected.toolName, input: wrong },
+            rejected.toolName,
+            rejected.toolCallId,
+          ),
+          true,
+        );
+        assert.match(rejected.result.content[0].text, /objective changed/);
+        assert.equal(
+          f.orchestrator.ledger.listTaskExecutions(
+            original.identity.projectId,
+            "goal",
+            "task",
+          ).length,
+          1,
+        );
+        assert.equal(
+          f.orchestrator.ledger.getExecution(f.id).reservationOpen,
+          false,
+        );
+        const repaired = await f.publicApi.call("team_task_revise", {
+          ...input,
+          additional_checks: [regression],
+        });
+        assert.equal(repaired.isError, false, JSON.stringify(repaired.result));
+        next = f.publicApi.prepared;
+        assert.equal(repaired.result.details.executionId, next.executionId);
+        for (const key of [
+          "objective",
+          "nonGoals",
+          "workspace",
+          "criteria",
+          "policy",
+          "contextRefs",
+        ])
+          assert.deepEqual(
+            next.contract[key],
+            original[key],
+            `host inherited ${key} exactly`,
+          );
+        assert.deepEqual(next.contract.checks, spec.checks);
+      } else
+        next = await f.orchestrator.prepareReviewProductRevision(
+          spec,
+          revisionInput,
+        );
+      const intent =
+        f.orchestrator.ledger.getContract(next.executionId) &&
+        (await import("../mailbox.mjs")).Mailbox.open(
+          next.executionRoot,
+          next.executionId,
+        ).readJson("receipts/repair-intent.json");
+      assert.equal(
+        intent.oldTree,
+        f.worker.mailbox.readJson("integration/receipt.json").tree,
+      );
+      assert.equal(intent.waves[0].findings[0].severity, "blocker");
+      assert.equal(
+        f.orchestrator.ledger.readTaskPool(next.executionId).priorTokens,
+        30,
+      );
+      const script = reviewRepairCommand(intent, next.contract);
+      const temp = path.join(f.root, "repair-tree");
+      git(f.root, "clone", "-q", "--no-local", f.source, temp);
+      const command = spawnSync("bash", ["-c", script], {
+        cwd: temp,
+        encoding: "utf8",
+      });
+      assert.equal(command.status, 0, command.stderr);
+      assert.match(command.stdout, new RegExp(intent.oldTree));
+      assert.equal(git(temp, "write-tree"), intent.oldTree);
+      assert.equal(
+        fs.readFileSync(path.join(temp, "src/beta space.txt"), "utf8"),
+        "beta\n",
+      );
+      const red = spawnSync(process.execPath, regression.argv, { cwd: temp });
+      assert.notEqual(
+        red.status,
+        0,
+        "the old candidate must reproduce the incorrect content",
+      );
+      fs.writeFileSync(path.join(temp, "src/alpha space.txt"), "repaired\n");
+      git(temp, "add", "-A");
+      const patch = spawnSync(
+        "git",
+        ["-C", temp, "diff", "--cached", "--binary", "--full-index", f.base],
+        { encoding: "buffer" },
+      );
+      assert.equal(patch.status, 0);
+      const patchPath = path.join(f.root, "complete-repair.patch");
+      fs.writeFileSync(patchPath, patch.stdout);
+      assert.ok(
+        patch.stdout.includes(Buffer.from("src/alpha space.txt")),
+        "complete patch retains old feature",
+      );
+      assert.ok(
+        patch.stdout.includes(Buffer.from("src/beta space.txt")),
+        "complete patch retains untouched feature",
+      );
+      assert.equal(
+        spawnSync(process.execPath, regression.argv, { cwd: temp }).status,
+        0,
+        "repaired behavior is GREEN",
+      );
+      const newTree = git(temp, "write-tree");
+      const delta = spawnSync(
+        "git",
+        [
+          "-C",
+          temp,
+          "diff",
+          "--binary",
+          "--full-index",
+          intent.oldTree,
+          newTree,
+        ],
+        { encoding: "buffer" },
+      );
+      assert.equal(delta.status, 0);
+      const deltaOnly = path.join(f.root, "delta-only");
+      git(f.root, "clone", "-q", "--no-local", f.source, deltaOnly);
+      const deltaApply = spawnSync(
+        "git",
+        ["-C", deltaOnly, "apply", "--index", "--binary", "-"],
+        { input: delta.stdout },
+      );
+      assert.notEqual(
+        deltaApply.status,
+        0,
+        "C0→C1 delta is not the complete B→C1 candidate",
+      );
+      const doubled = path.join(f.root, "double-patch");
+      git(f.root, "clone", "-q", "--no-local", f.source, doubled);
+      assert.equal(
+        spawnSync("git", ["-C", doubled, "apply", "--index", "--binary", "-"], {
+          input: oldPatchBytes,
+        }).status,
+        0,
+      );
+      assert.notEqual(
+        spawnSync("git", ["-C", doubled, "apply", "--index", "--binary", "-"], {
+          input: patch.stdout,
+        }).status,
+        0,
+        "P0+P1 would duplicate the inherited feature",
+      );
+      const omitted = path.join(f.root, "omitted-feature");
+      git(f.root, "clone", "-q", "--no-local", f.source, omitted);
+      fs.writeFileSync(path.join(omitted, "src/alpha space.txt"), "repaired\n");
+      assert.notEqual(
+        spawnSync(process.execPath, original.checks[0].argv, { cwd: omitted })
+          .status,
+        0,
+        "original required check catches loss of the untouched feature",
+      );
+      if (!f.publicApi)
+        await f.orchestrator.launch(next.executionId, { timeoutMs: 1000 });
+      assert.match(nextWorker.taskPrompt(), /Review-origin product revision/);
+      assert.match(nextWorker.taskPrompt(), /SAME live writer/);
+      const fresh = publishRepairedCandidate(f, nextWorker, next, {
+        patchPath,
+        repairCommand: script,
+        oldTree: intent.oldTree,
+        rejectedReconstruction: integrationMode === "verify-only",
+      });
+      fs.appendFileSync(oldComplete, " ");
+      assert.throws(
+        () => f.host.stageIntegration(next.executionId),
+        /old review artifact inventory changed|review|changed/,
+      );
+      assert.equal(
+        fs.existsSync(path.join(next.executionRoot, "integration")),
+        false,
+      );
+      fs.writeFileSync(oldComplete, oldBytes);
+      const writerSession = fs.readFileSync(fresh.roleSession, "utf8");
+      assert.match(writerSession, /TASK_PI_REVIEW_PRODUCT_BASE_READY/);
+      fs.writeFileSync(
+        fresh.roleSession,
+        writerSession.replace(
+          "TASK_PI_REVIEW_PRODUCT_BASE_READY",
+          "NOT_BASE_READY",
+        ),
+      );
+      assert.throws(
+        () => f.host.stageIntegration(next.executionId),
+        /reconstruction|proof|native|capture/,
+      );
+      assert.equal(
+        fs.existsSync(path.join(next.executionRoot, "integration")),
+        false,
+        "missing native C0 reconstruction must reject before stage intent",
+      );
+      fs.writeFileSync(fresh.roleSession, writerSession);
+      meterMember(
+        { contract: next.contract, mailbox: nextWorker.mailbox },
+        "worker",
+        nextWorker.mailbox.readJson("receipts/boot.json").workerSessionFile,
+        0,
+        false,
+      );
+      meterMember(
+        { contract: next.contract, mailbox: nextWorker.mailbox },
+        "role.repair-launch.repair",
+        fresh.roleSession,
+        100,
+      );
+      f.prepared = next;
+      f.worker = nextWorker;
+      f.native = fresh.native;
+      f.status = fresh.status;
+      f.saveStatus = fresh.saveStatus;
+      if (integrationMode === "approved-integration") {
+        const originalUmask = process.umask(0o077);
+        sub.after(() => process.umask(originalUmask));
+      }
+      const checked = await reviewWaveFixture(sub, 1, {
+        existing: f,
+        tokenBudgetMode: "shared",
+        writerEvidence: true,
+        nativeReviewRequired: false,
+        reviewRunPrefix: "new-review",
+        reviewSourcePaths: ["src/alpha space.txt"],
+      });
+      assert.equal(
+        checked.worker.mailbox.readJson(
+          "integration/check-content-regression.json",
+        ).status,
+        "verified",
+      );
+      assert.equal(
+        checked.request.subject.productRevision.oldTree,
+        intent.oldTree,
+      );
+      assert.equal(
+        checked.request.subject.productRevision.oldPatchRef,
+        intent.oldPatchRef,
+      );
+      assert.equal(
+        checked.request.subject.productRevision.oldCandidateRoot,
+        JSON.parse(
+          fs.readFileSync(
+            path.join(path.dirname(intent.oldPatchRef), "receipt.json"),
+            "utf8",
+          ),
+        ).cwd,
+      );
+      assert.equal(
+        checked.request.subject.priorBlockedReview.reports.length,
+        1,
+      );
+      assert.ok(
+        integrationReviewSchema(checked.request).required.includes(
+          "priorResolutions",
+        ),
+      );
+      await checked.host.startIntegrationReview(
+        next.executionId,
+        checked.wave.key,
+        checked.plan.planDigest,
+        checked.adapter,
+      );
+      const newStatus = checked.publish((status) => {
+        const step = status.steps[0];
+        step.structuredOutput.priorResolutions = {
+          "review-one/view-0:0": {
+            reason:
+              "Changed alpha content to repaired while retaining the original creation behavior; the new regression proves content and the original check proves existence.",
+            sourcePaths: ["src/alpha space.txt"],
+            checkIds: ["check", "content-regression"],
+          },
+        };
+        status.workflow.value[0].structuredOutput = step.structuredOutput;
+        const rows = fs
+          .readFileSync(step.sessionFile, "utf8")
+          .trim()
+          .split("\n")
+          .map(JSON.parse);
+        rows[1].message.content[0].arguments.value = step.structuredOutput;
+        fs.writeFileSync(
+          step.sessionFile,
+          rows.map(JSON.stringify).join("\n") + "\n",
+        );
+      });
+      const fullReport = newStatus.steps[0].structuredOutput;
+      assert.doesNotThrow(() =>
+        validateReviewReport(checked.request, fullReport),
+      );
+      const missingCheck = structuredClone(fullReport);
+      missingCheck.priorResolutions["review-one/view-0:0"].checkIds = [
+        "old-only",
+      ];
+      assert.throws(
+        () => validateReviewReport(checked.request, missingCheck),
+        /missing or failed new check/,
+      );
+      const twoWaveSubject = structuredClone(checked.request.subject);
+      twoWaveSubject.priorBlockedReview.reports.push({
+        ...twoWaveSubject.priorBlockedReview.reports[0],
+        key: "review-two/view-1",
+      });
+      const twoWaveRequest = {
+        ...checked.request,
+        subject: twoWaveSubject,
+        digest: digest(twoWaveSubject),
+      };
+      const missingSecond = structuredClone(fullReport);
+      missingSecond.requestDigest = twoWaveRequest.digest;
+      assert.throws(
+        () => validateReviewReport(twoWaveRequest, missingSecond),
+        /review fields changed/,
+      );
+      meterMember(
+        { contract: next.contract, mailbox: nextWorker.mailbox },
+        `review.${checked.wave.key}.view-0`,
+        newStatus.steps[0].sessionFile,
+        100,
+        false,
+      );
+      assert.equal(
+        (
+          await checked.host.collectIntegrationReview(
+            next.executionId,
+            checked.wave.key,
+            checked.plan.planDigest,
+          )
+        ).verdict,
+        "pass",
+      );
+      await checked.host.sealIntegrationReview(next.executionId);
+      if (integrationMode === "approved-integration") {
+        assert.throws(
+          () => checked.host.runChecks(next.executionId),
+          /approved-integration.*apply.*before.*checks/i,
+        );
+        const plan = checked.host.prepareIntegrationApply(next.executionId);
+        const application = await checked.host.applyIntegration(
+          next.executionId,
+          plan.planDigest,
+          () => true,
+        );
+        assert.equal(application.status, "applied");
+        await checked.host.readAppliedIntegrationReview(
+          next.executionId,
+          plan.planDigest,
+        );
+        assert.equal(checked.host.runChecks(next.executionId).length, 2);
+      }
+      let accepted;
+      if (f.publicApi) {
+        const event = await f.publicApi.call("team_task_accept", {
+          execution_id: next.executionId,
+        });
+        assert.equal(event.isError, false, JSON.stringify(event.result));
+        accepted = event.result.details;
+      } else accepted = await checked.host.accept(next.executionId);
+      assert.equal(
+        accepted.receipt.schemaVersion,
+        integrationMode === "approved-integration"
+          ? "teams-task-acceptance/2"
+          : "teams-task-acceptance/3",
+      );
+      assert.equal(
+        accepted.receipt.finalEvidence.productRevision.schemaVersion,
+        "teams-review-product-lineage/1",
+      );
+      assert.equal(
+        accepted.receipt.finalEvidence.productRevision.oldTree,
+        intent.oldTree,
+      );
+      assert.equal(
+        accepted.receipt.finalEvidence.productRevision.repairedTree,
+        git(temp, "write-tree"),
+      );
+      assert.equal(
+        f.orchestrator.ledger.getAcceptance(revisionInput.previousExecutionId),
+        null,
+      );
+      assert.deepEqual(fs.readFileSync(oldComplete), oldBytes);
+      const { createGoalGuard } = await import("../goal-guard.mjs");
+      const guard = createGoalGuard(f.orchestrator, f.source);
+      const gate = await guard.beforeTaskCompletion({
+        goalId: "goal",
+        taskId: "task",
+      });
+      assert.equal(gate.ok, true);
+      if (f.publicApi) {
+        const corrected = await observePublicTaskEvents(
+          f.root,
+          f.source,
+          f.publicApi.events,
+          "corrected",
+        );
+        assert.equal(
+          corrected.stopReason,
+          "goal-paused",
+          JSON.stringify(corrected.faults),
+        );
+        assert.deepEqual(
+          corrected.faults.map((row) => row.disposition),
+          ["review-seal-input", "pre-dispatch-input"],
+        );
+        assert.deepEqual(corrected.executionIds, [
+          revisionInput.previousExecutionId,
+          next.executionId,
+        ]);
+        // An intentionally duplicated, known-completed revision is NOT a draft
+        // correction. Its real native error must stop the observer and reserve nothing.
+        const duplicate = await f.publicApi.call("team_task_revise", {
+          previous_execution_id: revisionInput.previousExecutionId,
+          expected_previous_result_digest:
+            revisionInput.expectedPreviousResultDigest,
+          origin: "blocked-review",
+          additional_checks: [],
+          review_failure_ref: oldComplete,
+          review_failure_sha256: revisionInput.reviewFailureSha256,
+          repair_reason: revisionInput.repairReason,
+        });
+        assert.equal(duplicate.isError, true);
+        assert.equal(duplicate.result.details?.rejection, undefined);
+        const stopped = await observePublicTaskEvents(
+          f.root,
+          f.source,
+          f.publicApi.events,
+          "duplicate",
+        );
+        assert.equal(stopped.stopReason, "task-tool-failure");
+        assert.equal(
+          f.orchestrator.ledger.listTaskExecutions(
+            original.identity.projectId,
+            "goal",
+            "task",
+          ).length,
+          2,
+        );
+      }
+    });
+});
+
+test("review-origin inventory binds every BLOCKED wave and cannot reserve a second successor", async (t) => {
+  const f = await reviewWaveFixture(t, 1, {
+    writerEvidence: true,
+    stoppedWorker: true,
+    tokenBudgetMode: "shared",
+    reviewProductRevision: true,
+    maxProcessRestarts: 1,
+    maxRoleSpawnsPerTask: 5,
+    extraOldFeature: true,
+    mutateMeter(f) {
+      const ctx = { contract: f.prepared.contract, mailbox: f.worker.mailbox };
+      for (const [key, file, register] of [
+        [
+          "worker",
+          f.worker.mailbox.readJson("receipts/boot.json").workerSessionFile,
+          false,
+        ],
+        ["role.launch.lane-0", f.status.steps[0].sessionFile, true],
+      ]) {
+        const read = measureSessionBytes(fs.readFileSync(file));
+        if (register)
+          registerTaskBudgetMembers(ctx, [
+            { key, estimate: 100, sessionRoot: path.dirname(file) },
+          ]);
+        const binding = taskBudgetBinding(ctx, key),
+          identity = { sessionId: read.sessionId, sessionFile: file };
+        for (const change of [
+          { type: "bind", ...identity },
+          { type: "request", ...identity, used: 0, allowance: 20 },
+          { type: "settle", ...identity, used: read.usage.total },
+          { type: "finish", ...identity, used: read.usage.total },
+        ])
+          changeTaskBudget(binding, change);
+      }
+    },
+  });
+  async function collectBlocked(view, issue) {
+    await f.host.startIntegrationReview(
+      f.id,
+      view.wave.key,
+      view.plan.planDigest,
+      view.adapter,
+    );
+    const status = view.publish((entry) => {
+      const step = entry.steps[0];
+      step.structuredOutput.verdict = "blocked";
+      step.structuredOutput.findings = [
+        {
+          severity: "blocker",
+          issue,
+          rationale:
+            "Existing check verifies presence only; repair must be independently reviewed.",
+          sourcePaths: [
+            issue === "alpha" ? "src/alpha space.txt" : "src/beta space.txt",
+          ],
+        },
+      ];
+      entry.workflow.value[0].structuredOutput = step.structuredOutput;
+      const rows = fs
+        .readFileSync(step.sessionFile, "utf8")
+        .trim()
+        .split("\n")
+        .map(JSON.parse);
+      rows[1].message.content[0].arguments.value = step.structuredOutput;
+      fs.writeFileSync(
+        step.sessionFile,
+        rows.map(JSON.stringify).join("\n") + "\n",
+      );
+    });
+    const ctx = { contract: f.prepared.contract, mailbox: f.worker.mailbox };
+    const file = status.steps[0].sessionFile,
+      key = `review.${view.wave.key}.view-0`;
+    const read = measureSessionBytes(fs.readFileSync(file)),
+      binding = taskBudgetBinding(ctx, key);
+    const identity = { sessionId: read.sessionId, sessionFile: file };
+    for (const change of [
+      { type: "bind", ...identity },
+      { type: "request", ...identity, used: 0, allowance: 20 },
+      { type: "settle", ...identity, used: read.usage.total },
+      { type: "finish", ...identity, used: read.usage.total },
+    ])
+      changeTaskBudget(binding, change);
+    assert.equal(
+      (
+        await f.host.collectIntegrationReview(
+          f.id,
+          view.wave.key,
+          view.plan.planDigest,
+        )
+      ).verdict,
+      "blocked",
+    );
+  }
+  await collectBlocked(f, "alpha");
+  const second = await reviewWaveFixture(t, 1, {
+    existing: f,
+    tokenBudgetMode: "shared",
+    writerEvidence: true,
+    reviewKey: "review-two",
+    reviewRunPrefix: "different-review",
+    reviewSourcePaths: ["src/beta space.txt"],
+  });
+  await collectBlocked(second, "beta");
+  const firstComplete = path.join(
+    f.worker.mailbox.root,
+    "integration/reviews/review-one/complete.json",
+  );
+  f.orchestrator.requestCancel(f.id, "preserve both product blockers");
+  f.worker.processControls();
+  f.worker.confirmCancelled(0);
+  f.orchestrator.herdr.closeIdle = (paneId) => ({
+    paneId,
+    disposition: "closed",
+  });
+  assert.equal(f.orchestrator.reconcile(f.id).execution.reservationOpen, false);
+  const spec = {
+    ...f.prepared.contract,
+    goalId: "goal",
+    taskId: "task",
+    taskRevision: 2,
+  };
+  const input = {
+    previousExecutionId: f.id,
+    expectedPreviousResultDigest: digest(f.worker.mailbox.listResults().at(-1)),
+    reviewFailureRef: firstComplete,
+    reviewFailureSha256: f.worker.mailbox.digestRelative(
+      "integration/reviews/review-one/complete.json",
+    ),
+    repairReason:
+      "Correct alpha and beta behaviors while retaining both originally requested capabilities.",
+  };
+  const next = await f.orchestrator.prepareReviewProductRevision(spec, input);
+  const { Mailbox } = await import("../mailbox.mjs");
+  const intent = Mailbox.open(next.executionRoot, next.executionId).readJson(
+    "receipts/repair-intent.json",
+  );
+  assert.deepEqual(
+    intent.waves.map((row) => row.key),
+    ["review-one", "review-two"],
+  );
+  assert.deepEqual(
+    intent.waves.flatMap((row) => row.findings.map((finding) => finding.id)),
+    ["review-one/view-0:0", "review-two/view-0:0"],
+  );
+  await assert.rejects(
+    f.orchestrator.prepareReviewProductRevision(spec, input),
+    /successor|active|reserved|latest|revision|already/i,
+  );
+});
+
+test("review-origin rejects a captured needs-user report even when its aggregate wave is BLOCKED", async (t) => {
+  function meter(f, key, file, register = true) {
+    const context = {
+      contract: f.prepared.contract,
+      mailbox: f.worker.mailbox,
+    };
+    const read = measureSessionBytes(fs.readFileSync(file));
+    if (register)
+      registerTaskBudgetMembers(context, [
+        { key, estimate: 100, sessionRoot: path.dirname(file) },
+      ]);
+    const binding = taskBudgetBinding(context, key);
+    const identity = { sessionId: read.sessionId, sessionFile: file };
+    for (const change of [
+      { type: "bind", ...identity },
+      { type: "request", ...identity, used: 0, allowance: 20 },
+      { type: "settle", ...identity, used: read.usage.total },
+      { type: "finish", ...identity, used: read.usage.total },
+    ])
+      changeTaskBudget(binding, change);
+  }
+  const f = await reviewWaveFixture(t, 1, {
+    writerEvidence: true,
+    stoppedWorker: true,
+    tokenBudgetMode: "shared",
+    maxProcessRestarts: 1,
+    reviewProductRevision: true,
+    mutateMeter(f) {
+      meter(
+        f,
+        "worker",
+        f.worker.mailbox.readJson("receipts/boot.json").workerSessionFile,
+        false,
+      );
+      meter(f, "role.launch.lane-0", f.status.steps[0].sessionFile);
+    },
+  });
+  await f.host.startIntegrationReview(
+    f.id,
+    f.wave.key,
+    f.plan.planDigest,
+    f.adapter,
+  );
+  const status = f.publish((entry) => {
+    const step = entry.steps[0];
+    step.structuredOutput.verdict = "needs-user";
+    step.structuredOutput.findings = [
+      {
+        severity: "blocker",
+        issue: "Cannot distinguish product defect without owner clarification.",
+        rationale: "A missing requirement decision cannot be auto-repaired.",
+        sourcePaths: ["src/main.txt"],
+      },
+    ];
+    entry.workflow.value[0].structuredOutput = step.structuredOutput;
+    const rows = fs
+      .readFileSync(step.sessionFile, "utf8")
+      .trim()
+      .split("\n")
+      .map(JSON.parse);
+    rows[1].message.content[0].arguments.value = step.structuredOutput;
+    fs.writeFileSync(
+      step.sessionFile,
+      rows.map(JSON.stringify).join("\n") + "\n",
+    );
+  });
+  meter(f, `review.${f.wave.key}.view-0`, status.steps[0].sessionFile, false);
+  assert.equal(
+    (await f.host.collectIntegrationReview(f.id, f.wave.key, f.plan.planDigest))
+      .verdict,
+    "blocked",
+  );
+  f.orchestrator.requestCancel(f.id, "review needs owner clarification");
+  f.worker.processControls();
+  f.worker.confirmCancelled(0);
+  f.orchestrator.herdr.closeIdle = (paneId) => ({
+    paneId,
+    disposition: "closed",
+  });
+  assert.equal(f.orchestrator.reconcile(f.id).execution.reservationOpen, false);
+  const spec = {
+    ...f.prepared.contract,
+    goalId: "goal",
+    taskId: "task",
+    taskRevision: 2,
+  };
+  const reviewFailureRef = path.join(
+    f.worker.mailbox.root,
+    "integration/reviews/review-one/complete.json",
+  );
+  await assert.rejects(
+    f.orchestrator.prepareReviewProductRevision(spec, {
+      previousExecutionId: f.id,
+      expectedPreviousResultDigest: digest(
+        f.worker.mailbox.listResults().at(-1),
+      ),
+      reviewFailureRef,
+      reviewFailureSha256: f.worker.mailbox.digestRelative(
+        "integration/reviews/review-one/complete.json",
+      ),
+      repairReason:
+        "Do not pretend a needs-user report is a diagnosed product repair.",
+    }),
+    /needs-user or unknown review is not product revision/,
+  );
+  assert.equal(
+    f.orchestrator.ledger.listTaskExecutions(
+      f.prepared.projectId,
+      "goal",
+      "task",
+    ).length,
+    1,
+    "uncertain review must not reserve a successor",
+  );
+});
+
+test("product successor uses original absolute deadline and host checks cannot run past it", (t) => {
+  const now = Date.now();
+  const contract = {
+    policy: { deadlineMs: 60000, reviewProductRevision: "within-scope-once" },
+    identity: { ownerEpoch: 1 },
+  };
+  const oldTime = new Date(now - 5000).toISOString();
+  const first = {
+    executionId: "old",
+    projectId: "p",
+    goalId: "g",
+    taskId: "t",
+    taskRevision: 1,
+    createdAt: oldTime,
+    ownerEpoch: 1,
+  };
+  const successor = {
+    ...first,
+    executionId: "new",
+    taskRevision: 2,
+    createdAt: new Date(now).toISOString(),
+  };
+  const ledger = {
+    listTaskExecutions: () => [first, successor],
+    getContract(id) {
+      assert.equal(id, "old");
+      return contract;
+    },
+  };
+  const intentDeadline = Date.parse(oldTime) + 60000;
+  assert.equal(taskDeadlineAt(ledger, successor, contract), intentDeadline);
+  assert.ok(taskMemberTimeoutMs(ledger, successor, contract) <= 55000);
+  assert.throws(
+    () => taskDeadlineAt(ledger, { ...successor, ownerEpoch: 2 }, contract),
+    /strictly equal/,
+  );
+  assert.equal(
+    taskDeadlineAt(ledger, successor, { policy: { deadlineMs: 60000 } }),
+    Date.parse(successor.createdAt) + 60000,
+  );
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "task-deadline-host-check-"),
+  );
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const cwd = path.join(root, "source");
+  fs.mkdirSync(cwd);
+  fs.writeFileSync(path.join(cwd, "file.txt"), "unchanged\n");
+  const input = {
+    cwd,
+    sourcePaths: ["file.txt"],
+    argv: [process.execPath, "-e", "setTimeout(()=>{},5000)"],
+    timeoutMs: 5000,
+  };
+  assert.throws(
+    () =>
+      runCheck(input, path.join(root, "expired.json"), {
+        hardDeadlineAt: Date.now() - 1,
+      }),
+    /deadline expired/,
+  );
+  assert.ok(!fs.existsSync(path.join(root, "expired.json.intent")));
+  const start = Date.now();
+  const receipt = runCheck(input, path.join(root, "bounded.json"), {
+    hardDeadlineAt: start + 900,
+  });
+  assert.equal(receipt.status, "failed");
+  assert.equal(receipt.errorCode, "ETIMEDOUT");
+  assert.ok(
+    receipt.durationMs < 2500,
+    "a 5s check must be killed within the original remaining window",
+  );
+  assert.equal(
+    fs.readFileSync(path.join(cwd, "file.txt"), "utf8"),
+    "unchanged\n",
+  );
+});
+
+for (const { tokenBudgetMode, failedRoot, publicSeam = false } of [
+  ...["member-hard", "shared"].flatMap((tokenBudgetMode) =>
+    [false, true].map((failedRoot) => ({ tokenBudgetMode, failedRoot })),
+  ),
+  { tokenBudgetMode: "shared", failedRoot: true, publicSeam: true },
+])
+  test(`parallel Task recovery retains a healthy sibling and completes fresh checks/review/Goal gates (${tokenBudgetMode}, failed root=${failedRoot}${publicSeam ? ", public seam" : ""})`, async (t) => {
+    const { RoleController } = await import("../role-controller.mjs");
+    const { readRoleLifecycle } = await import("../role-lifecycle.mjs");
+    const { measureExecutionUsage, reviewUsageAdmission } = await import(
+      "../task-usage.mjs"
+    );
+    const { createGoalGuard } = await import("../goal-guard.mjs");
+    let replacement, healthySha, failedSha, siblingReceipt, gate, control;
+    const f = await fixture(
+      t,
+      ["alpha", "beta"],
+      "const f=require('node:fs'),a=require('node:assert/strict');a.equal(f.readFileSync('src/alpha space.txt','utf8'),'alpha\\n');a.equal(f.readFileSync('src/beta space.txt','utf8'),'recovered\\n');",
+      {
+        review: reviewPolicy,
+        nativeReviewRequired: false,
+        hostedWorkflow: true,
+        writerEvidence: true,
+        stoppedWorker: true,
+        distinctWorkerSessions: true,
+        failedMember: 1,
+        failedRoot,
+        publicEntry: publicSeam,
+        publicSeam,
+        ...(publicSeam ? { workerAllowedRoles: ["team.implementer"] } : {}),
+        tokenBudgetMode,
+        maxRoleSpawnsPerTask: 5,
+        async beforeResult(x) {
+          const { worker, prepared, orchestrator } = x;
+          const mailbox = worker.mailbox,
+            contract = prepared.contract;
+          if (tokenBudgetMode === "shared") {
+            const budgetContext = { mailbox, contract };
+            meterMember(
+              budgetContext,
+              "worker",
+              mailbox.readJson("receipts/boot.json").workerSessionFile,
+              100,
+              false,
+              false,
+            );
+            x.status.steps.forEach((step, i) =>
+              meterMember(
+                budgetContext,
+                `role.launch.lane-${i}`,
+                step.sessionFile,
+                100,
+              ),
+            );
+          }
+          healthySha = bytesDigest(fs.readFileSync(x.manifests[0].patchPath));
+          failedSha = bytesDigest(
+            fs.readFileSync(path.join(x.native, "status.json")),
+          );
+          gate = createGoalGuard(orchestrator, x.source);
+          orchestrator.herdr.closeIdle = (paneId) => ({
+            paneId,
+            disposition: "closed",
+          });
+          // A second Task really progresses while this Task contains a failed branch.
+          const b = orchestrator.prepare({
+            schemaVersion: contract.schemaVersion,
+            goalId: contract.identity.goalId,
+            taskId: "independent",
+            taskRevision: 1,
+            objective: "Deliver the independent gamma patch",
+            nonGoals: contract.nonGoals,
+            workspace: contract.workspace,
+            criteria: contract.criteria,
+            policy: contract.policy,
+            contextRefs: [],
+            checks: [
+              {
+                ...contract.checks[0],
+                argv: [
+                  "-e",
+                  "require('node:assert/strict').equal(require('node:fs').readFileSync('src/gamma.txt','utf8'),'gamma\\n')",
+                ],
+              },
+            ],
+          });
+          await orchestrator.launch(b.executionId, { timeoutMs: 1000 });
+          const bWorker = x.getActiveWorker();
+          assert.equal(
+            orchestrator.ledger.getExecution(prepared.executionId).state,
+            "RUNNING",
+          );
+          const gamma = path.join(x.root, "gamma-source");
+          git(x.root, "clone", "-q", "--no-local", x.source, gamma);
+          fs.writeFileSync(path.join(gamma, "src/gamma.txt"), "gamma\n");
+          git(gamma, "add", ".");
+          const gammaPatch = path.join(x.root, "gamma.patch");
+          fs.writeFileSync(
+            gammaPatch,
+            git(gamma, "diff", "--cached", "--binary", "--full-index", x.base) +
+              "\n",
+          );
+          const bFixture = {
+            ...x,
+            prepared: b,
+            worker: bWorker,
+            host: new HostAcceptance({ orchestrator }),
+            status: {
+              runId: "wave",
+              cwd: x.source,
+              sessionId: bWorker.workerSessionId,
+              state: "complete",
+              steps: [structuredClone(x.status.steps[0])],
+              usageBudget: {
+                version: 1,
+                source: "reported",
+                exhausted: false,
+                tokens: {
+                  hard: tokenBudgetMode === "shared" ? 1000 : 100,
+                  used: 10,
+                  outcome: "within-budget",
+                },
+              },
+              processTerminal: {
+                version: 1,
+                state: "observed",
+                runId: "wave",
+                runnerProcessInstanceId: "fixture-instance",
+              },
+            },
+          };
+          bFixture.status.steps[0].acceptance.childReport.changedFiles = [
+            "src/gamma.txt",
+          ];
+          const bNative = publishRepairedCandidate(bFixture, bWorker, b, {
+            patchPath: gammaPatch,
+          });
+          const bContext = { mailbox: bWorker.mailbox, contract: b.contract };
+          if (tokenBudgetMode === "shared") {
+            meterMember(
+              bContext,
+              "worker",
+              bWorker.mailbox.readJson("receipts/boot.json").workerSessionFile,
+              100,
+              false,
+            );
+            meterMember(
+              bContext,
+              "role.repair-launch.repair",
+              bNative.roleSession,
+              100,
+            );
+          }
+          const rb = await reviewWaveFixture(t, 1, {
+            existing: bFixture,
+            reviewRunPrefix: "independent",
+            tokenBudgetMode,
+          });
+          if (publicSeam) {
+            // Live canary regression: a transposed UUID must not stop either
+            // Task or recreate the already produced healthy contribution.
+            const tool = "team_task_stage_integration";
+            const input = {
+              execution_id: "486ecc9d-1305-4e67-aa07-c3ee5b1b443e",
+            };
+            const rejected = await x.publicApi.call(tool, input);
+            assert.equal(rejected.isError, true);
+            assert.equal(
+              isInputRejection(
+                rejected.result.details?.rejection,
+                { tool, input },
+                tool,
+                rejected.toolCallId,
+              ),
+              true,
+            );
+            assert.equal(
+              orchestrator.ledger.getExecution(prepared.executionId).state,
+              "RUNNING",
+            );
+            assert.equal(
+              orchestrator.ledger.getExecution(b.executionId).reservationOpen,
+              true,
+            );
+            const checkedBefore = fs.readFileSync(
+              path.join(
+                b.executionRoot,
+                "integration/check-" + b.contract.checks[0].commandId + ".json",
+              ),
+            );
+            const corrected = await x.publicApi.call(tool, {
+              execution_id: b.executionId,
+            });
+            assert.equal(
+              corrected.isError,
+              false,
+              JSON.stringify(corrected.result),
+            );
+            assert.deepEqual(
+              fs.readFileSync(
+                path.join(
+                  b.executionRoot,
+                  "integration/check-" +
+                    b.contract.checks[0].commandId +
+                    ".json",
+                ),
+              ),
+              checkedBefore,
+            );
+          }
+          const pb = await rb.host.planIntegrationReview(
+            b.executionId,
+            rb.wave,
+            rb.adapter,
+          );
+          await rb.host.startIntegrationReview(
+            b.executionId,
+            pb.key,
+            pb.planDigest,
+            rb.adapter,
+          );
+          const bReview = rb.publish();
+          if (tokenBudgetMode === "shared")
+            meterMember(
+              bContext,
+              `review.${rb.wave.key}.view-0`,
+              bReview.steps[0].sessionFile,
+              100,
+              false,
+            );
+          await rb.host.collectIntegrationReview(
+            b.executionId,
+            pb.key,
+            pb.planDigest,
+            rb.adapter,
+          );
+          await rb.host.sealIntegrationReview(b.executionId);
+          await rb.host.runChecks(b.executionId);
+          if (publicSeam) {
+            const accepted = await x.publicApi.call("team_task_accept", {
+              execution_id: b.executionId,
+            });
+            assert.equal(
+              accepted.isError,
+              false,
+              JSON.stringify(accepted.result),
+            );
+            siblingReceipt = accepted.result.details.receipt;
+            const completed = await x.publicApi.call("update_goal_task", {
+              task_id: "independent",
+              status: "complete",
+            });
+            assert.equal(
+              completed.isError,
+              false,
+              JSON.stringify(completed.result),
+            );
+            const disk = x.publicApi.goalFixture.readDisk();
+            assert.equal(
+              disk.taskList.tasks.find((row) => row.id === "independent")
+                .status,
+              "complete",
+            );
+            assert.equal(
+              disk.taskList.tasks.find((row) => row.id === "task").status,
+              "pending",
+            );
+            assert.equal(
+              (await x.publicApi.call("update_goal", { status: "complete" }))
+                .isError,
+              true,
+            );
+            assert.equal(x.publicApi.goalFixture.auditCalls, 0);
+          } else {
+            siblingReceipt = (await rb.host.accept(b.executionId)).receipt;
+            const readyB = await gate.beforeTaskCompletion({
+              goalId: contract.identity.goalId,
+              taskId: "independent",
+            });
+            assert.equal(readyB.ok, true);
+            await gate.afterTaskCompletion({
+              goalId: contract.identity.goalId,
+              taskId: "independent",
+              evidence: readyB.evidence,
+            });
+          }
+          assert.equal(
+            gate.beforeGoalCompletion({ goalId: contract.identity.goalId }).ok,
+            false,
+          );
+          assert.equal(worker.state, "RUNNING");
+
+          const original = readRoleLifecycle(
+            mailbox,
+            contract,
+            worker.workerSessionId,
+          )[0];
+          const context = {
+            mailbox,
+            contract,
+            result: { childRunRefs: ["wave"] },
+            assertOwner() {},
+          };
+          const prior = reviewUsageAdmission(
+            context,
+            { members: [], reservedTokens: 0 },
+            measureExecutionUsage(context),
+            { checkpointOnly: true },
+          );
+          mailbox.writeReceipt("fixture-role-usage", prior);
+          original.usageAdmissionRef = "receipts/fixture-role-usage.json";
+          original.usageAdmissionDigest = digest(prior);
+          const controlOptions = {
+            runtime: worker,
+            cwd: x.source,
+            resolve: async () => ({
+              ok: true,
+              contract: { tools: { extensionArgs: [TASK_BUDGET_EXTENSION] } },
+            }),
+            rpc: {
+              async request(method, params) {
+                assert.equal(method, "spawn");
+                const launch = control.snapshot().launches.at(-1);
+                const dir = path.join(x.root, "replacement-native");
+                fs.mkdirSync(dir);
+                const checkout = path.join(x.root, "replacement-source");
+                git(x.root, "clone", "-q", "--no-local", x.source, checkout);
+                fs.writeFileSync(
+                  path.join(checkout, "src/beta space.txt"),
+                  "recovered\n",
+                );
+                git(checkout, "add", ".");
+                const patchPath = path.join(dir, "fixed.patch");
+                fs.writeFileSync(
+                  patchPath,
+                  git(
+                    checkout,
+                    "diff",
+                    "--cached",
+                    "--binary",
+                    "--full-index",
+                    x.base,
+                  ) + "\n",
+                );
+                const handoff = structuredClone(x.manifests[1].value);
+                handoff.runId = "replacement-leaf";
+                handoff.groups[0].children[0].patch.path = patchPath;
+                const manifest = path.join(dir, "handoff.json");
+                fs.writeFileSync(manifest, JSON.stringify(handoff));
+                const row = {
+                  key: "replacement",
+                  ok: true,
+                  runId: "replacement-leaf",
+                  artifactPaths: [manifest],
+                };
+                const status = {
+                  runId: "replacement-wave",
+                  sessionId: worker.workerSessionId,
+                  cwd: x.source,
+                  state: "complete",
+                  workflow: { value: [row] },
+                  steps: [
+                    {
+                      ...structuredClone(x.status.steps[0]),
+                      workflowKey: row.key,
+                      runId: row.runId,
+                      sessionFile: meteredSession(
+                        path.join(
+                          params.sessionDir,
+                          ...(tokenBudgetMode === "shared"
+                            ? ["replacement"]
+                            : []),
+                          "leaf.jsonl",
+                        ),
+                        row.runId,
+                        x.source,
+                      ),
+                    },
+                  ],
+                };
+                if (tokenBudgetMode === "shared")
+                  meterMember(
+                    { mailbox, contract },
+                    `role.${launch.launchId}.replacement`,
+                    status.steps[0].sessionFile,
+                    100,
+                    false,
+                  );
+                status.steps[0].acceptance.childReport.changedFiles = [
+                  "src/beta space.txt",
+                ];
+                asHostedStatus(status, launch.hostedWorkflow);
+                fs.writeFileSync(
+                  path.join(dir, "status.json"),
+                  JSON.stringify(status),
+                );
+                fs.writeFileSync(
+                  path.join(dir, "workflow-receipt.json"),
+                  JSON.stringify({
+                    version: 1,
+                    workflowRunId: status.runId,
+                    state: "complete",
+                    entries: {
+                      replacement: {
+                        key: row.key,
+                        agent: "team.implementer",
+                        latestRunId: row.runId,
+                        continuation: { runIds: [row.runId] },
+                      },
+                    },
+                  }),
+                );
+                return { runId: status.runId, asyncDir: dir };
+              },
+            },
+          };
+          if (publicSeam) {
+            const inspected = await x.publicWorker.call("team_role_control", {
+              action: "status",
+            });
+            assert.equal(
+              inspected.isError,
+              false,
+              JSON.stringify(inspected.result),
+            );
+            control = x.publicWorker.controller;
+            // Controlled native predecessor and preflight producer, not a
+            // replacement of tool routing, branch guards or dispatch logic.
+            control.resolve = controlOptions.resolve;
+            x.publicWorker.setRpc(controlOptions.rpc.request);
+          } else control = new RoleController(controlOptions);
+          control.launches.set(original.launchId, original);
+          control.memberCount = original.members.length;
+          control.reservedTokens = original.maxTokens;
+          const repair = {
+            action: "repair",
+            runId: "wave",
+            key: "lane-1",
+            reason: "Beta emits the wrong value; alpha already succeeds.",
+            task: "Fix beta and check its value; retain alpha unchanged.",
+            maxTokens: 100,
+          };
+          await assert.rejects(
+            control.control({ ...repair, runId: "another-task" }),
+            /not owned/,
+          );
+          const oldStatusFile = path.join(x.native, "status.json"),
+            oldBytes = fs.readFileSync(oldStatusFile);
+          for (const change of [
+            ...[
+              "interrupted",
+              "stopped",
+              "turnBudgetExceeded",
+              "toolBudgetBlocked",
+              "detached",
+            ].map((flag) => (s) => {
+              s.steps[1].exitCode = 0;
+              Object.assign(s.workflow.value[1].nativeResults[0], {
+                exitCode: 0,
+                [flag]: true,
+              });
+            }),
+            (s) => {
+              s.workflow.value[1].nativeResults[0].processSignal = "SIGTERM";
+            },
+            (s) => {
+              s.workflow.value[1].nativeResults[0].timedOut = true;
+            },
+            (s) => {
+              s.steps[1].exitCode = null;
+              s.workflow.value[1].nativeResults[0].exitCode = null;
+            },
+          ]) {
+            const altered = JSON.parse(oldBytes);
+            change(altered);
+            fs.writeFileSync(oldStatusFile, JSON.stringify(altered));
+            await assert.rejects(
+              control.control(repair),
+              /effects need reconciliation/,
+            );
+            fs.writeFileSync(oldStatusFile, oldBytes);
+            assert.equal(
+              control.snapshot().launches.length,
+              1,
+              "no replacement admitted for unknown effects",
+            );
+          }
+          const reportOnly = JSON.parse(oldBytes);
+          const reportAcceptance = {
+            ...reportOnly.steps[1].acceptance,
+            childReportParseError:
+              "Invalid report shape; preserve existing implementation.",
+          };
+          reportOnly.steps[1].acceptance = reportAcceptance;
+          reportOnly.workflow.value[1].nativeResults[0].acceptance =
+            reportAcceptance;
+          fs.writeFileSync(oldStatusFile, JSON.stringify(reportOnly));
+          await assert.rejects(control.control(repair), /report-only.*replay/);
+          assert.equal(
+            control.snapshot().launches.length,
+            1,
+            "report parsing cannot authorize a replacement",
+          );
+          fs.writeFileSync(oldStatusFile, oldBytes);
+          if (publicSeam) {
+            const event = await x.publicWorker.call("team_role_control", {
+              action: repair.action,
+              run_id: repair.runId,
+              key: repair.key,
+              reason: repair.reason,
+              task: repair.task,
+              max_tokens: repair.maxTokens,
+            });
+            assert.equal(event.isError, false, JSON.stringify(event.result));
+            replacement = event.result.details;
+            assert.equal(event.result.terminate, true);
+          } else replacement = await control.control(repair);
+          control.refreshTerminals();
+          assert.equal(control.snapshot().unresolvedRunCount, 0);
+          await assert.rejects(control.control(repair), /already replaced/);
+          await assert.rejects(
+            control.control({
+              ...repair,
+              runId: replacement.runId,
+              key: "replacement",
+            }),
+            /allowance exhausted/,
+          );
+          assert.equal(
+            bytesDigest(fs.readFileSync(x.manifests[0].patchPath)),
+            healthySha,
+          );
+          assert.equal(
+            bytesDigest(fs.readFileSync(path.join(x.native, "status.json"))),
+            failedSha,
+          );
+          assert.equal(
+            orchestrator.ledger.getExecution(b.executionId).state,
+            "ACCEPTED",
+          );
+        },
+      },
+    );
+    const id = f.prepared.executionId;
+    const budgetContext = {
+      mailbox: f.worker.mailbox,
+      contract: f.prepared.contract,
+    };
+    if (tokenBudgetMode === "shared" && !publicSeam) {
+      const boot = f.worker.mailbox.readJson("receipts/boot.json");
+      changeTaskBudget(taskBudgetBinding(budgetContext, "worker"), {
+        type: "finish",
+        sessionId: boot.workerSessionId,
+        sessionFile: boot.workerSessionFile,
+        used: 10,
+      });
+    }
+    const reviewed = await reviewWaveFixture(t, 1, {
+      existing: f,
+      reviewRunPrefix: "recovered",
+      tokenBudgetMode,
+    });
+    assert.ok(reviewed.request.subject.branchRecovery);
+    const staged = f.worker.mailbox.readJson("integration/receipt.json");
+    assert.deepEqual(
+      staged.lanes.map((row) => row.key),
+      ["lane-0", "replacement"],
+    );
+    assert.equal(f.status.steps[1].status, "failed");
+    const plan = await f.host.planIntegrationReview(
+      id,
+      reviewed.wave,
+      reviewed.adapter,
+    );
+    await f.host.startIntegrationReview(
+      id,
+      plan.key,
+      plan.planDigest,
+      reviewed.adapter,
+    );
+    const finalReview = reviewed.publish();
+    if (tokenBudgetMode === "shared")
+      meterMember(
+        budgetContext,
+        `review.${reviewed.wave.key}.view-0`,
+        finalReview.steps[0].sessionFile,
+        100,
+        false,
+      );
+    await f.host.collectIntegrationReview(
+      id,
+      plan.key,
+      plan.planDigest,
+      reviewed.adapter,
+    );
+    await f.host.sealIntegrationReview(id);
+    await f.host.runChecks(id);
+    let receipt;
+    if (publicSeam) {
+      const checked = await f.publicApi.call("team_task_run_checks", {
+        execution_id: id,
+      });
+      assert.equal(checked.isError, false, JSON.stringify(checked.result));
+      const accepted = await f.publicApi.call("team_task_accept", {
+        execution_id: id,
+      });
+      assert.equal(accepted.isError, false, JSON.stringify(accepted.result));
+      receipt = accepted.result.details.receipt;
+    } else ({ receipt } = await f.host.accept(id));
+    assert.equal(receipt.schemaVersion, "teams-task-acceptance/3");
+    assert.notEqual(receipt.acceptanceId, siblingReceipt.acceptanceId);
+    const usage = receipt.finalEvidence.usage;
+    assert.equal(usage.spawnCount, 4); // BOTH original children + replacement + final reviewer.
+    assert.equal(usage.sources.filter((row) => row.kind === "leaf").length, 3);
+    assert.equal(usage.totals.total, 50); // failed child's 10 tokens remain charged.
+    const goalId = f.prepared.contract.identity.goalId;
+    if (publicSeam) {
+      const completed = await f.publicApi.call("update_goal_task", {
+        task_id: "task",
+        status: "complete",
+      });
+      assert.equal(completed.isError, false, JSON.stringify(completed.result));
+      assert.equal(
+        f.orchestrator.ledger.getExecution(id).goalCommitState,
+        "committed",
+      );
+      assert.equal(
+        f.orchestrator.ledger.getExecution(id).reservationOpen,
+        false,
+      );
+      const readback = await f.publicApi.call("get_goal", { verbose: true });
+      assert.ok(
+        readback.result.details.goal.taskList.tasks.every(
+          (task) =>
+            task.status === "complete" &&
+            task.evidence.startsWith("task-runtime:"),
+        ),
+      );
+      const goal = await f.publicApi.call("update_goal", {
+        status: "complete",
+      });
+      assert.equal(goal.isError, false, JSON.stringify(goal.result));
+      assert.equal(goal.result.details.goal.status, "complete");
+      assert.equal(f.publicApi.goalFixture.readDisk().status, "complete");
+      assert.equal(
+        f.publicApi.goalFixture.auditCalls,
+        1,
+        "controlled auditor ran, not audit-skip",
+      );
+    } else {
+      const ready = await gate.beforeTaskCompletion({ goalId, taskId: "task" });
+      await gate.afterTaskCompletion({
+        goalId,
+        taskId: "task",
+        evidence: ready.evidence,
+      });
+    }
+    assert.equal(gate.beforeGoalCompletion({ goalId }).ok, true);
+    assert.equal(git(f.source, "status", "--porcelain"), "");
+  });
+
+test("L0 readback rejects Worker role evidence outside its restricted subset", async (t) => {
+  // Deliberately inject a native-format writer in the fixture, bypassing admission.
+  // Total Task/L0 roles still include this writer; only the Worker restriction rejects it.
+  const f = await reviewWaveFixture(t, 1, {
+    workerAllowedRoles: ["team.reviewer"],
+    stoppedWorker: true,
+    hostedWorkflow: true,
+    writerEvidence: true,
+    nativeReviewRequired: false,
+  });
+  await f.host.startIntegrationReview(
+    f.id,
+    f.wave.key,
+    f.plan.planDigest,
+    f.adapter,
+  );
+  f.publish();
+  await f.host.collectIntegrationReview(f.id, f.wave.key, f.plan.planDigest);
+  await f.host.sealIntegrationReview(f.id);
+  await f.host.runChecks(f.id);
+  await assert.rejects(
+    async () => f.host.accept(f.id),
+    /native Worker role outside approved policy/,
+  );
+});
+
+test("public execution selector preserves known-row loss and lookup IO as hard failures", async (t) => {
+  const f = await fixture(t, ["alpha"], undefined, {
+    publicEntry: true,
+    stoppedWorker: true,
+    review: reviewPolicy,
+  });
+  for (const known of [true, false]) {
+    const selected = known
+      ? f.prepared.executionId
+      : "486ecc9d-1305-4e67-aa07-c3ee5b1b443e";
+    // Controlled read faults only: do not delete a real row or change SQL safety.
+    const exists = t.mock.method(f.orchestrator.ledger, "hasExecution", () => {
+      if (!known) throw new Error("fixture ledger read EIO");
+      return false;
+    });
+    const get = t.mock.method(f.orchestrator.ledger, "getExecution", () => {
+      throw new Error(`execution not found: ${selected}`);
+    });
+    let event;
+    try {
+      event = await f.publicApi.call("team_task_status", {
+        execution_id: selected,
+      });
+    } finally {
+      exists.mock.restore();
+      get.mock.restore();
+    }
+    assert.equal(event.isError, true);
+    assert.equal(
+      event.result.details?.rejection,
+      undefined,
+      "known dispatch loss or failed lookup is not a spelling correction",
+    );
+    assert.match(
+      JSON.stringify(event.result),
+      known ? /execution not found/ : /fixture ledger read EIO/,
+    );
+  }
+});
+
+test("public Goal hooks block closed failed Tasks and bind the native session Goal, not foreign reservations", async (t) => {
+  const f = await fixture(t, ["alpha"], undefined, {
+    publicEntry: true,
+    stoppedWorker: true,
+    review: reviewPolicy,
+  });
+  const cancelled = await f.publicApi.call("team_task_cancel", {
+    execution_id: f.prepared.executionId,
+    reason: "Fixture completed failure; no blind retry.",
+  });
+  assert.equal(cancelled.isError, false);
+  assert.equal(
+    f.orchestrator.ledger.getExecution(f.prepared.executionId).reservationOpen,
+    false,
+  );
+  const invoke = (name, args) =>
+    f.publicApi.agent.beforeToolCall({
+      toolCall: { name, id: `goal-${name}` },
+      args,
+    });
+  const complete = {
+    task_id: "task",
+    status: "complete",
+    evidence: "not a receipt",
+  };
+  const blocked = await invoke("update_goal_task", complete);
+  assert.equal(blocked.block, true);
+  assert.match(blocked.reason, /AcceptanceReceipt/);
+  assert.equal(
+    (await invoke("update_goal", { status: "complete" })).block,
+    true,
+  );
+  assert.equal(
+    (await invoke("update_goal_task", { updates: [complete] })).block,
+    true,
+  );
+  f.publicApi.setGoalFocus("unrelated-goal");
+  assert.equal(await invoke("update_goal_task", complete), undefined);
+  assert.equal(await invoke("update_goal", { status: "complete" }), undefined);
+  f.publicApi.setGoalFocus(null);
+  assert.equal((await invoke("update_goal_task", complete)).block, true);
+  // Only public before-tool hooks ran: no real Goal task was completed.
 });

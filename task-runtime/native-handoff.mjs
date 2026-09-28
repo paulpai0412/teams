@@ -5,6 +5,7 @@ import path from "node:path";
 import { readEvidenceBytes } from "../host-evidence.mjs";
 import { bytesDigest } from "./contracts.mjs";
 import { readNativeTerminal, nativeWorkflowResult } from "./role-lifecycle.mjs";
+import { branchId, roleRecovery } from "./role-recovery.mjs";
 
 export function inspectNativeHandoffs(
   mailbox,
@@ -55,6 +56,7 @@ export function inspectNativeHandoffs(
     roles.length > 0 && roles.length <= 64,
     "bounded native roles required",
   );
+  const recovery = roleRecovery(mailbox, contract, read);
   const lanes = [],
     seenRuns = new Set(roles.map((role) => role.runId));
   for (const role of roles) {
@@ -69,7 +71,39 @@ export function inspectNativeHandoffs(
       contract.workspace.sourceRoot,
       "native root cwd mismatch",
     );
-    assert.equal(status.state, "complete", "native root incomplete");
+    const selected = role.members.filter(
+      (member) => !recovery.replaced.has(branchId(role.runId, member.key)),
+    );
+    // A fully replaced attempt contributes no product bytes. Its termination,
+    // identity, evidence and usage remain mandatory; it is never relabelled PASS.
+    if (selected.length === 0) {
+      const boot = mailbox.readJson("receipts/boot.json");
+      assert.ok(
+        readNativeTerminal(
+          role,
+          [boot.workerSessionId, boot.workerSessionFile],
+          read,
+        ),
+        "replaced native attempt is unresolved",
+      );
+      continue;
+    }
+    const recovering = selected.length < role.members.length;
+    if (status.state !== "complete") {
+      assert.ok(
+        recovering && status.state === "failed",
+        "native root incomplete",
+      );
+      const boot = mailbox.readJson("receipts/boot.json");
+      assert.ok(
+        readNativeTerminal(
+          role,
+          [boot.workerSessionId, boot.workerSessionFile],
+          read,
+        ),
+        "failed native root unresolved",
+      );
+    }
     if (role.hostedWorkflow) {
       assert.equal(contract.schemaVersion, "teams-task-runtime/3");
       const boot = mailbox.readJson("receipts/boot.json");
@@ -86,7 +120,9 @@ export function inspectNativeHandoffs(
         ),
         "hosted workflow unresolved",
       );
-      for (const step of status.steps) nativeWorkflowResult(status, step);
+      for (const step of status.steps)
+        if (!recovery.replaced.has(branchId(role.runId, step.workflowKey)))
+          nativeWorkflowResult(status, step);
     } else {
       assert.equal(
         status.processTerminal?.version,
@@ -157,6 +193,7 @@ export function inspectNativeHandoffs(
     );
     if (role.members.every((member) => member.isolation === "shared")) {
       for (const [index, member] of role.members.entries()) {
+        if (recovery.replaced.has(branchId(role.runId, member.key))) continue;
         assert.equal(
           status.steps[index].agent,
           member.role,
@@ -182,7 +219,11 @@ export function inspectNativeHandoffs(
       role.runId,
       "workflow receipt identity mismatch",
     );
-    assert.equal(receipt.state, "complete", "workflow receipt incomplete");
+    assert.ok(
+      receipt.state === "complete" ||
+        (recovering && receipt.state === "failed" && status.state === "failed"),
+      "workflow receipt incomplete",
+    );
     assert.deepEqual(
       Object.keys(receipt.entries ?? {}).sort(),
       role.members.map((member) => member.key).sort(),
@@ -204,6 +245,7 @@ export function inspectNativeHandoffs(
       "duplicate native step identity",
     );
     for (const member of role.members) {
+      if (recovery.replaced.has(branchId(role.runId, member.key))) continue;
       const row = rows.find((item) => item.key === member.key);
       const step = status.steps.find((item) => item.workflowKey === member.key);
       const entry = receipt.entries[member.key];
@@ -318,6 +360,7 @@ export function inspectNativeHandoffs(
         runId: row.runId,
         role: member.role,
         mode: member.mode,
+        sessionFile: step.sessionFile,
         baseCommit: group.baseCommit,
         manifestPath: ref,
         manifestSha256: files.get(ref).sha256,
@@ -331,5 +374,5 @@ export function inspectNativeHandoffs(
     lanes.length > 0 && lanes.length <= 64,
     "isolated lane inventory required",
   );
-  return { lanes, files: [...files.values()] };
+  return { lanes, files: [...files.values()], repairs: recovery.repairs };
 }

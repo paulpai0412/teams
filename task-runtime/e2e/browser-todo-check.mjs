@@ -5,6 +5,7 @@ import http from "node:http";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { emptyStateVisible, todoRows, todoCount } from "./todo-dom.mjs";
 
 const [workspace, evidenceDir] = process.argv
   .slice(2)
@@ -14,8 +15,9 @@ assert.ok(
   "usage: browser-todo-check.mjs WORKSPACE EVIDENCE_DIR",
 );
 const appRoot = path.join(workspace, "app");
-const emptyStateVisible =
-  "document.querySelector('[data-testid=empty]').checkVisibility({checkOpacity:true,checkVisibilityCSS:true})";
+let phase = "startup";
+let lastExpression = null;
+const observations = {};
 const edge = path.join(
   process.env["ProgramFiles(x86)"] ?? "C:\\Program Files (x86)",
   "Microsoft",
@@ -131,6 +133,7 @@ class Cdp {
 }
 
 async function evaluate(cdp, expression) {
+  lastExpression = expression;
   const response = await cdp.call("Runtime.evaluate", {
     expression,
     awaitPromise: true,
@@ -259,20 +262,14 @@ try {
     deviceScaleFactor: 1,
     mobile: false,
   });
+  phase = "initial-empty";
   await cdp.call("Page.navigate", { url: `http://127.0.0.1:${appPort}/` });
   await waitFor(cdp, "document.readyState === 'complete'");
   await waitFor(
     cdp,
     "document.querySelector('#todo-form') && document.querySelector('#todo-input') && document.querySelector('#todo-list')",
   );
-  assert.equal(
-    await evaluate(
-      cdp,
-      "document.querySelectorAll('#todo-list [data-todo-id]').length",
-    ),
-    0,
-    "initial list is not empty",
-  );
+  assert.equal(await evaluate(cdp, todoCount), 0, "initial list is not empty");
   assert.equal(
     await evaluate(
       cdp,
@@ -287,14 +284,20 @@ try {
     "empty state is not visible for an empty list",
   );
 
+  assert.equal(
+    await evaluate(
+      cdp,
+      "document.documentElement.scrollWidth <= document.documentElement.clientWidth",
+    ),
+    true,
+    "desktop horizontal overflow",
+  );
+  phase = "create";
   await evaluate(
     cdp,
     `(() => { const input = document.querySelector('#todo-input'); input.value = 'Ship Task Pi'; input.dispatchEvent(new Event('input', { bubbles: true })); document.querySelector('#todo-form').requestSubmit(); return true; })()`,
   );
-  await waitFor(
-    cdp,
-    "document.querySelectorAll('#todo-list [data-todo-id]').length === 1",
-  );
+  await waitFor(cdp, `${todoCount} === 1`);
   assert.equal(
     await evaluate(
       cdp,
@@ -303,11 +306,24 @@ try {
     true,
     "created todo missing",
   );
+  observations.afterCreate = await evaluate(
+    cdp,
+    `({rows:${todoCount}, identityMatches:document.querySelectorAll('#todo-list [data-todo-id]').length, emptyPresent:Boolean(document.querySelector('[data-testid=empty]'))})`,
+  );
   assert.equal(
     await evaluate(cdp, emptyStateVisible),
     false,
     "empty state remains visible after creating a todo",
   );
+  assert.equal(
+    await evaluate(
+      cdp,
+      `${todoRows}.every(row => row.querySelector('input[type=checkbox]') && row.querySelector('[data-action=delete]'))`,
+    ),
+    true,
+    "todo row controls missing",
+  );
+  phase = "complete-filter-delete";
   await evaluate(
     cdp,
     "document.querySelector('#todo-list input[type=checkbox]').click()",
@@ -321,14 +337,7 @@ try {
     "todo was not completed",
   );
   await evaluate(cdp, "document.querySelector('[data-filter=active]').click()");
-  assert.equal(
-    await evaluate(
-      cdp,
-      "document.querySelectorAll('#todo-list [data-todo-id]').length",
-    ),
-    0,
-    "active filter is wrong",
-  );
+  assert.equal(await evaluate(cdp, todoCount), 0, "active filter is wrong");
   assert.equal(
     await evaluate(cdp, emptyStateVisible),
     true,
@@ -338,32 +347,19 @@ try {
     cdp,
     "document.querySelector('[data-filter=completed]').click()",
   );
-  assert.equal(
-    await evaluate(
-      cdp,
-      "document.querySelectorAll('#todo-list [data-todo-id]').length",
-    ),
-    1,
-    "completed filter is wrong",
-  );
+  assert.equal(await evaluate(cdp, todoCount), 1, "completed filter is wrong");
   await evaluate(
     cdp,
     "document.querySelector('#todo-list [data-action=delete]').click()",
   );
-  assert.equal(
-    await evaluate(
-      cdp,
-      "document.querySelectorAll('#todo-list [data-todo-id]').length",
-    ),
-    0,
-    "delete failed",
-  );
+  assert.equal(await evaluate(cdp, todoCount), 0, "delete failed");
   assert.equal(
     await evaluate(cdp, emptyStateVisible),
     true,
     "empty state did not reappear after deletion",
   );
 
+  phase = "persistence";
   await evaluate(cdp, "document.querySelector('[data-filter=all]').click()");
   await evaluate(
     cdp,
@@ -382,6 +378,7 @@ try {
   const desktopScreenshot = path.join(evidenceDir, "desktop.png");
   await screenshot(cdp, desktopScreenshot);
 
+  phase = "mobile-focus-label";
   await cdp.call("Emulation.setDeviceMetricsOverride", {
     width: 390,
     height: 844,
@@ -416,6 +413,7 @@ try {
   );
   const mobileScreenshot = path.join(evidenceDir, "mobile.png");
   await screenshot(cdp, mobileScreenshot);
+  phase = "text-safety";
   await evaluate(
     cdp,
     `(() => { const input = document.querySelector('#todo-input'); input.value = '<svg onload="window.todoXss=1">'; document.querySelector('#todo-form').requestSubmit(); return true; })()`,
@@ -428,6 +426,7 @@ try {
     true,
     "todo text was interpreted as HTML",
   );
+  phase = "corrupt-storage-recovery";
   await evaluate(
     cdp,
     "localStorage.setItem('task-pi-todos-v1', '{broken'); true",
@@ -447,6 +446,7 @@ try {
   );
   timings.interactionsCompleteMs = elapsed();
 
+  phase = "browser-errors";
   assert.deepEqual(
     requests.filter((request) => request.status >= 400),
     [],
@@ -474,6 +474,7 @@ try {
       "corrupt-storage-recovery",
     ],
     timings,
+    observations,
     requests,
     runtimeErrors,
     anomalies: [
@@ -493,6 +494,52 @@ try {
     `${JSON.stringify(report, null, 2)}\n`,
   );
   process.stdout.write(`${JSON.stringify(report)}\n`);
+} catch (error) {
+  const failedExpression = lastExpression;
+  let dom = null,
+    diagnosticError = null;
+  if (socket) {
+    let timer;
+    try {
+      const result = await Promise.race([
+        socket.call("Runtime.evaluate", {
+          expression: "document.body?.outerHTML.slice(0, 32768) ?? null",
+          returnByValue: true,
+        }),
+        new Promise((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error("DOM diagnostic timeout")),
+            2000,
+          );
+        }),
+      ]);
+      dom = result.result?.value ?? null;
+    } catch (cause) {
+      diagnosticError = String(cause.message);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  const report = {
+    schemaVersion: "teams-browser-e2e/1",
+    status: "failed",
+    phase,
+    expression: failedExpression,
+    error: String(error.stack ?? error).slice(0, 8000),
+    dom,
+    diagnosticError,
+    runtimeErrors,
+    requests,
+    timings,
+    observations,
+    browserStderr: stderr.slice(0, 2000),
+    finishedAt: new Date().toISOString(),
+  };
+  fs.writeFileSync(
+    path.join(evidenceDir, "browser-report.json"),
+    `${JSON.stringify(report, null, 2)}\n`,
+  );
+  throw error;
 } finally {
   socket?.close();
   if (server) await new Promise((resolve) => server.close(resolve));

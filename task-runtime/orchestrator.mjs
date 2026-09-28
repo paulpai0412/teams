@@ -8,11 +8,26 @@ import {
   validateEvent,
   validateTaskContract,
   validateTaskResult,
+  taskPreparationDiagnostics,
 } from "./contracts.mjs";
 import { RuntimeLedger } from "./ledger.mjs";
+import { validateInput } from "./input-rejection.mjs";
+import { readEvidenceBytes } from "../host-evidence.mjs";
 import { Mailbox } from "./mailbox.mjs";
+import { buildTaskPrompt } from "./worker-runtime.mjs";
 import { measureClosedExecutionUsage } from "./task-usage.mjs";
 import { captureWorkspace, verifyWorkspaceResult } from "./workspace-scope.mjs";
+import { candidateRepairIntent } from "./task-revision.mjs";
+import { reportRevisionIntent, verifyReportOrigin } from "./report-lineage.mjs";
+import {
+  reviewProductRevisionIntent,
+  verifyReviewProductOrigin,
+} from "./review-product-lineage.mjs";
+import {
+  taskDeadlineAt,
+  taskRemainingMs,
+  hasOriginalTaskDeadline,
+} from "./task-deadline.mjs";
 import {
   readRoleLifecycle,
   readReviewLifecycle,
@@ -118,6 +133,81 @@ function readWorkerBoot(mailbox, execution, contract) {
   return boot;
 }
 
+// Historical accounting is read-only: bind the closed ledger row and native
+// corpus, not a reconstructed controller or an impersonated live owner.
+export function readClosedExecutionUsage(runtimeRoot, executionId) {
+  return closedExecutionUsage(runtimeRoot, executionId);
+}
+
+function closedExecutionUsage(runtimeRoot, executionId, retainingOwner) {
+  assert.equal(
+    fs.realpathSync(runtimeRoot),
+    runtimeRoot,
+    "canonical runtime root required",
+  );
+  const ledger = new RuntimeLedger(path.join(runtimeRoot, "ledger.sqlite"), {
+    readOnly: true,
+  });
+  try {
+    const execution = ledger.getExecution(executionId);
+    assert.ok(
+      !execution.reservationOpen &&
+        ["ACCEPTED", "CANCELLED", "FAILED", "REJECTED"].includes(
+          execution.state,
+        ),
+      "historical execution is not closed",
+    );
+    const contract = ledger.getContract(executionId);
+    const mailbox = Mailbox.open(
+      path.join(
+        runtimeRoot,
+        "projects",
+        execution.projectId,
+        "executions",
+        executionId,
+      ),
+      executionId,
+    );
+    const usage = measureClosedExecutionUsage(
+      {
+        mailbox,
+        contract,
+        execution,
+        ownerSessionId: execution.ownerSessionId,
+        assertOwner() {
+          retainingOwner?.(execution);
+          assert.deepEqual(
+            ledger.getExecution(executionId),
+            execution,
+            "historical execution changed during read",
+          );
+          assert.equal(
+            digest(contract),
+            execution.requestDigest,
+            "historical contract changed",
+          );
+          assert.equal(
+            digest(mailbox.readJson("task-request.json")),
+            execution.requestDigest,
+            "historical mailbox contract changed",
+          );
+        },
+        assertStopped(boot) {
+          assert.equal(
+            processTerminalProof(boot).terminal,
+            true,
+            "historical Worker is not terminal",
+          );
+        },
+      },
+      { retainTerminal: Boolean(retainingOwner) },
+    );
+    return { execution, usage };
+  } finally {
+    ledger.close();
+  }
+}
+
 export class TaskOrchestrator {
   constructor({ runtimeRoot, ownerSessionId, herdr = null }) {
     assert.ok(path.isAbsolute(runtimeRoot), "absolute runtimeRoot required");
@@ -164,6 +254,52 @@ export class TaskOrchestrator {
     } finally {
       this.ledger.close();
     }
+  }
+
+  captureClosedUsage(executionId) {
+    assert.ok(
+      !this.closed && this.admittedExecutions.has(executionId),
+      "only the original live instance may seal closed usage",
+    );
+    const { execution, usage } = closedExecutionUsage(
+      this.runtimeRoot,
+      executionId,
+      (row) => this.assertExecutionOwner(row),
+    );
+    this.assertExecutionOwner(execution);
+    const mailbox = Mailbox.open(
+      path.join(
+        this.runtimeRoot,
+        "projects",
+        execution.projectId,
+        "executions",
+        executionId,
+      ),
+      executionId,
+    );
+    const receipt = {
+      schemaVersion: "teams-closed-usage/1",
+      executionId,
+      ownerSessionId: this.ownerSessionId,
+      ownerEpoch: execution.ownerEpoch,
+      executionRevision: execution.revision,
+      usage,
+    };
+    const relative = "receipts/closed-usage.json";
+    if (fs.existsSync(path.join(mailbox.root, relative)))
+      assert.deepEqual(
+        mailbox.readJson(relative, 1024 * 1024),
+        receipt,
+        "closed usage receipt changed",
+      );
+    else mailbox.writeJson(relative, receipt, 1024 * 1024);
+    return {
+      status: "measured",
+      runtimeRoot: this.runtimeRoot,
+      receiptRef: path.join(mailbox.root, relative),
+      receiptDigest: digest(receipt),
+      usage,
+    };
   }
 
   assertController(projectId) {
@@ -284,38 +420,267 @@ export class TaskOrchestrator {
     );
   }
 
-  prepare(spec) {
+  async prepareReportRevision(spec, revision) {
     assert.ok(
-      spec && typeof spec === "object" && !Array.isArray(spec),
-      "task specification required",
+      typeof spec?.workspace?.sourceRoot === "string" &&
+        path.isAbsolute(spec.workspace.sourceRoot),
+      "absolute sourceRoot required",
     );
+    const id = deriveProjectId(spec.workspace.sourceRoot);
+    this.assertController(id);
+    const history = this.ledger.listTaskExecutions(
+      id,
+      spec.goalId,
+      spec.taskId,
+    );
+    assert.equal(
+      history.length,
+      1,
+      "report-only revision requires exactly one prior execution",
+    );
+    const previous = history[0];
+    const oldContract = this.ledger.getContract(previous.executionId);
+    const previousMailbox = Mailbox.open(
+      path.join(
+        this.runtimeRoot,
+        "projects",
+        id,
+        "executions",
+        previous.executionId,
+      ),
+      previous.executionId,
+    );
+    const intent = await reportRevisionIntent({
+      orchestrator: this,
+      previous,
+      oldContract,
+      previousMailbox,
+      spec: {
+        ...spec,
+        policy: {
+          ...spec.policy,
+          tokenBudgetMode: spec.policy?.tokenBudgetMode ?? "shared",
+        },
+      },
+      revision,
+      baseline: captureWorkspace(oldContract, this.runtimeRoot),
+    });
+    return this.prepare(spec, { reportOf: intent });
+  }
+
+  prepareReviewProductRevision(spec, revision) {
+    return this.prepareProductRevision(spec, {
+      ...revision,
+      origin: "blocked-review",
+    });
+  }
+
+  async prepareProductRevision(spec, revision) {
+    assert.ok(
+      ["blocked-review", "integration-conflict"].includes(revision.origin),
+      "unsupported product revision origin",
+    );
+    // The old execution, not an L0-regenerated draft, selects the lineage.
+    const selected = this.ledger.getExecution(revision.previousExecutionId);
+    assert.ok(selected, "previous execution unavailable");
+    this.assertControllerAdmission(selected);
+    const id = selected.projectId;
+    const history = this.ledger.listTaskExecutions(
+      id,
+      selected.goalId,
+      selected.taskId,
+    );
+    assert.equal(
+      history.length,
+      1,
+      "product candidate revision requires one prior execution",
+    );
+    const previous = history[0];
+    assert.equal(previous.executionId, revision.previousExecutionId);
+    const oldContract = this.ledger.getContract(previous.executionId);
+    spec = validateInput("task-spec", () => {
+      if (spec === null) {
+        const additional = revision.additionalChecks ?? [];
+        assert.ok(
+          Array.isArray(additional) && additional.length <= 30,
+          "bounded additional checks required",
+        );
+        const { identity, ...fields } = structuredClone(oldContract);
+        return {
+          ...fields,
+          goalId: identity.goalId,
+          taskId: identity.taskId,
+          taskRevision: identity.taskRevision + 1,
+          checks: [...fields.checks, ...structuredClone(additional)],
+        };
+      }
+      assert.ok(
+        spec && typeof spec === "object" && !Array.isArray(spec),
+        "task specification required",
+      );
+      assert.equal(
+        revision.additionalChecks,
+        undefined,
+        "spec_path and additional_checks cannot be mixed",
+      );
+      return spec;
+    });
+    const previousMailbox = Mailbox.open(
+      path.join(
+        this.runtimeRoot,
+        "projects",
+        id,
+        "executions",
+        previous.executionId,
+      ),
+      previous.executionId,
+    );
+    if (revision.origin === "integration-conflict") {
+      // Validate a legacy draft against the selected E0 before prepare() can
+      // derive a project/controller from model-authored workspace or Task IDs.
+      candidateRepairIntent({
+        previous,
+        oldContract,
+        previousMailbox,
+        spec: {
+          ...spec,
+          policy: {
+            ...spec.policy,
+            tokenBudgetMode: spec.policy?.tokenBudgetMode ?? "shared",
+          },
+        },
+        revision,
+        ownerSessionId: this.ownerSessionId,
+        baseline: captureWorkspace(oldContract, this.runtimeRoot),
+      });
+      return this.prepare(spec, { repairOf: revision });
+    }
+    const intent = await reviewProductRevisionIntent({
+      orchestrator: this,
+      previous,
+      oldContract,
+      previousMailbox,
+      spec: {
+        ...spec,
+        policy: {
+          ...spec.policy,
+          tokenBudgetMode: spec.policy?.tokenBudgetMode ?? "shared",
+        },
+      },
+      revision,
+      baseline: captureWorkspace(oldContract, this.runtimeRoot),
+    });
+    return this.prepare(spec, { reviewOf: intent });
+  }
+
+  prepare(spec, { repairOf = null, reportOf = null, reviewOf = null } = {}) {
+    validateInput("task-spec", () => {
+      assert.ok(
+        spec && typeof spec === "object" && !Array.isArray(spec),
+        "task specification required",
+      );
+      assert.ok(
+        typeof spec.workspace?.sourceRoot === "string" &&
+          path.isAbsolute(spec.workspace.sourceRoot),
+        "absolute sourceRoot required",
+      );
+    });
     const id = deriveProjectId(spec.workspace?.sourceRoot);
     const owner = this.ledger.claimController(id, this.ownerSessionId);
     const executionId = randomUUID();
-    const contract = validateTaskContract({
-      schemaVersion: spec.schemaVersion ?? "teams-task-runtime/2",
-      identity: {
-        projectId: id,
-        goalId: spec.goalId,
-        taskId: spec.taskId,
-        taskRevision: spec.taskRevision,
-        executionId,
-        ownerEpoch: owner.ownerEpoch,
-      },
-      objective: spec.objective,
-      nonGoals: spec.nonGoals,
-      workspace: spec.workspace,
-      criteria: spec.criteria,
-      checks: spec.checks,
-      policy:
-        spec.schemaVersion === "teams-task-runtime/3"
-          ? {
-              ...spec.policy,
-              tokenBudgetMode: spec.policy.tokenBudgetMode ?? "shared",
-            }
-          : spec.policy,
-      contextRefs: spec.contextRefs,
+    const contract = validateInput("task-spec", () =>
+      validateTaskContract({
+        schemaVersion: spec.schemaVersion ?? "teams-task-runtime/2",
+        identity: {
+          projectId: id,
+          goalId: spec.goalId,
+          taskId: spec.taskId,
+          taskRevision: spec.taskRevision,
+          executionId,
+          ownerEpoch: owner.ownerEpoch,
+        },
+        objective: spec.objective,
+        nonGoals: spec.nonGoals,
+        workspace: spec.workspace,
+        criteria: spec.criteria,
+        checks: spec.checks,
+        policy:
+          spec.schemaVersion === "teams-task-runtime/3"
+            ? {
+                ...spec.policy,
+                tokenBudgetMode: spec.policy?.tokenBudgetMode ?? "shared",
+              }
+            : spec.policy,
+        contextRefs: spec.contextRefs,
+      }),
+    );
+    assert.ok(
+      [repairOf, reportOf, reviewOf].filter(Boolean).length <= 1,
+      "only one revision mode allowed",
+    );
+    if (repairOf || reportOf || reviewOf)
+      assert.equal(
+        contract.schemaVersion,
+        "teams-task-runtime/3",
+        "revision requires v3",
+      );
+    // Only draft validation is correctable. Source, ownership, usage and reserve
+    // failures below retain their original failure/reconciliation semantics.
+    const contractRef = path.join(
+      this.runtimeRoot,
+      "projects",
+      id,
+      "executions",
+      executionId,
+      "task-request.json",
+    );
+    const revisionRef =
+      repairOf || reportOf || reviewOf
+        ? path.join(
+            path.dirname(contractRef),
+            `receipts/${repairOf || reviewOf ? "repair" : "report-revision"}-intent.json`,
+          )
+        : null;
+    validateInput("task-prompt", () => {
+      buildTaskPrompt(
+        contract,
+        contractRef,
+        revisionRef,
+        repairOf?.origin === "integration-conflict"
+          ? "integration-conflict"
+          : !!reviewOf,
+      );
+      // The existing size limit must admit the authorized successor too;
+      // immutable fields cannot be shortened after E0 has been sealed.
+      if (
+        !revisionRef &&
+        contract.schemaVersion === "teams-task-runtime/3" &&
+        contract.policy.maxProcessRestarts === 1 &&
+        contract.policy.maxProductRepairsPerRole > 0
+      )
+        for (const origin of [true, "integration-conflict"])
+          buildTaskPrompt(
+            contract,
+            contractRef,
+            path.join(path.dirname(contractRef), "receipts/repair-intent.json"),
+            origin,
+          );
     });
+    if (contract.schemaVersion === "teams-task-runtime/3")
+      validateInput("task-context-ref", () => {
+        for (const ref of contract.contextRefs) {
+          const file = path.resolve(contract.workspace.sourceRoot, ref.uri);
+          assert.ok(fs.existsSync(file), `contextRef missing: ${ref.uri}`);
+          const actual = createHash("sha256")
+            .update(readEvidenceBytes(file))
+            .digest("hex");
+          assert.equal(
+            actual,
+            ref.sha256,
+            `contextRef SHA-256 mismatch: ${ref.uri}`,
+          );
+        }
+      });
     const requestDigest = digest(contract);
     const workspaceBaseline =
       contract.schemaVersion === "teams-task-runtime/3"
@@ -337,6 +702,9 @@ export class TaskOrchestrator {
       );
     const prior = this.ledger.findLatestTask(id, spec.goalId, spec.taskId);
     let priorUsage = null;
+    let repairIntent = null;
+    let reportIntent = null;
+    let reviewIntent = null;
     if (workspaceBaseline) {
       const history = this.ledger.listTaskExecutions(
         id,
@@ -347,6 +715,18 @@ export class TaskOrchestrator {
         history.length <= contract.policy.maxProcessRestarts,
         "task process restart budget exhausted",
       );
+      if (repairOf || reportOf || reviewOf) {
+        assert.equal(
+          history.length,
+          1,
+          "revision requires exactly one prior execution",
+        );
+        assert.equal(
+          prior?.executionId,
+          history[0].executionId,
+          "revision history changed",
+        );
+      }
       if (prior) {
         const oldContract = this.ledger.getContract(prior.executionId);
         assert.equal(
@@ -364,6 +744,95 @@ export class TaskOrchestrator {
           ),
           prior.executionId,
         );
+        if (repairOf) {
+          repairIntent = candidateRepairIntent({
+            previous: prior,
+            oldContract,
+            previousMailbox,
+            spec: { ...spec, policy: contract.policy },
+            revision: repairOf,
+            ownerSessionId: this.ownerSessionId,
+            baseline: workspaceBaseline,
+          });
+        } else if (reviewOf) {
+          assert.equal(reviewOf.previousExecutionId, prior.executionId);
+          const previousBaseline = previousMailbox.readJson(
+            "receipts/workspace-baseline.json",
+          );
+          assert.deepEqual(
+            previousBaseline.workspaces,
+            workspaceBaseline.workspaces,
+            "review product baseline changed",
+          );
+          reviewIntent = { ...reviewOf, executionId, requestDigest };
+          verifyReviewProductOrigin({
+            runtimeRoot: this.runtimeRoot,
+            ledger: this.ledger,
+            contract,
+            intent: reviewIntent,
+            assertOwner: () => this.assertController(id),
+          });
+        } else if (reportOf) {
+          assert.equal(reportOf.previousExecutionId, prior.executionId);
+          const previousBaseline = previousMailbox.readJson(
+            "receipts/workspace-baseline.json",
+          );
+          assert.deepEqual(
+            previousBaseline.workspaces,
+            workspaceBaseline.workspaces,
+            "report revision baseline changed",
+          );
+          reportIntent = {
+            ...reportOf,
+            executionId,
+            requestDigest,
+          };
+          verifyReportOrigin({
+            runtimeRoot: this.runtimeRoot,
+            ledger: this.ledger,
+            contract,
+            intent: reportIntent,
+            assertOwner: () => this.assertController(id),
+          });
+        } else {
+          // A native process restart is not a candidate repair or an owner
+          // top-up. In particular, it cannot bypass the failed-check intent.
+          assert.ok(
+            !fs.existsSync(
+              path.join(previousMailbox.root, "integration/failure.json"),
+            ),
+            "failed sealed integration requires explicit candidate revision or reconciliation",
+          );
+          if (oldContract.policy.reviewProductRevision === "within-scope-once")
+            assert.ok(
+              !fs.existsSync(
+                path.join(previousMailbox.root, "integration/reviews"),
+              ) ||
+                fs.readdirSync(
+                  path.join(previousMailbox.root, "integration/reviews"),
+                ).length === 0,
+              "reviewed execution requires explicit review revision or reconciliation",
+            );
+          assert.equal(
+            contract.identity.taskRevision,
+            oldContract.identity.taskRevision + 1,
+            "task revision must advance by one",
+          );
+          for (const key of [
+            "objective",
+            "nonGoals",
+            "workspace",
+            "criteria",
+            "checks",
+            "policy",
+            "contextRefs",
+          ])
+            assert.deepEqual(
+              contract[key],
+              oldContract[key],
+              `process restart ${key} changed; new authority required`,
+            );
+        }
         priorUsage = measureClosedExecutionUsage({
           mailbox: previousMailbox,
           contract: oldContract,
@@ -403,13 +872,30 @@ export class TaskOrchestrator {
         );
       }
     }
-    this.ledger.reserve(contract, requestDigest, this.ownerSessionId);
+    this.ledger.reserve(
+      contract,
+      requestDigest,
+      this.ownerSessionId,
+      reviewIntent ? { expectedPrevious: prior } : {},
+    );
     const mailbox = Mailbox.create(this.runtimeRoot, id, executionId);
     mailbox.sealContract(contract);
     if (priorUsage)
       mailbox.writeJson("receipts/prior-usage.json", priorUsage, 1024 * 1024);
     if (workspaceBaseline)
       mailbox.writeReceipt("workspace-baseline", workspaceBaseline);
+    if (repairIntent || reviewIntent)
+      mailbox.writeReceipt("repair-intent", {
+        ...(repairIntent ?? reviewIntent),
+        executionId,
+        requestDigest,
+        priorUsageDigest: digest(priorUsage),
+      });
+    if (reportIntent)
+      mailbox.writeReceipt("report-revision-intent", {
+        ...reportIntent,
+        priorUsageDigest: digest(priorUsage),
+      });
     const launchNonce = randomUUID();
     if (workspaceBaseline) this.admittedExecutions.add(executionId);
     mailbox.writeBootstrap({
@@ -420,6 +906,20 @@ export class TaskOrchestrator {
       launchNonce,
       priorExecutionId: prior?.executionId ?? null,
       ...(priorUsage ? { priorUsageDigest: digest(priorUsage) } : {}),
+      ...(repairIntent || reviewIntent
+        ? {
+            repairIntentDigest: digest(
+              mailbox.readJson("receipts/repair-intent.json"),
+            ),
+          }
+        : {}),
+      ...(reportIntent
+        ? {
+            reportRevisionIntentDigest: digest(
+              mailbox.readJson("receipts/report-revision-intent.json"),
+            ),
+          }
+        : {}),
       ...(controller ? { controller } : {}),
       ...(workspaceBaseline
         ? { workspaceBaselineDigest: digest(workspaceBaseline) }
@@ -441,6 +941,21 @@ export class TaskOrchestrator {
       launchNonce,
       executionRoot: mailbox.root,
       contract,
+      diagnostics: taskPreparationDiagnostics(contract),
+      ...(repairIntent || reviewIntent
+        ? {
+            repairIntentDigest: digest(
+              mailbox.readJson("receipts/repair-intent.json"),
+            ),
+          }
+        : {}),
+      ...(reportIntent
+        ? {
+            reportRevisionIntentDigest: digest(
+              mailbox.readJson("receipts/report-revision-intent.json"),
+            ),
+          }
+        : {}),
     };
   }
 
@@ -458,6 +973,9 @@ export class TaskOrchestrator {
       this.herdr && typeof this.herdr.start === "function",
       "Herdr adapter required",
     );
+    const launchDeadlineMs = hasOriginalTaskDeadline(contract, mailbox)
+      ? taskRemainingMs(this.ledger, execution, contract)
+      : contract.policy.deadlineMs;
     execution = this.ledger.transition(
       executionId,
       "RESERVED",
@@ -480,7 +998,12 @@ export class TaskOrchestrator {
         executionId,
         executionRoot: mailbox.root,
         cwd: contract.workspace.worktreePath ?? contract.workspace.sourceRoot,
-        deadlineMs: contract.policy.deadlineMs,
+        deadlineMs: hasOriginalTaskDeadline(contract, mailbox)
+          ? Math.min(
+              launchDeadlineMs,
+              taskRemainingMs(this.ledger, execution, contract),
+            )
+          : launchDeadlineMs,
       });
       execution = rememberPane(started.paneId);
       if (execution.state !== "SPAWNING")
@@ -573,8 +1096,7 @@ export class TaskOrchestrator {
         "fresh L0 instance admission unavailable; reconcile without resuming dispatch",
       );
       assert.ok(
-        Date.now() <
-          Date.parse(execution.createdAt) + contract.policy.deadlineMs,
+        Date.now() < taskDeadlineAt(this.ledger, execution, contract),
         "execution deadline exhausted",
       );
     }
@@ -725,16 +1247,17 @@ export class TaskOrchestrator {
     const latest = results.at(-1);
     validateTaskResult(latest, contract, execution.requestDigest);
     verifyWorkspaceResult(contract, mailbox, latest);
+    const resultRef = path.join(
+      mailbox.root,
+      "results",
+      `r${String(latest.resultRevision).padStart(4, "0")}.json`,
+    );
     this.ledger.recordResult(
       executionId,
       latest.resultRevision,
       digest(latest),
       latest.source.sourceDigest,
-      path.join(
-        mailbox.root,
-        "results",
-        `r${String(latest.resultRevision).padStart(4, "0")}.json`,
-      ),
+      resultRef,
       latest.unresolvedRunCount,
     );
     execution = this.ledger.getExecution(executionId);
@@ -745,7 +1268,9 @@ export class TaskOrchestrator {
         execution.revision,
         "RESULT_READY",
       );
-    return includeCandidate ? { execution, candidate: latest } : execution;
+    return includeCandidate
+      ? { execution, candidate: latest, resultRef }
+      : execution;
   }
 
   requestCancel(executionId, reason) {
@@ -756,20 +1281,28 @@ export class TaskOrchestrator {
       "bounded cancellation reason required",
     );
     let execution = this.ledger.getExecution(executionId);
-    this.assertExecutionOwner(execution);
+    const reconciliation = this.assertReconciliationOwner(execution);
     if (
       ["ACCEPTED", "REJECTED", "FAILED", "CANCELLED"].includes(execution.state)
     )
       return { ...execution, disposition: "already-terminal" };
     if (execution.state === "RESERVED") {
-      return {
-        ...this.ledger.finishCancellation(
-          executionId,
-          execution.revision,
-          this.ownerSessionId,
-        ),
-        disposition: "cancelled-before-launch",
-      };
+      const closed = reconciliation.takeoverProofRef
+        ? this.ledger.finishCancellationAfterTakeover(
+            executionId,
+            execution.revision,
+            reconciliation.previousOwnerSessionId,
+            reconciliation.previousOwnerEpoch,
+            this.ownerSessionId,
+            reconciliation.controller.ownerEpoch,
+            reconciliation.takeoverProofRef,
+          )
+        : this.ledger.finishCancellation(
+            executionId,
+            execution.revision,
+            this.ownerSessionId,
+          );
+      return { ...closed, disposition: "cancelled-before-launch" };
     }
     if (execution.state !== "CANCEL_REQUESTED")
       execution = this.ledger.transition(
@@ -836,6 +1369,63 @@ export class TaskOrchestrator {
     );
   }
 
+  // A confirmed takeover may reconcile a previously admitted execution, but
+  // it must not rewrite that execution's owner/epoch or contract identity.
+  assertReconciliationOwner(execution) {
+    const controller = this.assertController(execution.projectId);
+    if (
+      execution.ownerSessionId === this.ownerSessionId &&
+      execution.ownerEpoch === controller.ownerEpoch
+    )
+      return { controller, takeoverProofRef: null };
+    const proofRef = controller.takeoverProofRef;
+    assert.ok(
+      typeof proofRef === "string" && path.isAbsolute(proofRef),
+      "takeover proof required for successor reconciliation",
+    );
+    const recoveryRoot = path.join(this.runtimeRoot, "recovery");
+    const canonicalProof = fs.realpathSync(proofRef);
+    assert.ok(
+      canonicalProof.startsWith(`${fs.realpathSync(recoveryRoot)}${path.sep}`),
+      "takeover proof escapes recovery root",
+    );
+    const proof = readJson(canonicalProof);
+    assert.equal(proof.schemaVersion, "teams-controller-takeover/1");
+    assert.equal(proof.projectId, execution.projectId);
+    assert.equal(proof.nextOwnerSessionId, this.ownerSessionId);
+    assert.equal(proof.previousOwnerSessionId, execution.ownerSessionId);
+    assert.equal(proof.previousOwnerEpoch, execution.ownerEpoch);
+    assert.equal(controller.ownerEpoch, proof.previousOwnerEpoch + 1);
+    const listed = proof.openExecutions?.find(
+      (row) => row.executionId === execution.executionId,
+    );
+    assert.ok(listed, "execution was not covered by takeover proof");
+    assert.ok(
+      execution.revision >= listed.revision,
+      "execution revision predates takeover proof",
+    );
+    assert.ok(
+      [
+        "RESERVED",
+        "SPAWNING",
+        "RUNNING",
+        "CANCEL_REQUESTED",
+        "CANCELLED",
+        "RESULT_READY",
+        "UNKNOWN",
+      ].includes(execution.state),
+      "takeover reconciliation state is not cancellable",
+    );
+    assert.equal(listed.paneId, execution.paneId);
+    assert.equal(listed.workerSessionId, execution.workerSessionId);
+    return {
+      controller,
+      takeoverProofRef: canonicalProof,
+      previousOwnerSessionId: proof.previousOwnerSessionId,
+      previousOwnerEpoch: proof.previousOwnerEpoch,
+    };
+  }
+
   async cancel(
     executionId,
     reason,
@@ -865,7 +1455,7 @@ export class TaskOrchestrator {
       for (const review of reconciled.reviews ?? []) {
         if (review.terminal || review.error || !review.runId || signal?.aborted)
           continue;
-        this.assertExecutionOwner(this.ledger.getExecution(executionId));
+        this.assertReconciliationOwner(this.ledger.getExecution(executionId));
         assert.equal(
           reviewAdapter?.nativeOwner,
           review.nativeOwner,
@@ -912,7 +1502,7 @@ export class TaskOrchestrator {
           ...binding,
           ...outcome,
         });
-        this.assertExecutionOwner(this.ledger.getExecution(executionId));
+        this.assertReconciliationOwner(this.ledger.getExecution(executionId));
       }
       if (signal?.aborted || Date.now() >= deadline)
         return { ...reconciled, disposition: "draining" };
@@ -922,7 +1512,7 @@ export class TaskOrchestrator {
 
   reconcile(executionId) {
     let execution = this.ledger.getExecution(executionId);
-    this.assertExecutionOwner(execution);
+    let reconciliation = this.assertReconciliationOwner(execution);
     if (execution.state === "CANCELLED" && !execution.reservationOpen)
       return { execution, disposition: "already-cancelled" };
     const mailbox = Mailbox.open(
@@ -945,6 +1535,7 @@ export class TaskOrchestrator {
       );
     this.ingestEvents(mailbox);
     execution = this.ledger.getExecution(executionId);
+    reconciliation = this.assertReconciliationOwner(execution);
     let processProof = null;
     let paneClosure = null;
     let reviews = [];
@@ -984,7 +1575,7 @@ export class TaskOrchestrator {
       reviews = readReviewLifecycle(
         mailbox,
         contract,
-        this.ownerSessionId,
+        execution.ownerSessionId,
         (launch, owners, read) =>
           captureNativeTerminal(
             mailbox,
@@ -1008,7 +1599,7 @@ export class TaskOrchestrator {
       ) {
         const binding = {
           executionId,
-          ownerSessionId: this.ownerSessionId,
+          ownerSessionId: execution.ownerSessionId,
           ownerEpoch: execution.ownerEpoch,
           requestDigest: execution.requestDigest,
           workerSessionId: boot.workerSessionId,
@@ -1053,7 +1644,7 @@ export class TaskOrchestrator {
             ),
             "pane closure outcome unknown; reconcile without replay",
           );
-          this.assertExecutionOwner(this.ledger.getExecution(executionId));
+          this.assertReconciliationOwner(this.ledger.getExecution(executionId));
           if (typeof this.herdr.isIdle === "function") {
             const idle = this.herdr.isIdle(execution.paneId, binding.cwd);
             assert.equal(
@@ -1073,7 +1664,7 @@ export class TaskOrchestrator {
                 },
               };
           }
-          this.assertExecutionOwner(this.ledger.getExecution(executionId));
+          this.assertReconciliationOwner(this.ledger.getExecution(executionId));
           mailbox.writeReceipt("cancel-pane-intent", binding);
           paneClosure = this.herdr.closeIdle(execution.paneId, binding.cwd);
           assert.equal(
@@ -1091,7 +1682,7 @@ export class TaskOrchestrator {
             processProof,
             result: paneClosure,
           });
-          this.assertExecutionOwner(this.ledger.getExecution(executionId));
+          this.assertReconciliationOwner(this.ledger.getExecution(executionId));
         }
         assert.equal(
           paneClosure?.paneId,
@@ -1103,11 +1694,21 @@ export class TaskOrchestrator {
           "closed",
           "pane closure not confirmed",
         );
-        execution = this.ledger.finishCancellation(
-          executionId,
-          execution.revision,
-          this.ownerSessionId,
-        );
+        execution = reconciliation.takeoverProofRef
+          ? this.ledger.finishCancellationAfterTakeover(
+              executionId,
+              execution.revision,
+              reconciliation.previousOwnerSessionId,
+              reconciliation.previousOwnerEpoch,
+              this.ownerSessionId,
+              reconciliation.controller.ownerEpoch,
+              reconciliation.takeoverProofRef,
+            )
+          : this.ledger.finishCancellation(
+              executionId,
+              execution.revision,
+              this.ownerSessionId,
+            );
       }
     } else if (
       mailbox.listResults().length > 0 &&

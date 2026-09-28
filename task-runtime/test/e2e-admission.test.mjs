@@ -78,6 +78,75 @@ function fixture(t) {
   return { root, cwd, parent, old, config, file, load, save };
 }
 
+test("request-driven CLI admission accepts an authorized original request but no prepared spec or patch", (t) => {
+  const f = fixture(t);
+  const requestFile = path.join(f.root, "request.txt");
+  const inventoryFile = path.join(f.root, "inventory.json");
+  fs.writeFileSync(
+    requestFile,
+    "Build a useful app; derive Task boundaries from this requirement.\n",
+  );
+  fs.writeFileSync(
+    inventoryFile,
+    JSON.stringify({ status: "operator-inventory", parent: f.parent }),
+  );
+  const base = {
+    mode: "request-driven",
+    requestFile,
+    planningTaskCeiling: 1000000,
+    budget: f.config.budget,
+    authorization: {
+      mode: "task-pi",
+      goalAction: "create",
+      delivery: "verify-only",
+      parentSessionFile: f.parent,
+      parentAuthorizationEntryId: "original-approval",
+      unknownUsage: 0,
+      openReservations: 0,
+      historyProvenance: {
+        file: inventoryFile,
+        sha256: sha(fs.readFileSync(inventoryFile)),
+      },
+      deadlineMs: 3000,
+    },
+  };
+  const load = (input) => {
+    f.save(f.file, input);
+    return runner.loadAttemptInputs(f.file, f.cwd, f.parent);
+  };
+  const inputs = load(base);
+  assert.equal(inputs.taskTokenReservation, 1000000);
+  assert.equal(
+    inputs.preparation.requestSha256,
+    sha(fs.readFileSync(requestFile)),
+  );
+  assert.equal(inputs.preparation.specs, undefined);
+  assert.equal(inputs.authorization.goalAction, "create");
+  for (const change of [
+    { authorization: null },
+    { planningTaskCeiling: 0 },
+    { specPaths: f.config.specPaths },
+    { solutionPatch: "../answer.patch" },
+    { authorization: { ...base.authorization, openReservations: 1 } },
+    { authorization: { ...base.authorization, unknownUsage: null } },
+    {
+      authorization: {
+        ...base.authorization,
+        historyProvenance: { file: inventoryFile, sha256: "0".repeat(64) },
+      },
+    },
+  ])
+    assert.throws(() => load({ ...base, ...change }));
+  fs.appendFileSync(requestFile, "Changed after approval");
+  const changed = load(base);
+  assert.notEqual(
+    changed.preparation.requestSha256,
+    inputs.preparation.requestSha256,
+  );
+  // The runRpcAttempt/model-request boundary must compare the sealed input
+  // request SHA to the actual bytes before any process is spawned.
+});
+
 test("single and multi-Task admission derives reservations from specs, not a policy scalar", (t) => {
   const f = fixture(t);
   const inputs = f.load();

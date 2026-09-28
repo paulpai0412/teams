@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { snapshot } from "../host-evidence.mjs";
-import { digest } from "./contracts.mjs";
+import { digest, isReviewableResult } from "./contracts.mjs";
 
 const inside = (root, file) =>
   file === root || file.startsWith(root + path.sep);
@@ -119,7 +119,7 @@ export function verifyWorkspaceScope(contract, mailbox) {
 export function verifyWorkspaceResult(contract, mailbox, result) {
   if (
     contract.schemaVersion !== "teams-task-runtime/3" ||
-    result.outcome !== "ready_for_acceptance"
+    !isReviewableResult(result)
   )
     return null;
   const current = verifyWorkspaceScope(contract, mailbox);

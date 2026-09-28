@@ -8,7 +8,11 @@ import {
   snapshot,
   verifyCheck,
 } from "../host-evidence.mjs";
-import { digest, validateTaskResult } from "./contracts.mjs";
+import {
+  digest,
+  isReviewableResult,
+  validateTaskResult,
+} from "./contracts.mjs";
 import { Mailbox } from "./mailbox.mjs";
 import { assertTaskBudgetUsage } from "./task-budget.mjs";
 import { stageIntegration, readIntegrationRehearsal } from "./integration.mjs";
@@ -26,7 +30,16 @@ import {
   sealReviewCandidate,
   readAppliedReviewCandidate,
   readSealedReviewCandidate,
+  readCompletedReviewWave,
 } from "./review-runs.mjs";
+import { verifyReportOrigin } from "./report-lineage.mjs";
+import { verifyReviewProductOrigin } from "./review-product-lineage.mjs";
+import {
+  taskDeadlineAt,
+  taskRemainingMs,
+  hasOriginalTaskDeadline,
+} from "./task-deadline.mjs";
+import { verifyConflictRepairBinding } from "./integration-conflict.mjs";
 import { integrationReviewBinding } from "./integration-authority.mjs";
 import {
   verifyWorkspaceScope,
@@ -179,7 +192,11 @@ export class HostAcceptance {
     return { execution, contract, mailbox };
   }
 
-  #integrationContext(executionId, expectedState = "RESULT_READY") {
+  #integrationContext(
+    executionId,
+    expectedState = "RESULT_READY",
+    forReview = false,
+  ) {
     const { execution, contract, mailbox } = this.#context(executionId);
     assert.equal(
       execution.state,
@@ -192,15 +209,18 @@ export class HostAcceptance {
     );
     validateTaskResult(result, contract, execution.requestDigest);
     assert.equal(digest(result), stored.resultDigest, "stored result changed");
-    assert.equal(
-      result.outcome,
-      "ready_for_acceptance",
+    assert.ok(
+      forReview
+        ? isReviewableResult(result)
+        : result.outcome === "ready_for_acceptance",
       "integration requires a ready candidate",
     );
     const context = {
       mailbox,
       contract,
       result,
+      runtimeRoot: this.orchestrator.runtimeRoot,
+      ledger: this.orchestrator.ledger,
       ownerSessionId: this.orchestrator.ownerSessionId,
       assertApplyGates: async (staged) => {
         if (contract.schemaVersion === "teams-task-runtime/3") {
@@ -257,7 +277,7 @@ export class HostAcceptance {
           }
         }
       },
-      assertOwner: () => {
+      assertOwner: ({ duringApply = false } = {}) => {
         const current = this.orchestrator.ledger.getExecution(executionId);
         this.orchestrator.assertExecutionOwner(current);
         const controller = this.orchestrator.assertController(
@@ -274,28 +294,83 @@ export class HostAcceptance {
           "execution changed during integration",
         );
         verifyWorkspaceScope(contract, mailbox);
+        if (hasOriginalTaskDeadline(contract, mailbox))
+          taskRemainingMs(this.orchestrator.ledger, current, contract);
+        const boot = mailbox.readJson("bootstrap.json");
+        if (boot.repairIntentDigest) {
+          const intent = mailbox.readJson("receipts/repair-intent.json");
+          if (
+            [
+              "teams-candidate-repair-intent/2",
+              "teams-candidate-repair-intent/3",
+            ].includes(intent.schemaVersion)
+          ) {
+            assert.equal(
+              digest(intent),
+              boot.repairIntentDigest,
+              "review product intent changed",
+            );
+            if (duringApply) {
+              const operation = path.join(
+                mailbox.root,
+                "integration/target-apply",
+              );
+              assert.ok(
+                fs.existsSync(path.join(operation, "apply-intent.json")) &&
+                  fs.existsSync(path.join(operation, "operation.lock")),
+                "in-flight target mutation requires a fenced apply intent",
+              );
+            }
+            (intent.schemaVersion === "teams-candidate-repair-intent/3"
+              ? verifyConflictRepairBinding
+              : verifyReviewProductOrigin)({
+              projectId: contract.identity.projectId,
+              runtimeRoot: this.orchestrator.runtimeRoot,
+              ledger: this.orchestrator.ledger,
+              contract,
+              intent,
+              assertOwner: () =>
+                this.orchestrator.assertController(execution.projectId),
+              afterApply:
+                duringApply ||
+                fs.existsSync(
+                  path.join(
+                    mailbox.root,
+                    "integration/target-apply/apply-receipt.json",
+                  ),
+                ),
+            });
+          }
+        }
       },
     };
+    context.assertOwner();
     return context;
   }
 
   stageIntegration(executionId) {
-    const context = this.#integrationContext(executionId);
+    const context = this.#integrationContext(executionId, "RESULT_READY", true);
     verifyWorkspaceResult(context.contract, context.mailbox, context.result);
     return stageIntegration(context);
   }
 
   prepareIntegrationReview(executionId) {
-    return prepareIntegrationReview(this.#integrationContext(executionId));
+    return prepareIntegrationReview(
+      this.#integrationContext(executionId, "RESULT_READY", true),
+    );
   }
 
   planIntegrationReview(executionId, wave, adapter) {
-    return planReviewWave(this.#integrationContext(executionId), wave, adapter);
+    return planReviewWave(
+      this.#integrationContext(executionId, "RESULT_READY", true),
+      wave,
+      adapter,
+    );
   }
 
   startIntegrationReview(executionId, key, planDigest, adapter) {
     return startReviewWave(
-      this.#integrationContext(executionId),
+      this.#integrationContext(executionId, "RESULT_READY", true),
       key,
       planDigest,
       adapter,
@@ -303,15 +378,26 @@ export class HostAcceptance {
   }
 
   collectIntegrationReview(executionId, key, planDigest) {
-    return collectReviewWave(
-      this.#integrationContext(executionId),
-      key,
-      planDigest,
-    );
+    const context = this.#integrationContext(executionId, "RESULT_READY", true);
+    return collectReviewWave(context, key, planDigest).then((value) => {
+      if (value.state !== "bound") return value;
+      // Publication metadata only: do not change the sealed completion schema/bytes.
+      // collectReviewWave has verified the selectors and captured native evidence.
+      const relative = `integration/reviews/${key}/complete.json`;
+      return {
+        ...value,
+        resultDigest: digest(context.result),
+        resultOutcome: context.result.outcome,
+        completionRef: path.join(context.mailbox.root, relative),
+        completionSha256: context.mailbox.digestRelative(relative),
+      };
+    });
   }
 
   sealIntegrationReview(executionId) {
-    return sealReviewCandidate(this.#integrationContext(executionId));
+    return sealReviewCandidate(
+      this.#integrationContext(executionId, "RESULT_READY", true),
+    );
   }
 
   readAppliedIntegrationReview(executionId, planDigest) {
@@ -362,6 +448,21 @@ export class HostAcceptance {
     });
   }
 
+  #reportOrigin(context, staged) {
+    if (!staged.inheritedFrom) return null;
+    const intent = context.mailbox.readJson(
+      "receipts/report-revision-intent.json",
+    );
+    assert.equal(digest(intent), staged.inheritedFrom.intentDigest);
+    return verifyReportOrigin({
+      runtimeRoot: context.runtimeRoot,
+      ledger: context.ledger,
+      contract: context.contract,
+      intent,
+      assertOwner: context.assertOwner,
+    });
+  }
+
   runChecks(executionId) {
     const { execution, contract, mailbox } = this.#context(executionId);
     assert.equal(
@@ -369,6 +470,17 @@ export class HostAcceptance {
       "RESULT_READY",
       "host checks require a result-ready execution",
     );
+    if (
+      contract.schemaVersion === "teams-task-runtime/3" &&
+      contract.policy.integrationMode === "approved-integration" &&
+      !fs.existsSync(
+        path.join(mailbox.root, "integration/target-apply/apply-receipt.json"),
+      )
+    ) {
+      throw new Error(
+        "approved-integration requires target apply before final host checks; staged checks are already verified in integration/receipt.json",
+      );
+    }
     if (
       contract.schemaVersion === "teams-task-runtime/3" &&
       contract.policy.integrationMode === "verify-only" &&
@@ -381,11 +493,15 @@ export class HostAcceptance {
         contract.workspace.baseCommit,
       );
       const staged = readIntegrationRehearsal(context);
+      const origin = this.#reportOrigin(context, staged);
       return contract.checks.map((check) =>
         verifyCheck(
-          checkInput(contract, { ...check, cwd: staged.cwd }),
+          checkInput(contract, {
+            ...check,
+            cwd: origin?.staged.cwd ?? staged.cwd,
+          }),
           path.join(
-            mailbox.root,
+            origin?.mailbox.root ?? mailbox.root,
             "integration",
             `check-${check.commandId}.json`,
           ),
@@ -422,7 +538,19 @@ export class HostAcceptance {
       );
       const input = checkInput(contract, check);
       if (fs.existsSync(receiptFile)) return verifyCheck(input, receiptFile);
-      const receipt = runCheck(input, receiptFile);
+      const receipt = runCheck(
+        input,
+        receiptFile,
+        hasOriginalTaskDeadline(contract, mailbox)
+          ? {
+              hardDeadlineAt: taskDeadlineAt(
+                this.orchestrator.ledger,
+                execution,
+                contract,
+              ),
+            }
+          : {},
+      );
       assert.equal(
         receipt.status,
         "verified",
@@ -480,6 +608,23 @@ export class HostAcceptance {
       ? null
       : verifyIntegrationApply(context, planDigest);
     const staged = readIntegrationRehearsal(context);
+    const origin = this.#reportOrigin(context, staged);
+    if (origin) {
+      const intent = context.mailbox.readJson(
+        "receipts/report-revision-intent.json",
+      );
+      const key = intent.reviewFailureRelative.split("/")[2];
+      const original = await readCompletedReviewWave(
+        origin.origin,
+        key,
+        intent.reviewPlanDigest,
+      );
+      assert.equal(
+        original.verdict,
+        "blocked",
+        "original BLOCKED review changed",
+      );
+    }
     const binding = integrationReviewBinding(context, staged, candidate);
     if (application)
       assert.deepEqual(
@@ -534,17 +679,30 @@ export class HostAcceptance {
       "delivered source differs from reviewed source",
     );
     const checks = contract.checks.map((check) => {
-      const file = path.join(
-        mailbox.root,
-        patchOnly ? "integration" : "evidence",
-        `${patchOnly ? "check" : "host-final-check"}-${check.commandId}.json`,
-      );
+      const file = origin
+        ? path.join(
+            origin.mailbox.root,
+            "integration",
+            `check-${check.commandId}.json`,
+          )
+        : path.join(
+            mailbox.root,
+            patchOnly ? "integration" : "evidence",
+            `${patchOnly ? "check" : "host-final-check"}-${check.commandId}.json`,
+          );
       assert.ok(
         fs.existsSync(file),
         `missing final host check: ${check.commandId}`,
       );
       const verified = verifyCheck(
-        checkInput(contract, patchOnly ? { ...check, cwd: staged.cwd } : check),
+        checkInput(
+          contract,
+          origin
+            ? { ...check, cwd: origin.staged.cwd }
+            : patchOnly
+              ? { ...check, cwd: staged.cwd }
+              : check,
+        ),
         file,
       );
       assert.equal(
@@ -555,7 +713,9 @@ export class HostAcceptance {
       return {
         commandId: check.commandId,
         receiptRef: file,
-        digest: mailbox.digestRelative(path.relative(mailbox.root, file)),
+        digest: (origin?.mailbox ?? mailbox).digestRelative(
+          path.relative(origin?.mailbox.root ?? mailbox.root, file),
+        ),
       };
     });
     const criteria = contract.criteria.map((criterion) => {
@@ -628,6 +788,42 @@ export class HostAcceptance {
       bootDigest: mailbox.digestRelative("receipts/boot.json"),
       bootstrapDigest: mailbox.digestRelative("bootstrap.json"),
       lifecycleDigest: digest(mailbox.listEvents()),
+      ...(mailbox.readJson("bootstrap.json").repairIntentDigest &&
+      mailbox.readJson("receipts/repair-intent.json").schemaVersion ===
+        "teams-candidate-repair-intent/3"
+        ? {
+            conflictRevision: {
+              schemaVersion: "teams-conflict-product-lineage/1",
+              intentDigest: mailbox.digestRelative(
+                "receipts/repair-intent.json",
+              ),
+              previousExecutionId: mailbox.readJson(
+                "receipts/repair-intent.json",
+              ).previousExecutionId,
+              failureReceiptSha256: mailbox.readJson(
+                "receipts/repair-intent.json",
+              ).failureReceiptSha256,
+              repairedTree: staged.tree,
+            },
+          }
+        : {}),
+      ...(mailbox.readJson("bootstrap.json").repairIntentDigest &&
+      mailbox.readJson("receipts/repair-intent.json").schemaVersion ===
+        "teams-candidate-repair-intent/2"
+        ? {
+            productRevision: {
+              schemaVersion: "teams-review-product-lineage/1",
+              intentDigest: mailbox.digestRelative(
+                "receipts/repair-intent.json",
+              ),
+              previousExecutionId: mailbox.readJson(
+                "receipts/repair-intent.json",
+              ).previousExecutionId,
+              oldTree: mailbox.readJson("receipts/repair-intent.json").oldTree,
+              repairedTree: staged.tree,
+            },
+          }
+        : {}),
     };
   }
 

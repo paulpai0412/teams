@@ -8,7 +8,12 @@ import { fileURLToPath } from "node:url";
 import { readEvidenceBytes, saveEvidenceJson } from "../host-evidence.mjs";
 import { bytesDigest, canonicalBytes, digest } from "./contracts.mjs";
 import { publicPackage } from "./capabilities.mjs";
-import { compileRoleWave, prepareRoleWave } from "./role-wave.mjs";
+import {
+  compileRoleWave,
+  prepareRoleWave,
+  validateRoleWaveInput,
+} from "./role-wave.mjs";
+import { validateInput } from "./input-rejection.mjs";
 import { usesSharedTaskBudget } from "./budget-pool.mjs";
 import {
   budgetedChildren,
@@ -33,6 +38,12 @@ import {
 import { readIntegrationRehearsal } from "./integration.mjs";
 import { verifyIntegrationApply } from "./integration-apply.mjs";
 import { integrationReviewBinding } from "./integration-authority.mjs";
+import {
+  taskDeadlineAt,
+  hasOriginalTaskDeadline,
+  taskMemberTimeoutMs,
+  taskRemainingMs,
+} from "./task-deadline.mjs";
 import {
   measureExecutionUsage,
   measureSessionBytes,
@@ -215,6 +226,7 @@ async function reviewCandidate(
     );
     const request = readRequest(context, appliedPlanDigest);
     const waves = [],
+      blockedKeys = [],
       identities = new Set();
     for (const key of keys) {
       assert.ok(
@@ -232,11 +244,13 @@ async function reviewCandidate(
         plan.planDigest,
         appliedPlanDigest,
       );
-      assert.equal(
-        complete.verdict,
-        "pass",
-        `review wave did not pass: ${key}`,
-      );
+      if (complete.verdict === "blocked") blockedKeys.push(key);
+      else
+        assert.equal(
+          complete.verdict,
+          "pass",
+          `review wave did not pass: ${key}`,
+        );
       // Independently check the complete inventory, not a possibly incomplete
       // predecessor projection from any one launch intent.
       for (const identity of [
@@ -271,6 +285,12 @@ async function reviewCandidate(
       request.digest,
       "review source changed during sealing",
     );
+    if (blockedKeys.length)
+      validateInput("review-seal", () =>
+        assert.fail(
+          `BLOCKED review wave ${blockedKeys.join(", ")} cannot be sealed as PASS; preserve the fully captured evidence. No review candidate was sealed.`,
+        ),
+      );
     const body = {
       schemaVersion: "teams-integration-review-candidate/1",
       ownerSessionId: context.ownerSessionId,
@@ -338,7 +358,16 @@ function childrenFor(context, request, wave) {
       allowedWritePaths: [],
     },
   };
-  const admitted = prepareRoleWave(view, request.subject.cwd, wave);
+  const timeoutMs = hasOriginalTaskDeadline(context.contract, context.mailbox)
+    ? taskMemberTimeoutMs(
+        context.ledger,
+        context.ledger.getExecution(context.contract.identity.executionId),
+        context.contract,
+      )
+    : context.contract.policy.deadlineMs;
+  const admitted = prepareRoleWave(view, request.subject.cwd, wave, {
+    timeoutMs,
+  });
   assert.ok(
     admitted.members.every(
       (row) => row.mode === "review" && row.isolation === "shared",
@@ -363,6 +392,26 @@ function childrenFor(context, request, wave) {
       "Read-only: do not modify source, fixtures, config, caches or evidence. Do not run side-effectful checks or delegate. Use structured_output for the review report, not a writer acceptanceReport. Missing evidence is blocked or needs-user, never PASS.",
       "Read subject.hostChecks: these controller-verified checks map criterionIds to source-bound receipt/log paths and SHA-256 digests. Read those designated receipts/logs to assess what was actually verified; do not rerun checks. acceptance=not-assessed means final acceptance is pending, not that host checks are absent. A passing check does not replace independent source review.",
       "sourcePaths must use only the frozen relative paths allowed by the output schema. Cite the specification and host evidence in reason/rationale, not as extra sourcePaths. Return needs-user for an unresolved question; this final review does not use supervisor coordination.",
+      ...(request.subject.branchRecovery
+        ? [
+            "TASK-LOCAL RECOVERY: read subject.branchRecovery (verify its SHA), especially repairs and selected lanes. Confirm each replacement resolves its diagnosed defect, retains its complete original contribution, and preserves successful siblings. Native failed attempts remain failures, not product evidence. Check the merged candidate and NEW host checks against ALL original requirements; missing contributions block PASS.",
+          ]
+        : []),
+      ...(request.subject.reportRevision
+        ? [
+            "REPORT-ONLY REVISION: inspect subject.priorBlockedReview and the corrected Worker result at subject.reportRevision.resultRef (verify its digest). Source/patch/check and original writer are unchanged from the BLOCKED review. Explicitly explain EACH prior finding in priorResolutions with source/evidence, including whether it was truly a report deficiency. If a prior product/source blocker remains, verdict MUST be blocked; a new PASS cannot erase it merely by changing prose. The old BLOCKED report is evidence, not acceptance.",
+          ]
+        : []),
+      ...(request.subject.conflictRevision
+        ? [
+            "CONFLICT REVISION: inspect subject.conflictRevision and ALL original captured lane patches, including unapplied lanes. Compare their intended contributions with the complete resolved source and new checks. Confirm the causal conflict resolution preserves every original behavior and independent contribution, not just removal of conflict markers. Missing/unclear contributions block PASS. Old conflict evidence is not acceptance.",
+          ]
+        : []),
+      ...(request.subject.productRevision
+        ? [
+            "PRODUCT REVISION: inspect subject.productRevision, the full new patch/source, new host checks and EACH old finding in subject.priorBlockedReview (all waves). For every priorResolutions entry, cite the causal code change, corrected sourcePaths and NEW checkIds. Confirm the original behavior still works. A missing or still-present blocker means BLOCKED; old checks and the old verdict are not acceptance.",
+          ]
+        : []),
     ].join("\n"),
     context: "fresh",
     // Keep the declared read-only launch identical to public preflight. The
@@ -373,7 +422,7 @@ function childrenFor(context, request, wave) {
     output: false,
     outputMode: "inline",
     outputSchema: schema,
-    timeoutMs: context.contract.policy.deadlineMs,
+    timeoutMs: admitted.children[index].timeoutMs,
   }));
   return {
     admitted,
@@ -457,6 +506,24 @@ function load(context, key, appliedPlanDigest) {
 export async function planReviewWave(context, wave, adapter) {
   return locked(context, async (root) => {
     const request = prepareIntegrationReview(context);
+    // Reject only a new, unregistered request. Stored plans/keys and frozen
+    // evidence are never made editable by an input-correction disposition.
+    if (
+      !wave?.key ||
+      !keyPattern.test(wave.key) ||
+      !fs.existsSync(path.join(root, wave.key))
+    ) {
+      assertReviewOpen(root);
+      validateInput("review-wave", () => {
+        const { members } = validateRoleWaveInput(context.contract, wave);
+        assert.ok(
+          members.every(
+            (row) => row.mode === "review" && row.isolation === "shared",
+          ),
+          "review wave must be read-only on frozen source",
+        );
+      });
+    }
     const { admitted, children } = childrenFor(context, request, wave);
     const dir = path.join(root, admitted.key);
     if (fs.existsSync(dir)) {
@@ -495,6 +562,12 @@ export async function planReviewWave(context, wave, adapter) {
       requestDigest: request.digest,
       sessionDir,
       reservedTokens: admitted.reservedTokens,
+      allocationDiagnostics: plannedAllocations(
+        context,
+        root,
+        children.length,
+        admitted.reservedTokens,
+      ),
       acceptance: "not-assessed",
     };
     assert.ok(
@@ -512,6 +585,56 @@ export async function planReviewWave(context, wave, adapter) {
     saveEvidenceJson(path.join(dir, "plan.json"), plan);
     return plan;
   });
+}
+
+function allocationSummary(
+  contract,
+  roleSpawns,
+  reviewSpawns,
+  tokens,
+  requestedSpawns,
+  requestedTokens,
+) {
+  const limit = contract.policy.maxRoleSpawnsPerTask;
+  return {
+    roleSpawns,
+    reviewSpawns,
+    requestedSpawns,
+    spawnLimit: limit,
+    remainingSpawns: limit - roleSpawns - reviewSpawns,
+    spawnFits: roleSpawns + reviewSpawns + requestedSpawns <= limit,
+    priorTokenAllocations: tokens,
+    requestedTokens,
+    taskTokenLimit: contract.policy.maxTaskTokens,
+    tokenBudgetMode: contract.policy.tokenBudgetMode ?? "member-hard",
+    admission: "not-assessed", // Not a hold, actual usage or lifecycle proof.
+  };
+}
+
+function plannedAllocations(context, root, requestedSpawns, requestedTokens) {
+  const roles = context.mailbox
+    .listEvents()
+    .filter((event) => event.type === "progress")
+    .map((event) => context.mailbox.readJson(event.payloadRef, 16 * 1024))
+    .filter((event) => event.kind === "role-launch-intent");
+  let reviewSpawns = 0;
+  let tokens = roles.reduce((sum, row) => sum + row.maxTokens, 0);
+  for (const item of fs.readdirSync(root, { withFileTypes: true })) {
+    if (!item.isDirectory()) continue;
+    const dir = path.join(root, item.name);
+    if (!fs.existsSync(path.join(dir, "launch-intent.json"))) continue;
+    const previous = json(path.join(dir, "plan.json"));
+    reviewSpawns += previous.children.length;
+    tokens += previous.reservedTokens;
+  }
+  return allocationSummary(
+    context.contract,
+    roles.length,
+    reviewSpawns,
+    tokens,
+    requestedSpawns,
+    requestedTokens,
+  );
 }
 
 async function assertAllocations(context, root, plan) {
@@ -579,10 +702,17 @@ async function assertAllocations(context, root, plan) {
     count += old.children.length;
     tokens += old.reservedTokens;
   }
+  const allocation = allocationSummary(
+    context.contract,
+    prior.length,
+    count - prior.length,
+    tokens,
+    plan.children.length,
+    plan.reservedTokens,
+  );
   assert.ok(
-    count + plan.children.length <=
-      context.contract.policy.maxRoleSpawnsPerTask,
-    "task review spawn budget exhausted",
+    allocation.spawnFits,
+    `task review spawn budget exhausted: ${JSON.stringify(allocation)}`,
   );
   assert.ok(
     Number.isSafeInteger(tokens) &&
@@ -617,7 +747,12 @@ function measuredAdmission(context, plan, reviews, previous = null) {
   );
 }
 
-function dispatchParams(context, plan, request) {
+function dispatchParams(
+  context,
+  plan,
+  request,
+  timeoutMs = context.contract.policy.deadlineMs,
+) {
   return {
     workflowScript: compileRoleWave(plan.children, plan.sessionDir),
     cwd: request.subject.cwd,
@@ -628,7 +763,7 @@ function dispatchParams(context, plan, request) {
     mission: {
       title: `Task ${context.contract.identity.executionId} review ${plan.key}`,
     },
-    timeoutMs: context.contract.policy.deadlineMs,
+    timeoutMs,
     usageBudget: {
       tokens: {
         hard: usesSharedTaskBudget(context.contract)
@@ -640,164 +775,205 @@ function dispatchParams(context, plan, request) {
 }
 
 export async function startReviewWave(context, key, planDigest, adapter) {
-  return locked(context, async (root) => {
-    assertReviewOpen(root);
-    const { dir, plan, request } = load(context, key);
-    assert.equal(
-      plan.planDigest,
-      planDigest,
-      "explicit review plan digest mismatch",
-    );
-    const intentPath = path.join(dir, "launch-intent.json");
-    if (fs.existsSync(intentPath))
-      throw new Error(
-        "review launch intent consumed; inspect/reconcile, never replay",
-      );
-    const { predecessors, reviews } = await assertAllocations(
-      context,
-      root,
-      plan,
-    );
-    // Allocation is not actual consumption or lifecycle readiness. There is no
-    // permissive default: production cannot launch until L0 owns those proofs.
-    assert.equal(
-      typeof adapter?.assertAdmission,
-      "function",
-      "review actual-usage/lifecycle admission unavailable (D5/D7)",
-    );
-    assert.equal(
-      typeof adapter?.rpc?.request,
-      "function",
-      "public review RPC required",
-    );
-    assert.equal(
-      adapter.nativeOwner,
-      plan.nativeOwner,
-      "native session owner changed",
-    );
-    assert.ok(
-      !fs.existsSync(plan.sessionDir),
-      "review session root already exists; reconcile before dispatch",
-    );
-    const launches = await resolveChildren(
-      adapter,
-      request,
-      plan.children,
-      plan.sessionDir,
-    );
-    assert.deepEqual(
-      launches,
-      plan.launches,
-      "public review launch contract changed before dispatch",
-    );
-    const beforeAdmission = measuredAdmission(context, plan, reviews);
-    // Lifecycle remains a separate required host assertion; metering is not a grant.
-    assert.equal(
-      await adapter.assertAdmission(context, plan),
-      undefined,
-      "host admission must assert, not return an approval flag",
-    );
-    const usageAdmission = measuredAdmission(
-      context,
-      plan,
-      reviews,
-      beforeAdmission,
-    );
-    context.assertOwner();
-    assert.equal(
-      prepareIntegrationReview(context).digest,
-      request.digest,
-      "review source changed before dispatch",
-    );
-    const params = dispatchParams(context, plan, request);
-    registerTaskBudgetMembers(
-      context,
-      plan.wave.runs.map((member) => ({
-        key: `review.${key}.${member.key}`,
-        estimate: member.maxTokens,
-        sessionRoot: path.join(plan.sessionDir, member.key),
-      })),
-    );
-    saveEvidenceJson(intentPath, {
-      schemaVersion: "teams-review-launch-intent/2",
-      planDigest,
-      params,
-      paramsDigest: digest(params),
-      predecessors,
-      usageAdmission,
-      usageAdmissionDigest: digest(usageAdmission),
-    });
-    let startFailure,
-      failurePersisted = false;
-    try {
-      let response;
-      try {
-        response = await adapter.rpc.request("spawn", params);
-      } catch (cause) {
-        response = readNativeStartFailure(
-          cause,
-          {
-            sessionDir: plan.sessionDir,
-            mode: "wave",
-            members: plan.wave.runs.map(({ key, role }) => ({ key, role })),
-          },
-          [plan.nativeOwner],
-        );
-        if (!response) throw cause;
-        startFailure = cause;
-      }
-      const runId =
-        response?.runId ??
-        response?.asyncId ??
-        response?.details?.runId ??
-        response?.details?.asyncId;
-      const asyncDir = response?.asyncDir ?? response?.details?.asyncDir;
-      assert.match(runId, runPattern, "native review run id missing");
-      assert.ok(
-        typeof asyncDir === "string" && path.isAbsolute(asyncDir),
-        "native review async directory missing",
-      );
-      const started = {
-        schemaVersion: "teams-review-started/1",
+  const launch = () =>
+    locked(context, async (root) => {
+      assertReviewOpen(root);
+      const { dir, plan, request } = load(context, key);
+      assert.equal(
+        plan.planDigest,
         planDigest,
-        runId,
-        asyncDir,
-        nativeOwner: plan.nativeOwner,
-      };
-      saveEvidenceJson(path.join(dir, "started.json"), started); // Native run identity, not proof that a process started.
-      if (startFailure) {
-        captureNativeTerminal(
-          context.mailbox,
-          {
-            ...started,
-            sessionDir: plan.sessionDir,
-            mode: "wave",
-            members: plan.wave.runs.map(({ key, role }) => ({ key, role })),
-          },
-          [plan.nativeOwner],
-          `review-${key}`,
-        );
-        failurePersisted = true;
-        throw startFailure;
-      }
-      context.assertOwner();
-      return started;
-    } catch (cause) {
-      if (failurePersisted)
+        "explicit review plan digest mismatch",
+      );
+      const intentPath = path.join(dir, "launch-intent.json");
+      if (fs.existsSync(intentPath))
         throw new Error(
-          `review failed before runner spawn; cancel without retry: ${cause.message}`,
-          { cause },
+          "review launch intent consumed; inspect/reconcile, never replay",
         );
-      saveEvidenceJson(path.join(dir, "unknown.json"), {
+      const { predecessors, reviews } = await assertAllocations(
+        context,
+        root,
+        plan,
+      );
+      // Allocation is not actual consumption or lifecycle readiness. There is no
+      // permissive default: production cannot launch until L0 owns those proofs.
+      assert.equal(
+        typeof adapter?.assertAdmission,
+        "function",
+        "review actual-usage/lifecycle admission unavailable (D5/D7)",
+      );
+      assert.equal(
+        typeof adapter?.rpc?.request,
+        "function",
+        "public review RPC required",
+      );
+      assert.equal(
+        adapter.nativeOwner,
+        plan.nativeOwner,
+        "native session owner changed",
+      );
+      assert.ok(
+        !fs.existsSync(plan.sessionDir),
+        "review session root already exists; reconcile before dispatch",
+      );
+      const launches = await resolveChildren(
+        adapter,
+        request,
+        plan.children,
+        plan.sessionDir,
+      );
+      assert.deepEqual(
+        launches,
+        plan.launches,
+        "public review launch contract changed before dispatch",
+      );
+      const beforeAdmission = measuredAdmission(context, plan, reviews);
+      // Lifecycle remains a separate required host assertion; metering is not a grant.
+      assert.equal(
+        await adapter.assertAdmission(context, plan),
+        undefined,
+        "host admission must assert, not return an approval flag",
+      );
+      const usageAdmission = measuredAdmission(
+        context,
+        plan,
+        reviews,
+        beforeAdmission,
+      );
+      context.assertOwner();
+      assert.equal(
+        prepareIntegrationReview(context).digest,
+        request.digest,
+        "review source changed before dispatch",
+      );
+      const issuedAt = new Date().toISOString();
+      const reviewDeadlineMs = hasOriginalTaskDeadline(
+        context.contract,
+        context.mailbox,
+      )
+        ? Math.min(
+            context.contract.policy.deadlineMs,
+            taskDeadlineAt(
+              context.ledger,
+              context.ledger.getExecution(
+                context.contract.identity.executionId,
+              ),
+              context.contract,
+            ) - Date.parse(issuedAt),
+          )
+        : context.contract.policy.deadlineMs;
+      assert.ok(
+        reviewDeadlineMs > 0,
+        "Task deadline expired before review dispatch",
+      );
+      const params = dispatchParams(context, plan, request, reviewDeadlineMs);
+      registerTaskBudgetMembers(
+        context,
+        plan.wave.runs.map((member) => ({
+          key: `review.${key}.${member.key}`,
+          estimate: member.maxTokens,
+          sessionRoot: path.join(plan.sessionDir, member.key),
+        })),
+      );
+      saveEvidenceJson(intentPath, {
+        schemaVersion: "teams-review-launch-intent/2",
         planDigest,
-        error: String(cause.message ?? cause).slice(0, 2000),
-        disposition: "preserved-reconcile-required",
+        params,
+        paramsDigest: digest(params),
+        ...(hasOriginalTaskDeadline(context.contract, context.mailbox)
+          ? { issuedAt }
+          : {}),
+        predecessors,
+        usageAdmission,
+        usageAdmissionDigest: digest(usageAdmission),
       });
-      throw new Error("review launch outcome unknown; reconcile before retry", {
-        cause,
-      });
-    }
-  });
+      let startFailure,
+        failurePersisted = false;
+      try {
+        let response;
+        try {
+          response = await adapter.rpc.request("spawn", params);
+        } catch (cause) {
+          response = readNativeStartFailure(
+            cause,
+            {
+              sessionDir: plan.sessionDir,
+              mode: "wave",
+              members: plan.wave.runs.map(({ key, role }) => ({ key, role })),
+            },
+            [plan.nativeOwner],
+          );
+          if (!response) throw cause;
+          startFailure = cause;
+        }
+        const runId =
+          response?.runId ??
+          response?.asyncId ??
+          response?.details?.runId ??
+          response?.details?.asyncId;
+        const asyncDir = response?.asyncDir ?? response?.details?.asyncDir;
+        assert.match(runId, runPattern, "native review run id missing");
+        assert.ok(
+          typeof asyncDir === "string" && path.isAbsolute(asyncDir),
+          "native review async directory missing",
+        );
+        const started = {
+          schemaVersion: "teams-review-started/1",
+          planDigest,
+          runId,
+          asyncDir,
+          nativeOwner: plan.nativeOwner,
+        };
+        saveEvidenceJson(path.join(dir, "started.json"), started); // Native run identity, not proof that a process started.
+        if (startFailure) {
+          captureNativeTerminal(
+            context.mailbox,
+            {
+              ...started,
+              sessionDir: plan.sessionDir,
+              mode: "wave",
+              members: plan.wave.runs.map(({ key, role }) => ({ key, role })),
+            },
+            [plan.nativeOwner],
+            `review-${key}`,
+          );
+          failurePersisted = true;
+          throw startFailure;
+        }
+        context.assertOwner();
+        return started;
+      } catch (cause) {
+        if (failurePersisted)
+          throw new Error(
+            `review failed before runner spawn; cancel without retry: ${cause.message}`,
+            { cause },
+          );
+        saveEvidenceJson(path.join(dir, "unknown.json"), {
+          planDigest,
+          error: String(cause.message ?? cause).slice(0, 2000),
+          disposition: "preserved-reconcile-required",
+        });
+        throw new Error(
+          "review launch outcome unknown; reconcile before retry",
+          {
+            cause,
+          },
+        );
+      }
+    });
+  return adapter?.scheduleReviewLaunch
+    ? adapter.scheduleReviewLaunch(
+        launch,
+        hasOriginalTaskDeadline(context.contract, context.mailbox)
+          ? taskRemainingMs(
+              context.ledger,
+              context.ledger.getExecution(
+                context.contract.identity.executionId,
+              ),
+              context.contract,
+            )
+          : context.contract.policy.deadlineMs,
+      )
+    : launch();
 }
 
 // Bind the public result projection to a successful structured_output tool call
@@ -917,6 +1093,30 @@ export async function collectReviewWave(context, key, planDigest) {
   );
 }
 
+// A closed execution's completed review is evidence, not another operation.
+// Replay the complete native/capture parser without creating a review lock or
+// publishing another report. Missing/partial completions remain ineligible.
+export async function readCompletedReviewWave(context, key, planDigest) {
+  assert.match(key, keyPattern, "invalid review wave key");
+  const root = path.join(context.mailbox.root, "integration");
+  const dir = path.join(root, "reviews", key);
+  for (const file of [
+    path.join(root, "receipt.json"),
+    path.join(root, "review-request.json"),
+    path.join(root, "review.patch"),
+    path.join(dir, "plan.json"),
+    path.join(dir, "launch-intent.json"),
+    path.join(dir, "started.json"),
+    path.join(dir, "complete.json"),
+  ])
+    assert.ok(fs.existsSync(file), "completed frozen review evidence required");
+  assert.ok(
+    fs.existsSync(path.join(dir, "captures")),
+    "completed native review captures required",
+  );
+  return collectUnlocked(context, key, planDigest, undefined);
+}
+
 async function collectUnlocked(
   context,
   key,
@@ -952,9 +1152,41 @@ async function collectUnlocked(
     digest(intent.params),
     "review dispatch changed",
   );
+  if (hasOriginalTaskDeadline(context.contract, context.mailbox)) {
+    assert.ok(
+      typeof intent.issuedAt === "string",
+      "review dispatch time missing",
+    );
+    const issued = Date.parse(intent.issuedAt);
+    assert.ok(
+      Number.isFinite(issued) &&
+        issued <=
+          taskDeadlineAt(
+            context.ledger,
+            context.ledger.getExecution(context.contract.identity.executionId),
+            context.contract,
+          ),
+      "review dispatched after Task deadline",
+    );
+    assert.ok(
+      intent.params.timeoutMs > 0 &&
+        intent.params.timeoutMs <=
+          Math.min(
+            context.contract.policy.deadlineMs,
+            taskDeadlineAt(
+              context.ledger,
+              context.ledger.getExecution(
+                context.contract.identity.executionId,
+              ),
+              context.contract,
+            ) - issued,
+          ),
+      "review exceeds Task deadline",
+    );
+  }
   assert.deepEqual(
     intent.params,
-    dispatchParams(context, plan, request),
+    dispatchParams(context, plan, request, intent.params.timeoutMs),
     "review dispatch envelope changed",
   );
   const started = json(path.join(dir, "started.json"));
@@ -1099,18 +1331,52 @@ async function collectUnlocked(
   const native = json(
     path.join(context.mailbox.root, "integration/native.json"),
   );
+  const priorBlocked = request.subject.priorBlockedReview;
   const producerIds = [
     ...context.result.childRunRefs,
     ...native.lanes.map((lane) => lane.runId),
+    ...(priorBlocked
+      ? [
+          ...(priorBlocked.rootRunIds ?? [priorBlocked.rootRunId]),
+          ...priorBlocked.reports.map((row) => row.runId),
+        ]
+      : []),
   ];
+  assert.equal(
+    new Set(producerIds).size,
+    new Set([
+      ...context.result.childRunRefs,
+      ...native.lanes.map((lane) => lane.runId),
+    ]).size +
+      (priorBlocked
+        ? priorBlocked.reports.length + (priorBlocked.rootRunIds?.length ?? 1)
+        : 0),
+    "original reviewer identity reused by producer",
+  );
   assert.ok(
     !producerIds.includes(started.runId),
     "review root reuses producer identity",
   );
   const ids = new Set([...producerIds, started.runId]);
   const boot = context.mailbox.readJson("receipts/boot.json");
-  const sessions = new Set(),
-    sessionIds = new Set([context.ownerSessionId, boot.workerSessionId]);
+  const sessions = new Set(
+      priorBlocked?.reports.map((row) => row.sessionFile) ?? [],
+    ),
+    sessionIds = new Set([
+      context.ownerSessionId,
+      boot.workerSessionId,
+      ...(priorBlocked?.reports.map((row) => row.sessionId) ?? []),
+    ]);
+  assert.equal(
+    sessions.size,
+    priorBlocked?.reports.length ?? 0,
+    "original reviewer session file reused",
+  );
+  assert.equal(
+    sessionIds.size,
+    2 + (priorBlocked?.reports.length ?? 0),
+    "original reviewer session identity reused",
+  );
   assert.ok(
     Array.isArray(intent.predecessors) &&
       intent.predecessors.length <=

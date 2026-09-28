@@ -138,7 +138,7 @@ export function publicPackage(entry) {
 export function modelId(value) {
   assert.ok(
     typeof value === "string" &&
-      /^(?:openai-codex|antigravity)\/[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(
+      /^(?:(?:openai-codex|antigravity)\/[A-Za-z0-9][A-Za-z0-9._-]{0,127}|openrouter\/[A-Za-z0-9][A-Za-z0-9._-]{0,63}\/[A-Za-z0-9][A-Za-z0-9._-]{0,127})$/.test(
         value,
       ),
     "explicit provider/model required",

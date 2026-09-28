@@ -9,7 +9,10 @@ import { TaskOrchestrator } from "../orchestrator.mjs";
 import { WorkerRuntime } from "../worker-runtime.mjs";
 import { RoleController } from "../role-controller.mjs";
 import { digest } from "../contracts.mjs";
-import { collectTaskResult } from "../../extensions/teams-orchestrator/index.mjs";
+import {
+  collectTaskResult,
+  collectedTaskReply,
+} from "../../extensions/teams-orchestrator/index.mjs";
 
 const subagents = {
   compatible: true,
@@ -338,11 +341,36 @@ test("collect waits on the canonical mailbox and returns blocked even while Work
 test("collect reports ready candidate only after observed Worker exit when waiting", async (t) => {
   const alive = cancelFixture(t, { alive: true });
   publishCandidate(alive, "ready_for_acceptance");
-  await assert.rejects(
-    collectTaskResult(alive.orchestrator, alive.prepared.executionId, {
-      waitMs: 20,
-    }),
-    /wait timed out/,
+  const waiting = await collectTaskResult(
+    alive.orchestrator,
+    alive.prepared.executionId,
+    { waitMs: 20 },
+  );
+  assert.equal(waiting.collection, "waiting");
+  assert.equal(waiting.candidate.outcome, "ready_for_acceptance");
+  assert.equal(waiting.workerProcess.terminal, false);
+  assert.equal(waiting.reservationOpen, true);
+  assert.match(
+    collectedTaskReply(alive.prepared.executionId, waiting).content[0].text,
+    /not failure or acceptance/,
+  );
+  // Simulate observed process exit without another execution or candidate.
+  const reconcile = alive.orchestrator.reconcile.bind(alive.orchestrator);
+  t.mock.method(alive.orchestrator, "reconcile", (id) => ({
+    ...reconcile(id),
+    processProof: { terminal: true, reason: "process-exited" },
+  }));
+  const completed = await collectTaskResult(
+    alive.orchestrator,
+    alive.prepared.executionId,
+    { waitMs: 100 },
+  );
+  assert.equal(completed.executionId, waiting.executionId);
+  assert.equal(completed.candidate.outcome, "ready_for_acceptance");
+  assert.equal(completed.workerProcess.terminal, true);
+  assert.equal(
+    alive.orchestrator.ledger.getAcceptance(completed.executionId),
+    null,
   );
   const exited = cancelFixture(t);
   publishCandidate(exited, "ready_for_acceptance");
@@ -354,6 +382,37 @@ test("collect reports ready candidate only after observed Worker exit when waiti
   assert.equal(value.candidate.outcome, "ready_for_acceptance");
   assert.equal(value.workerProcess.terminal, true);
   assert.equal(value.reservationOpen, true);
+});
+
+test("zero wait is a status observation, but Task deadline and unknown process remain failures", async (t) => {
+  const f = cancelFixture(t, { alive: true });
+  const id = f.prepared.executionId;
+  const waiting = await collectTaskResult(f.orchestrator, id);
+  assert.equal(waiting.collection, "waiting");
+  assert.equal(waiting.candidate, null);
+  assert.equal(waiting.state, "RUNNING");
+  const reconcile = f.orchestrator.reconcile.bind(f.orchestrator);
+  const mock = t.mock.method(f.orchestrator, "reconcile", (executionId) => ({
+    ...reconcile(executionId),
+    processProof: { terminal: false, reason: "EACCES" },
+  }));
+  await assert.rejects(
+    collectTaskResult(f.orchestrator, id, { waitMs: 10 }),
+    /process is unknown/,
+  );
+  mock.mock.restore();
+  const row = f.orchestrator.ledger.getExecution(id);
+  t.mock.method(
+    Date,
+    "now",
+    () => Date.parse(row.createdAt) + f.prepared.contract.policy.deadlineMs,
+  );
+  await assert.rejects(
+    collectTaskResult(f.orchestrator, id, { waitMs: 1000 }),
+    /Task deadline reached/,
+  );
+  assert.equal(f.orchestrator.ledger.getExecution(id).reservationOpen, true);
+  assert.equal(f.orchestrator.ledger.getAcceptance(id), null);
 });
 
 test("collect stops on dead Worker without result and supports bounded cancellation", async (t) => {
@@ -911,6 +970,41 @@ test("D7 real disposable Worker exits before pane closure and reservation releas
   assert.equal(cancelled.execution.state, "CANCELLED");
   assert.equal(cancelled.execution.reservationOpen, false);
   assert.equal(closed, 1);
+});
+
+test("confirmed takeover reconciles a drained execution without rewriting identity", (t) => {
+  const f = cancelFixture(t);
+  let closes = 0;
+  const herdr = {
+    isIdle: () => true,
+    closeIdle(paneId) {
+      closes++;
+      return { paneId, disposition: "closed" };
+    },
+  };
+  f.orchestrator.herdr = herdr;
+  f.orchestrator.requestCancel(f.prepared.executionId, "stop before takeover");
+  const current = f.orchestrator.ledger.getController(f.prepared.projectId);
+  const recovered = new TaskOrchestrator({
+    runtimeRoot: f.orchestrator.runtimeRoot,
+    ownerSessionId: "owner-2",
+    herdr,
+  });
+  t.after(() => recovered.close());
+  const preparedProof = recovered.prepareTakeover(f.prepared.executionId);
+  const takeover = recovered.takeover(
+    f.prepared.projectId,
+    current.ownerSessionId,
+    current.ownerEpoch,
+    preparedProof.proofRef,
+  );
+  assert.equal(takeover.ownerEpoch, current.ownerEpoch + 1);
+  const result = recovered.reconcile(f.prepared.executionId);
+  assert.equal(result.execution.state, "CANCELLED");
+  assert.equal(result.execution.reservationOpen, false);
+  assert.equal(result.execution.ownerSessionId, "owner-1");
+  assert.equal(result.execution.ownerEpoch, f.prepared.ownerEpoch);
+  assert.equal(closes, 1);
 });
 
 test("controller takeover fences the stale root session", () => {

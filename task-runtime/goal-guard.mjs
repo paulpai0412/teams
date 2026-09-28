@@ -2,6 +2,27 @@ import assert from "node:assert/strict";
 import { deriveProjectId } from "./orchestrator.mjs";
 import { HostAcceptance } from "./acceptance.mjs";
 
+// Goal-X's native session focus entry; never infer identity from another Task's
+// reservation or from the project's shared goal directory. No parallel state store.
+export function focusedGoalId(sessionManager) {
+  const entry = sessionManager
+    ?.getBranch?.()
+    .findLast(
+      (row) => row.type === "custom" && row.customType === "pi-goal-focus",
+    );
+  assert.equal(
+    entry?.data?.version,
+    1,
+    "native Goal-X session focus unavailable; refresh Goal context before completion",
+  );
+  const id = entry.data.focusedGoalId;
+  assert.ok(
+    typeof id === "string" && id.length > 0 && id.length <= 128,
+    "no native focused Goal for completion",
+  );
+  return id;
+}
+
 export function createGoalGuard(orchestrator, sourceRoot) {
   assert.ok(orchestrator?.ledger, "TaskOrchestrator required");
   const projectId = deriveProjectId(sourceRoot);
@@ -79,11 +100,17 @@ export function createGoalGuard(orchestrator, sourceRoot) {
 
     beforeGoalCompletion({ goalId }) {
       const open = orchestrator.ledger.listGoalOpen(projectId, goalId);
-      if (open.length === 0) return { ok: true };
+      const incomplete = orchestrator.ledger
+        .listGoalLatest(projectId, goalId)
+        .filter(
+          (row) =>
+            row.state !== "ACCEPTED" || row.goalCommitState !== "committed",
+        );
+      if (open.length === 0 && incomplete.length === 0) return { ok: true };
       orchestrator.assertController(projectId);
       return {
         ok: false,
-        message: `Goal ${goalId} has ${open.length} unreconciled Task Pi execution${open.length === 1 ? "" : "s"}; complete Goal readback and release reservations first.`,
+        message: `Goal ${goalId} has ${open.length} open reservations and ${incomplete.length} Tasks without accepted Goal readback; closed failures are not completion. Recover affected Tasks, then complete Goal readback and release reservations.`,
       };
     },
   };

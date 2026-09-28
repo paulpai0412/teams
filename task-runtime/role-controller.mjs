@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { digest } from "./contracts.mjs";
+import { bytesDigest, digest, workerRoleCeiling } from "./contracts.mjs";
+import {
+  branchId,
+  roleStatus,
+  settledBranch,
+  roleRecovery,
+} from "./role-recovery.mjs";
 import { usesSharedTaskBudget } from "./budget-pool.mjs";
 import {
   budgetedChildren,
@@ -14,7 +20,18 @@ import {
   reviewUsageAdmission,
   readWorkerUsageCheckpoint,
 } from "./task-usage.mjs";
-import { prepareRoleWave, compileRoleWave } from "./role-wave.mjs";
+import {
+  prepareRoleWave,
+  compileRoleWave,
+  inspectWorktreeBase,
+} from "./role-wave.mjs";
+import { reviewRepairCommand } from "./review-product-lineage.mjs";
+import {
+  RECONSTRUCTION_BINDING,
+  reconstructionBinding,
+} from "./reconstruction-input.mjs";
+import { conflictRepairCommand } from "./integration-conflict.mjs";
+import { hasOriginalTaskDeadline } from "./task-deadline.mjs";
 import { verifyWorkspaceScope } from "./workspace-scope.mjs";
 import {
   readNativeTerminal,
@@ -69,6 +86,170 @@ export class RoleController {
 
   async spawnWave(wave) {
     return this.#dispatch(wave, false);
+  }
+
+  // All selectors are resolved against this Worker's admitted inventory, never
+  // arbitrary native run IDs. A stop ACK is not terminal/usage evidence.
+  async control({ action, runId, key, reason, task, maxTokens }) {
+    if (action === "status") {
+      this.refreshTerminals();
+      return this.snapshot();
+    }
+    this.runtime.assertAdmission();
+    assert.equal(
+      this.runtime.contract.schemaVersion,
+      "teams-task-runtime/3",
+      "branch control requires v3",
+    );
+    assert.ok(!this.draining, "Task is draining");
+    const launch = [...this.launches.values()].find(
+      (row) => row.runId === runId,
+    );
+    const member = launch?.members.find((row) => row.key === key);
+    assert.ok(member, "branch not owned by this Task");
+    assert.ok(
+      typeof reason === "string" &&
+        reason.trim() &&
+        Buffer.byteLength(reason) <= 1000,
+      "bounded causal reason required",
+    );
+    if (action === "stop") {
+      const { status } = roleStatus(
+        this.runtime.mailbox,
+        this.runtime.contract,
+        launch,
+      );
+      const steps =
+        launch.mode === "wave"
+          ? status.steps?.filter((row) => row.workflowKey === key)
+          : status.steps;
+      assert.equal(
+        steps?.length,
+        1,
+        "branch native member missing or duplicated",
+      );
+      assert.equal(steps[0].agent, member.role, "branch role changed");
+      assert.ok(
+        ["pending", "running"].includes(steps[0].status),
+        "branch is not stoppable; reconcile its completion",
+      );
+      const stopKey = `branch-stop-${launch.launchId}-${key}`;
+      assert.ok(
+        !fs.existsSync(
+          path.join(
+            this.runtime.mailbox.root,
+            `receipts/progress-${stopKey}.json`,
+          ),
+        ),
+        "branch stop already requested; reconcile, never replay",
+      );
+      this.runtime.recordProgress(stopKey, {
+        kind: "branch-stop-intent",
+        runId,
+        key,
+        reason,
+      });
+      try {
+        const response = await this.rpc.request("stop", {
+          id: runId,
+          ...(launch.mode === "wave" ? { childId: key } : {}),
+        });
+        this.runtime.recordProgress(`${stopKey}-reply`, {
+          kind: "branch-stop-reply",
+          runId,
+          key,
+          response,
+        });
+        return { runId, key, disposition: "stop-requested", response };
+      } catch (error) {
+        this.runtime.recordProgress(`${stopKey}-unknown`, {
+          kind: "branch-stop-unknown",
+          runId,
+          key,
+          error: String(error.message ?? error).slice(0, 1000),
+        });
+        throw error;
+      }
+    }
+    assert.equal(action, "repair", "unknown branch action");
+    this.refreshTerminals();
+    assert.ok(
+      [...this.launches.values()].every((row) => row.terminal),
+      "settle the current wave before replacement; healthy siblings continue",
+    );
+    const { mailbox, contract } = this.runtime;
+    const previous = settledBranch(mailbox, contract, launch, key);
+    assert.ok(
+      member.isolation === "worktree" ||
+        ["read-only", "review"].includes(member.mode),
+      "replacement requires an isolated writer or read-only predecessor",
+    );
+    // Shared readers are not a sandbox: require the original target to be clean
+    // before replacing one. External/unknown effects still require diagnosis.
+    inspectWorktreeBase(
+      contract.workspace.sourceRoot,
+      contract.workspace.baseCommit,
+    );
+    const selection = roleRecovery(mailbox, contract);
+    const id = branchId(runId, key);
+    assert.ok(!selection.replaced.has(id), "branch already replaced");
+    const ordinal = (selection.lineage.get(id)?.ordinal ?? 0) + 1;
+    assert.ok(
+      ordinal <= contract.policy.maxProductRepairsPerRole,
+      "branch repair allowance exhausted",
+    );
+    assert.ok(
+      typeof task === "string" &&
+        task.trim() &&
+        Buffer.byteLength(task) <= 4096,
+      "bounded repair instructions required",
+    );
+    const assignmentRef = `receipts/wave-plan-${launch.launchId}.json`;
+    const original = mailbox
+      .readJson(assignmentRef, 8 * 1024 * 1024)
+      .runs.find((row) => row.key === key);
+    assert.equal(
+      digest(original?.task),
+      member.taskDigest,
+      "original branch assignment changed",
+    );
+    const assignmentSha256 = mailbox.digestRelative(assignmentRef);
+    const contribution = ["mutation", "check"].includes(member.mode)
+      ? "the COMPLETE base-to-corrected patch for this branch"
+      : "the complete corrected read-only handoff without modifying source";
+    const assignment = `Task-local replacement attempt ${ordinal}. FIRST read the FULL original assignment: ${path.join(mailbox.root, assignmentRef)}, runs key ${key} (file SHA256 ${assignmentSha256}). All original requirements remain mandatory; this reference avoids truncating them.\nDiagnosis: ${reason}\nRepair: ${task}\nRead the preserved previous native status/evidence: ${previous.ref}. Preserve required behavior; deliver ${contribution}. Healthy sibling contributions are retained by runtime; do not reimplement them or apply to the target. Run the symptom regression and assigned checks. A report-only problem is not permission to redo implementation.`;
+    const repair = {
+      schemaVersion: "teams-role-repair/1",
+      requestDigest: digest(contract),
+      reason,
+      ordinal,
+      previous: {
+        runId,
+        key,
+        taskDigest: member.taskDigest,
+        assignmentRef,
+        assignmentSha256,
+        statusSha256: bytesDigest(previous.bytes),
+      },
+    };
+    return this.#dispatch(
+      {
+        key: `repair-${randomUUID()}`,
+        reason,
+        runs: [
+          {
+            key: "replacement",
+            role: member.role,
+            task: assignment,
+            mode: member.mode,
+            isolation: member.isolation,
+            maxTokens,
+          },
+        ],
+      },
+      false,
+      repair,
+    );
   }
 
   #measureAdmission(plan, checkpointOnly = false, reserveActive = false) {
@@ -181,8 +362,12 @@ export class RoleController {
     return { waiting: active.length > 0, usage };
   }
 
-  async #dispatch(wave, single) {
+  async #dispatch(wave, single, repair = null) {
     this.runtime.assertAdmission();
+    assert.ok(
+      !this.runtime.bootstrap.reportRevisionIntentDigest,
+      "report-only revision cannot dispatch a native role",
+    );
     assert.ok(!this.draining, "role controller is draining; no new dispatch");
     assert.ok(
       ![...this.launches.values()].some((launch) => !launch.terminal),
@@ -194,11 +379,93 @@ export class RoleController {
       ),
       "wave key already consumed; reconcile instead of replaying",
     );
-    const plan = prepareRoleWave(this.runtime.contract, this.cwd, wave);
+    const timeoutMs =
+      repair ||
+      hasOriginalTaskDeadline(this.runtime.contract, this.runtime.mailbox)
+        ? this.runtime.remainingMs()
+        : this.runtime.contract.policy.deadlineMs;
+    let reconstruction = null;
+    if (this.runtime.bootstrap.repairIntentDigest) {
+      const intent = this.runtime.mailbox.readJson(
+        "receipts/repair-intent.json",
+      );
+      if (
+        [
+          "teams-candidate-repair-intent/2",
+          "teams-candidate-repair-intent/3",
+        ].includes(intent.schemaVersion)
+      ) {
+        assert.equal(
+          digest(intent),
+          this.runtime.bootstrap.repairIntentDigest,
+          "product revision intent changed",
+        );
+        const writing = wave.runs.filter((run) =>
+          ["mutation", "check"].includes(run.mode),
+        );
+        assert.ok(
+          writing.length <= 1 &&
+            writing.every((run) => run.mode === "mutation"),
+          "review product revision has one mutation lane and no check writer",
+        );
+        assert.ok(
+          !writing.length ||
+            ![...this.launches.values()].some((launch) =>
+              launch.members.some((member) =>
+                ["mutation", "check"].includes(member.mode),
+              ),
+            ),
+          "review product writer already launched",
+        );
+        if (writing.length) {
+          const conflict =
+            intent.schemaVersion === "teams-candidate-repair-intent/3";
+          const command = (
+            conflict ? conflictRepairCommand : reviewRepairCommand
+          )(intent, this.runtime.contract);
+          reconstruction = {
+            key: writing[0].key,
+            binding: reconstructionBinding(
+              command,
+              conflict
+                ? `TASK_PI_CONFLICT_BASE_READY:${intent.conflictIndexSha256}\n`
+                : `TASK_PI_REVIEW_PRODUCT_BASE_READY:${intent.oldTree}\n`,
+            ),
+          };
+          wave = {
+            ...wave,
+            runs: wave.runs.map((run) =>
+              run === writing[0]
+                ? {
+                    ...run,
+                    task: `${run.task}\nBefore any source write, execute this exact command as ONE bash tool call (not a similar command); it verifies ${conflict ? "the preserved conflict index in your managed checkout (worktree still at B). Resolve using ALL input patches, including lanes after the failed lane, preserving their contributions" : "the complete old candidate in your managed checkout"}. A native reconstruction input rejection happens BEFORE execution: correct it in this same role within original time/budget, not a new repair or a one-correction limit. If the admitted command executes and fails or effects are unknown, STOP; never replay it or apply to the original target.\n${command}`,
+                  }
+                : run,
+            ),
+          };
+        }
+      }
+    }
+    const plan = prepareRoleWave(this.runtime.contract, this.cwd, wave, {
+      timeoutMs,
+    });
+    for (const member of plan.members) {
+      assert.ok(
+        workerRoleCeiling(this.runtime.contract).includes(member.role),
+        `role not permitted for Worker: ${member.role}; L0 review authority does not grant Task-local dispatch. No role launched. If only L0 gates remain, seal ready_for_acceptance with host checks indeterminate.`,
+      );
+    }
+    const finalReviewSlot =
+      this.runtime.contract.schemaVersion === "teams-task-runtime/3" &&
+      this.runtime.contract.policy.review?.authority === "l0-source-bound"
+        ? 1
+        : 0;
     assert.ok(
-      this.memberCount + plan.members.length <=
+      this.memberCount + plan.members.length + finalReviewSlot <=
         this.runtime.contract.policy.maxRoleSpawnsPerTask,
-      "role spawn budget exhausted",
+      finalReviewSlot
+        ? "role spawn budget reserved for required final source-bound review; no role launched. If task-local work has settled with a valid native handoff, seal ready_for_acceptance with host checks indeterminate; L0 starts final review after stage/check."
+        : "role spawn budget exhausted",
     );
     assert.ok(
       usesSharedTaskBudget(this.runtime.contract) ||
@@ -247,8 +514,18 @@ export class RoleController {
       this.runtime,
       plan.children,
       `role.${launchId}`,
+    ).map((child) =>
+      reconstruction && child.key === reconstruction.key
+        ? {
+            ...child,
+            extensionBindings: {
+              ...child.extensionBindings,
+              [RECONSTRUCTION_BINDING]: reconstruction.binding,
+            },
+          }
+        : child,
     );
-    if (sharedBudget) {
+    if (sharedBudget || reconstruction) {
       assert.equal(
         typeof this.resolve,
         "function",
@@ -264,16 +541,17 @@ export class RoleController {
           }),
         );
       this.runtime.assertAdmission();
-      registerTaskBudgetMembers(
-        this.runtime,
-        plan.members.map((member) => ({
-          key: `role.${launchId}.${member.key}`,
-          estimate: member.maxTokens,
-          sessionRoot: single
-            ? launch.sessionDir
-            : path.join(launch.sessionDir, member.key),
-        })),
-      );
+      if (sharedBudget)
+        registerTaskBudgetMembers(
+          this.runtime,
+          plan.members.map((member) => ({
+            key: `role.${launchId}.${member.key}`,
+            estimate: member.maxTokens,
+            sessionRoot: single
+              ? launch.sessionDir
+              : path.join(launch.sessionDir, member.key),
+          })),
+        );
     }
     this.launches.set(launchId, launch);
     this.memberCount += plan.members.length;
@@ -286,6 +564,16 @@ export class RoleController {
     });
     if (usageAdmission)
       this.runtime.mailbox.writeJson(launch.usageAdmissionRef, usageAdmission);
+    if (repair)
+      this.runtime.recordProgress(`branch-repair-${launchId}`, {
+        ...repair,
+        kind: "branch-repair-intent",
+        next: {
+          launchId,
+          key: plan.members[0].key,
+          taskDigest: plan.members[0].taskDigest,
+        },
+      });
     this.runtime.recordProgress(launchId, {
       kind: "role-wave-launch-intent",
       ...(usageAdmission
@@ -330,7 +618,11 @@ export class RoleController {
           async: true,
           context: "fresh",
           sessionDir: launch.sessionDir,
-          timeoutMs: this.runtime.contract.policy.deadlineMs,
+          timeoutMs:
+            this.runtime.contract.policy.reviewProductRevision ===
+            "within-scope-once"
+              ? Math.min(timeoutMs, this.runtime.remainingMs())
+              : timeoutMs,
           usageBudget: {
             tokens: {
               hard: sharedBudget
@@ -408,13 +700,14 @@ export class RoleController {
     if (startFailure) {
       this.finish(launch.runId, "failed");
       this.observeProcessTerminal(response.processTerminal);
-      // No model retry/redispatch: keep the original failure while allowing
-      // the existing owner cancellation to observe a terminal role.
-      this.runtime.failAdmission(startFailure);
-      throw new Error(
-        `role launch ${launch.launchId} failed before runner spawn; cancel without retry: ${startFailure.message}`,
-        { cause: startFailure },
-      );
+      // Proven no-start stays in history and consumes its spawn. Keep the
+      // coordinator alive to diagnose; no automatic retry or mode switch.
+      return {
+        ...launch,
+        response,
+        disposition: "not-started",
+        error: startFailure.message,
+      };
     }
     return { ...launch, response };
   }

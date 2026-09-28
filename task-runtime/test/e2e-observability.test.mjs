@@ -9,7 +9,9 @@ import { HerdrPort } from "../herdr-port.mjs";
 import { digest } from "../contracts.mjs";
 import { collectRunUsage, sessionUsage } from "../e2e/usage.mjs";
 import teamsOrchestrator from "../../extensions/teams-orchestrator/index.mjs";
+import { publicTaskPackages } from "./public-task-fixture.mjs";
 import { deriveProjectId } from "../orchestrator.mjs";
+import { isInputRejection } from "../input-rejection.mjs";
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "teams-observability-"));
@@ -89,6 +91,13 @@ test("runtime readiness uses fresh live evidence, never a package/version allowl
 // Real WorkerRuntime processes and mailbox/ledger; Herdr UI, Pi/LLM and
 // subagents capability advertisement are fixtures, not live native readiness.
 async function verifyParallelWorkers(t, root, tools, handlers, ctx) {
+  ctx.sessionManager.getBranch = () => [
+    {
+      type: "custom",
+      customType: "pi-goal-focus",
+      data: { version: 1, focusedGoalId: "parallel-goal" },
+    },
+  ];
   const children = [];
   const closedPanes = [];
   const moduleUrl = new URL("../worker-runtime.mjs", import.meta.url).href;
@@ -178,7 +187,7 @@ async function verifyParallelWorkers(t, root, tools, handlers, ctx) {
       review: {
         authority: "l0-source-bound",
         allowedRoles: ["team.reviewer"],
-        allowedTools: ["read"],
+        allowedTools: ["read", "structured_output"],
       },
     },
     contextRefs: [],
@@ -211,6 +220,71 @@ async function verifyParallelWorkers(t, root, tools, handlers, ctx) {
       children.every(({ child }) => child.pid && child.exitCode === null),
     );
     const status = (id) => call("team_task_status", { execution_id: id });
+    const missing = "486ecc9d-1305-4e67-aa07-c3ee5b1b443e";
+    for (const name of [
+      "team_task_collect",
+      "team_task_stage_integration",
+      "team_task_target_integration",
+      "team_task_run_checks",
+      "team_task_accept",
+      "team_task_prepare_takeover",
+      "team_task_reconcile",
+      "team_task_cancel",
+      "team_task_status",
+      "team_task_revise",
+      "team_task_revise_report",
+    ]) {
+      const field = name.includes("revise")
+        ? "previous_execution_id"
+        : "execution_id";
+      const args = { [field]: missing };
+      const reply = await tools
+        .find((tool) => tool.name === name)
+        .execute(name, args, undefined, undefined, ctx);
+      assert.equal(reply.isError, true);
+      assert.equal(
+        isInputRejection(
+          reply.details.rejection,
+          { tool: name, input: args },
+          name,
+          name,
+        ),
+        true,
+      );
+      assert.equal(reply.details.rejection.preparationEffects, "none");
+    }
+    assert.equal(children.length, 2);
+    assert.equal(closedPanes.length, 0);
+    for (const execution of [a, b]) {
+      assert.equal((await status(execution.executionId)).state, "RUNNING");
+      assert.equal(
+        fs.existsSync(
+          path.join(
+            root,
+            "teams-task-runtime-v1",
+            "projects",
+            execution.projectId,
+            "executions",
+            execution.executionId,
+            "integration",
+          ),
+        ),
+        false,
+      );
+    }
+    // A valid selector with a genuine state/operation failure is not softened.
+    await assert.rejects(
+      tools
+        .find((tool) => tool.name === "team_task_stage_integration")
+        .execute(
+          "valid-not-ready",
+          { execution_id: b.executionId },
+          undefined,
+          undefined,
+          ctx,
+        ),
+      (error) => error.name !== "TaskInputRejection",
+    );
     assert.equal((await status(a.executionId)).state, "RUNNING");
     for (const execution of [a, b]) {
       const observed = await call("team_task_reconcile", {
@@ -227,24 +301,30 @@ async function verifyParallelWorkers(t, root, tools, handlers, ctx) {
         }),
       );
     }
-    const taskGate = await handlers.get("tool_call")({
-      toolName: "update_goal_task",
-      toolCallId: "premature-batch",
-      input: {
-        updates: ["task-a", "task-b"].map((task_id) => ({
-          task_id,
-          status: "complete",
-        })),
+    const taskGate = await handlers.get("tool_call")(
+      {
+        toolName: "update_goal_task",
+        toolCallId: "premature-batch",
+        input: {
+          updates: ["task-a", "task-b"].map((task_id) => ({
+            task_id,
+            status: "complete",
+          })),
+        },
       },
-    });
+      ctx,
+    );
     assert.equal(taskGate.block, true);
     assert.match(taskGate.reason, /AcceptanceReceipt is required/);
     const goalGate = () =>
-      handlers.get("tool_call")({
-        toolName: "update_goal",
-        input: { status: "complete" },
-      });
-    assert.match((await goalGate()).reason, /2 Task Pi reservations/);
+      handlers.get("tool_call")(
+        {
+          toolName: "update_goal",
+          input: { status: "complete" },
+        },
+        ctx,
+      );
+    assert.match((await goalGate()).reason, /2 open reservations/);
     await assert.rejects(
       dispatch(specs[0]),
       /task process restart budget exhausted/,
@@ -268,15 +348,18 @@ async function verifyParallelWorkers(t, root, tools, handlers, ctx) {
     assert.equal(stillRunning.reservationOpen, true);
     assert.equal(children[1].child.exitCode, null);
     assert.deepEqual(closedPanes, [a.paneId]);
-    assert.match((await goalGate()).reason, /1 Task Pi reservation/);
+    assert.match((await goalGate()).reason, /1 open reservations/);
     const cancelledB = await cancel(b.executionId);
     assert.equal(cancelledB.execution.state, "CANCELLED");
     assert.equal(cancelledB.execution.reservationOpen, false);
     assert.equal(cancelledB.processProof.terminal, true);
     assert.deepEqual(closedPanes, [a.paneId, b.paneId]);
-    // Only the reservation guard clears: no Goal/task completion or acceptance
-    // is requested; cancelled Tasks still do not satisfy Goal-X task criteria.
-    assert.equal(await goalGate(), undefined);
+    // Closed failed Tasks are still unmet: cancellation is not Goal completion.
+    assert.equal((await goalGate()).block, true);
+    assert.match(
+      (await goalGate()).reason,
+      /0 open reservations and 2 Tasks without accepted Goal readback/,
+    );
     await Promise.all(children.map((row) => row.exited));
     for (const row of children) assert.equal(row.child.exitCode, 0, row.stderr);
   } finally {
@@ -289,13 +372,7 @@ async function verifyParallelWorkers(t, root, tools, handlers, ctx) {
 
 test("public entry admits only explicit canary with compatible live protocols, never promotes readiness", async (t) => {
   const root = fixture(t);
-  for (const name of ["pi-subagents", "pi-goal-x"]) {
-    write(root, `npm/node_modules/${name}/package.json`, {
-      version: "fixture",
-      pi: { extensions: ["index.mjs"] },
-    });
-    write(root, `npm/node_modules/${name}/index.mjs`, "");
-  }
+  publicTaskPackages(root);
   const selectedEntry = path.join(root, "selected-subagents", "index.mjs");
   write(root, "selected-subagents/package.json", {
     name: "pi-subagents",
@@ -433,6 +510,7 @@ test("public entry admits only explicit canary with compatible live protocols, n
     let status, widget;
     const ctx = {
       cwd: root,
+      modelRegistry: { getAvailable: () => [] },
       sessionManager: {
         getSessionId: () => "canary-fixture",
         getSessionFile: () => undefined,
@@ -489,6 +567,29 @@ test("public entry admits only explicit canary with compatible live protocols, n
         false,
       );
       if (scenario.admitted) assert.match(status, /canary/);
+      if (scenario.parallelWorkers) {
+        const dispatch = tools.find(
+          (tool) => tool.name === "team_task_dispatch",
+        );
+        const specPath = path.join(root, "invalid-spec.json");
+        for (const [text, phase] of [
+          ["{", "task-spec-file"],
+          [JSON.stringify({ workspace: { sourceRoot: root } }), "task-spec"],
+        ]) {
+          fs.writeFileSync(specPath, text);
+          const reply = await dispatch.execute(
+            "invalid-draft",
+            { spec_path: specPath },
+            undefined,
+            undefined,
+            ctx,
+          );
+          assert.equal(reply.isError, true);
+          assert.equal(reply.details.rejection.phase, phase);
+          assert.equal(reply.details.rejection.launchAttempted, false);
+          assert.equal(reply.details.rejection.executionId, null);
+        }
+      }
       if (scenario.parallelWorkers)
         await t.test(
           "L0 dispatches two overlapping v3 Workers and cancels each independently",

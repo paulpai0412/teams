@@ -154,6 +154,11 @@ function textArray(value, name, maximum = 30) {
   return value;
 }
 
+// Worker restrictions narrow, never replace, the total Task/L0 role authority.
+export function workerRoleCeiling(contract) {
+  return contract.policy.workerAllowedRoles ?? contract.policy.allowedRoles;
+}
+
 export function validateTaskContract(input) {
   object(input, "contract");
   exact(
@@ -316,6 +321,14 @@ export function validateTaskContract(input) {
       Object.hasOwn(policy, "tokenBudgetMode")
         ? ["tokenBudgetMode"]
         : []),
+      ...(input.schemaVersion === "teams-task-runtime/3" &&
+      Object.hasOwn(policy, "reviewProductRevision")
+        ? ["reviewProductRevision"]
+        : []),
+      ...(input.schemaVersion === "teams-task-runtime/3" &&
+      Object.hasOwn(policy, "workerAllowedRoles")
+        ? ["workerAllowedRoles"]
+        : []),
     ],
     "policy",
   );
@@ -338,6 +351,20 @@ export function validateTaskContract(input) {
   );
   unique(policy.allowedRoles, "role");
   if (input.schemaVersion === "teams-task-runtime/3") {
+    if (Object.hasOwn(policy, "workerAllowedRoles")) {
+      const roles = policy.workerAllowedRoles;
+      assert.ok(
+        Array.isArray(roles) &&
+          roles.length > 0 &&
+          roles.length <= policy.allowedRoles.length,
+        "bounded Worker roles required",
+      );
+      unique(roles, "Worker role");
+      assert.ok(
+        roles.every((role) => policy.allowedRoles.includes(role)),
+        "Worker roles exceed total Task policy",
+      );
+    }
     const review = object(policy.review, "review policy");
     exact(
       review,
@@ -388,6 +415,24 @@ export function validateTaskContract(input) {
       "invalid token budget mode",
     );
   integer(policy.deadlineMs, "deadlineMs", 1, 2_147_483_647);
+  if (Object.hasOwn(policy, "reviewProductRevision")) {
+    assert.equal(input.schemaVersion, "teams-task-runtime/3");
+    assert.equal(
+      policy.reviewProductRevision,
+      "within-scope-once",
+      "unsupported review product revision authority",
+    );
+    assert.equal(policy.maxProcessRestarts, 1, "one revision slot required");
+    assert.ok(
+      policy.maxProductRepairsPerRole > 0,
+      "product repair not authorized",
+    );
+    assert.equal(
+      policy.tokenBudgetMode,
+      "shared",
+      "shared revision budget required",
+    );
+  }
   assert.ok(
     ["verify-only", "approved-integration"].includes(policy.integrationMode),
     "invalid integrationMode",
@@ -413,6 +458,48 @@ export function validateTaskContract(input) {
     "contract exceeds 64 KiB",
   );
   return input;
+}
+
+// Same mechanical relocation predicate as integration; never rewrite argv.
+export function isRelocatableCheck(check, sourceRoot) {
+  return (
+    check.executable !== sourceRoot &&
+    !check.executable.startsWith(sourceRoot + path.sep) &&
+    !check.argv.some((arg) => arg.includes(sourceRoot))
+  );
+}
+
+// Capability diagnostics, not semantic acceptance or a new dispatch gate.
+export function taskPreparationDiagnostics(contract) {
+  const diagnostics = [];
+  if (contract.schemaVersion === "teams-task-runtime/3") {
+    const mapped = new Set(
+      contract.checks.flatMap((check) => check.criterionIds),
+    );
+    for (const criterion of contract.criteria) {
+      const kinds = criterion.requiredEvidenceKinds.filter(
+        (kind) => kind !== "host-check",
+      );
+      if (kinds.length)
+        diagnostics.push({
+          code: "unsupported-final-evidence",
+          criterionId: criterion.id,
+          kinds,
+        });
+      if (!mapped.has(criterion.id))
+        diagnostics.push({
+          code: "missing-final-host-check",
+          criterionId: criterion.id,
+        });
+    }
+  }
+  for (const check of contract.checks)
+    if (!isRelocatableCheck(check, contract.workspace.sourceRoot))
+      diagnostics.push({
+        code: "non-relocatable-check",
+        commandId: check.commandId,
+      });
+  return diagnostics;
 }
 
 export function validateControl(input) {
@@ -500,6 +587,11 @@ export function validateEvent(input) {
   return input;
 }
 
+// Candidate inspection is distinct from final product acceptance.
+export function isReviewableResult(result) {
+  return ["ready_for_acceptance", "ready_for_review"].includes(result.outcome);
+}
+
 export function validateTaskResult(input, contract, requestDigest) {
   validateTaskContract(contract);
   object(input, "result");
@@ -532,11 +624,22 @@ export function validateTaskResult(input, contract, requestDigest) {
   assert.equal(input.requestDigest, requestDigest, "request digest mismatch");
   integer(input.resultRevision, "resultRevision", 1);
   assert.ok(
-    ["ready_for_acceptance", "blocked", "failed", "cancelled"].includes(
-      input.outcome,
-    ),
+    [
+      "ready_for_acceptance",
+      "ready_for_review",
+      "blocked",
+      "failed",
+      "cancelled",
+    ].includes(input.outcome),
     "invalid result outcome",
   );
+  const reviewOnly = input.outcome === "ready_for_review";
+  if (reviewOnly)
+    assert.ok(
+      contract.schemaVersion === "teams-task-runtime/3" &&
+        contract.policy.review?.authority === "l0-source-bound",
+      "review-only requires v3 L0 review",
+    );
   text(input.summary, "result summary", 4096);
 
   object(input.source, "result source");
@@ -614,7 +717,8 @@ export function validateTaskResult(input, contract, requestDigest) {
       assert.ok(item, `unknown evidence ${evidenceId}`);
       return item;
     });
-    if (input.outcome === "ready_for_acceptance") {
+    if (isReviewableResult(input)) {
+      const knownDefect = reviewOnly && row.status === "not_met";
       const pendingHost =
         ["teams-task-runtime/2", "teams-task-runtime/3"].includes(
           contract.schemaVersion,
@@ -622,9 +726,11 @@ export function validateTaskResult(input, contract, requestDigest) {
         row.status === "indeterminate" &&
         criterion.requiredEvidenceKinds.includes("host-check");
       assert.ok(
-        row.status === "met" || pendingHost,
+        row.status === "met" || pendingHost || knownDefect,
         `criterion ${criterion.id} is not met or awaiting host verification`,
       );
+      // A disclosed defect does not manufacture the missing positive evidence.
+      if (knownDefect) continue;
       for (const kind of criterion.requiredEvidenceKinds.filter(
         (required) => required !== "host-check",
       ))
@@ -642,12 +748,22 @@ export function validateTaskResult(input, contract, requestDigest) {
   input.childRunRefs.forEach((ref) => id(ref, "childRunRef"));
   unique(input.childRunRefs, "childRunRef");
   integer(input.unresolvedRunCount, "unresolvedRunCount", 0, 64);
-  if (input.outcome === "ready_for_acceptance")
+  if (isReviewableResult(input))
     assert.equal(
       input.unresolvedRunCount,
       0,
       "ready result has unresolved runs",
     );
+  if (reviewOnly) {
+    assert.ok(
+      input.childRunRefs.length > 0,
+      "review-only requires native handoff",
+    );
+    assert.ok(
+      input.criterionResults.some((row) => row.status === "not_met"),
+      "review-only requires a disclosed product defect",
+    );
+  }
   textArray(input.risks, "risks");
   object(input.usage, "usage");
   exact(input.usage, ["inputTokens", "outputTokens"], "usage");

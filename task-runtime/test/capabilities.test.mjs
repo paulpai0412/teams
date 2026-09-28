@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { selectTaskL0Tools } from "../../extensions/teams-orchestrator/index.mjs";
 import {
   inspectGoalTools,
   inspectSubagentsPing,
@@ -24,6 +25,76 @@ function eventBus(reply) {
     },
   };
 }
+
+test("Task L0 hides only model-facing raw subagent; native RPC/review registration remains", () => {
+  const registered = [
+    "read",
+    "write",
+    "team_task_dispatch",
+    "team_task_stage_integration",
+    "subagent",
+  ];
+  let active = [...registered];
+  const pi = {
+    getActiveTools: () => [...active],
+    getAllTools: () => registered.map((name) => ({ name })),
+    setActiveTools: (names) => {
+      active = [...names];
+    },
+  };
+  const sameSession = {
+    ownerSessionId: "owner",
+    sessionId: "owner",
+    compatible: true,
+  };
+  assert.equal(
+    selectTaskL0Tools(pi, { ...sameSession, mode: "ordinary" }).disposition,
+    "unchanged",
+  );
+  assert.deepEqual(active, registered);
+  const result = selectTaskL0Tools(pi, { ...sameSession, mode: "task-pi" });
+  assert.deepEqual(result.hiddenFromModel, ["subagent"]);
+  assert.ok(active.includes("team_task_dispatch"));
+  assert.ok(active.includes("team_task_stage_integration"));
+  assert.ok(!active.includes("subagent"));
+  assert.ok(pi.getAllTools().some((row) => row.name === "subagent"));
+  assert.deepEqual(
+    selectTaskL0Tools(pi, { ...sameSession, mode: "task-pi" }).hiddenFromModel,
+    [],
+  );
+  assert.throws(
+    () =>
+      selectTaskL0Tools(pi, {
+        ...sameSession,
+        mode: "task-pi",
+        sessionId: "switched",
+      }),
+    /owner changed/,
+  );
+  assert.throws(
+    () =>
+      selectTaskL0Tools(pi, {
+        ...sameSession,
+        mode: "task-pi",
+        compatible: false,
+      }),
+    /capability unavailable/,
+  );
+  active = [...registered];
+  assert.throws(
+    () =>
+      selectTaskL0Tools(pi, {
+        ...sameSession,
+        mode: "task-pi",
+        compatible: false,
+      }),
+    /capability unavailable/,
+  );
+  assert.ok(
+    !active.includes("subagent"),
+    "failed Task preflight cannot expose a raw writer fallback",
+  );
+});
 
 const ping = {
   version: 1,

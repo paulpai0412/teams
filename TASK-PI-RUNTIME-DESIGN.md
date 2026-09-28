@@ -1,9 +1,10 @@
 # Outcome-first Task Pi Agent Teams Runtime
 
-版本：1.19（2026-09-14，Task 共用 token pool／角色軟預留；通用 request-driven live 驗收仍未完成）  
+版本：1.23（2026-09-23；第 31 節增限定 D/H 實作與分層驗證，仍非完整 live 證據）
+
 狀態：實作中；未通過 live canary 前不得宣稱 unattended-ready
 
-第 15–26 節保留當時階段快照；scope 排除仍依第 26 節，通用 flow 見第 27 節，共用預算及本輪驗證界線見第 28 節。G1 等預製 spec/patch 測試不是需求規劃能力的驗收。
+第 15–30 節保留當時階段快照；scope 排除仍依第 26 節，通用 flow 見第 27 節，共用預算見第 28 節，執行事實修復見第 29 節，離線責任邊界修復見第 30 節。**最新研究、更正及逐項實作計畫以第 31 節為準**，TODO 索引見 [TASK-PI-RUNTIME-TODO.md](TASK-PI-RUNTIME-TODO.md)。r18 已執行且未通過，不能沿用第 30 節當時「尚未啟 live」的時態；R31 部分修正僅離線接線及回歸，真模型/G1 未重驗。G1 等預製 spec/patch 測試不是需求規劃能力的驗收。
 
 **2026-09-14 agent 執行／repair／再審政策修訂（不改 runtime 狀態機）**：新 C3 採 [C3-POLICY.md](task-runtime/e2e/C3-POLICY.md) 與既有入口可讀取的 [c3-prompt.txt](task-runtime/e2e/c3-prompt.txt)。主 agent／Worker 可提出有界 repair／再審請求；依原始證據區分產品、驗證工具、報告與非致命診斷。只修需要修的部分，修後由 auditor 再審；請求不等於 resume／重派／驗收權。Worker 不控制 Goal，terminal execution 不重開，舊失敗與收據不覆寫。新準備的契約須與政策一致，舊 sealed 零修復契約不變。`request_report_repair` 目前僅有 schema 宣告，不代表下述 mailbox report-repair 設計已實作；本次不新增 API 或 controller。
 
@@ -16,7 +17,7 @@ executionMode = direct | task-pi
 default = direct
 ```
 
-主 Agent 能在單一上下文內可靠完成的工作直接做。只有當 Task 的診斷輸出、執行時間、恢復需求或工作區隔離收益明顯高於新 session cold start 與重讀成本時，才選 `task-pi`。選擇 Task Pi 前，主 Agent必須記錄一段具體收益理由；說不出理由就使用 direct。
+使用者未指定執行模式時，主 Agent 能在單一上下文內可靠完成的工作直接做。只有當 Task 的診斷輸出、執行時間、恢復需求或工作區隔離收益明顯高於新 session cold start 與重讀成本時，才選 `task-pi`。選擇 Task Pi 前，主 Agent 必須記錄一段具體收益理由；說不出理由就使用 direct。若使用者已明確批准特定模式（例如驗證 Task Pi 協定），啟動端須如實交接該事實；能力／授權不足應回報 blocker，不能因 direct-first 靜默換路。這不預定 Task 數量、角色鏈或實作方法，也不授權普通需求自動建立 Goal。
 
 Task Pi 的價值是**隔離、恢復與完成保護**，不是增加角色數。品質來自 outcome criteria、每個 checkout 的獨佔寫入、Host evidence、source freshness 與 acceptance，而不是 child 數量。沒有固定「一個 implementer + 一個 reviewer」；角色種類、數量、先後和平行性由 orchestrator 依需求與實際證據決定。
 
@@ -473,3 +474,202 @@ D4c–e 已提供 sealed candidate、writer gate、review-bound apply 與套用�
 - 這是 reported-usage admission，不是 tokenizer、provider 即時 billing firewall 或新增 retry。保守 headroom 可能在仍有賬面餘額時拒絕；在途、工具內嵌/provider 內部重試的消耗不能由它即時硬停。Pi 原生已配置的有界 retry 保留；Task redispatch 仍禁。L0/campaign 的跨 Task 總額與歷史 anchor 仍依既有規則核對，不是全域共享池。
 
 本輪只做本地 source、disposable Git/SQLite 與實際 Pi SDK 的離線 fake-provider 驗證，沒有真模型／Herdr／G1／Goal／reload／部署，也未開啟或遷移正式 ledger。下一次新版 writable runtime 啟動會交易式升級 schema 2→3；新版只讀 reader 同時支援 2/3，不修改舊契約。切換前須先處理既有活躍／unknown executions，避免混版本 Worker；不藉此接管或補写 r2/r4 receipts。驗證結果、來源 SHA、完整限制見 [shared-budget evidence](goal-team-evidence/task-runtime-shared-budget-20260914/README.md)。
+
+## 30. Agent／runtime／checker 責任邊界修復（2026-09-22，離線已驗）
+
+本輪依使用者授權先更新設計再修 source；main-only，不啟新 Goal／Task／模型／live G1、不改 sealed execution 或提高權限、預算，不 commit/push。第 29 節為先前結果，不代表本節已驗收。
+
+- **Agent owns semantics**：L0 保留原始需求中的精確介面字面值、行為、scope 與 evidence mapping；Worker 向 leaf 傳遞同一需求與實際 candidate。移除測試輸入的固定角色鏈、任意 objective/criterion 字數與重複 review 指令；只保留既有 6 KiB prompt gate。模型負責完整工作及 review 的資源規劃，runtime 不靠 Todo selector／關鍵字決定規劃正確性。
+- **Runtime owns facts**：純輸入拒絕、正常 check process 非零退出、signal/timeout/spawn/source/owner/usage 故障分開。非零退出只證明 check 未通過，不能直接宣稱產品 bug 或 assertion failure；在 source/owner/staged-tree 仍一致且 receipt 完整時，透過既有 tool details 綁 tool/call/input/execution 交接 check/receipt/log 路徑及 digest。保留 failed integration 與禁止重播／驗收；observer 不立即切斷 L0 診斷／pause／cleanup，但不能把它轉為 PASS。未知／runtime fault 仍立即 drain。診斷不是修 sealed artifact 的授權。
+- **Review**：沿 public preflight 揭露 resolved IDs、required internal tools（含 structured_output）與 ceiling 差異；不 hardcode profile 工具、不豁免 internal tool、不擴權。plan 提供當時的 role/review spawn 與 allocation 診斷，start 仍重新驗證並拒絕耗盡，避免把 plan 當預留或審批。
+- **Checker owns observable behavior**：空列表仍須指定 empty element 可見；有項目時隱藏或移除皆合法。計算帶 identity 的外層 Todo rows，不把 row 子控件的同名 attribute 算多筆；驗證 checkbox/delete 屬於 row。失敗也保存 bounded DOM／phase／browser errors，不只 timeout。撤回「初始 HTML 必須含 empty」的新增限制：r16 原錯誤是在新增後，不是初始 race；r17 原內容副本已實證只有 1 row、舊 selector 卻匹配 3 個帶 data-todo-id 的元素。
+- **Recovery/accounting**：不以新 Goal/workspace 重設 repair 次數／campaign history。唯讀重新核對 r12–r17 的 parent（同 anchor 只計一次）、各 L0 與完整 closed native usage，保存追加的更正證據，原漏帳 reports 不覆寫。unknown 不補零。不建立全域 campaign ledger。
+- **Finish line**：既有 candidate 的差異實驗＋可執行 regression 驗 checker 正／負例；公開 stage→tool result→observer seam 驗 completed failure 能診斷但不能接受／重播、runtime/unknown 仍停；review diagnostics 不改 ceiling；計量去重且缺失 fail closed；相關／完整回歸、scoped LSP、lens。離線 PASS 不代表模型需求交接或 live readiness PASS；之後再取得一次 fresh G1 授權。
+
+### 30.1 實作與驗證結果
+
+- `check-failure.mjs` 的完成失敗事實由 stage source/owner/terminal 檢查後產生；原 integration failure/intent 保留。公開 stage tool 與 observer fake-RPC seam 測得可診斷、不可 false-complete、不可重播；signal/mutation/unknown 仍停。
+- `integration-review.mjs` 把 required internal tools 納入相同 ceiling 並揭露差額；`review-runs.mjs` 的 allocationDiagnostics 是 plan 時快照，不是 token 實耗、live grant 或預留。
+- `browser-todo-check.mjs` 在原 r16/r17 內容副本通過；r16 afterCreate.emptyPresent=false、r17 identityMatches=3/rows=1，兩個原誤判已可區分。原 candidate／failed receipts／Goals 不修改，不追認 acceptance。
+- 完整 runtime suite 407 PASS、0 FAIL、1 opt-in browser skip；該 browser suite 另以真 Edge 實跑 9/9（合法動態 empty／nested identity，及 missing/stuck empty、no-add、no-persistence 負例）。不是模型交接或 G1 PASS。
+- r12–r17 原生完整計量與 durable ledger 唯讀重核：全部 CANCELLED/reservation closed/Goal commit not_requested；L0＋native 6,818,463 tokens，加單一 parent snapshot 共 28,372,521（含 cache，其後用量另計）。舊 campaign 缺證據與 reservations 不動。
+
+新需求模板為 `task-runtime/e2e/g1-request.txt`，歷史 r12–r17 request/launcher 只作證據，不再複製其固定提示或空 history。機械 source/consumer 修復已驗；Agent 能否保留原需求並完成新 live 仍待另行授權驗證。詳見 [本輪證據與限制](goal-team-evidence/task-runtime-boundaries-20260922/README.md)。
+
+## 29. 執行事實、可修正輸入與完整歷史（2026-09-22）
+
+使用者已授權更新設計並修正。**Prompt／skill 決定如何完成；runtime 如實執行、保存狀態並守住已授權邊界。** 本輪 main-only，不啟 child、不改模型／權限／預算、不操作舊 Goal/execution、不 reload、不啟新 live E2E、不 commit/push。R6–R11 原始失敗不覆寫；R7 是 Task deadline 到期，R9/R10 正式 browser checks 已 PASS，不沿用已撤回的 wrapper 假成功說法。
+
+### 29.1 工具與 observer
+
+- 在既有 tool result `details` 交接操作事實，不新增 controller／ledger 狀態／retry service。只有發生於具名純輸入驗證邊界的拒絕，才標示為可修正輸入；包括 spec 格式／prompt 容量，以及 review wave 的未登記輸入。保留原錯誤與階段，不能把任意 exception、磁碟失敗、權限／source／usage gate 標成輸入錯誤。
+- 不用錯誤訊息白名單判斷副作用。公開 parameter-schema 拒絕沿用 Pi validator；工具內部以 host 產生的結構化事實交接，observer 必須綁同一 tool call/input。沒有可信證據時仍 stop/drain，不能根據模型宣稱已恢復重播。
+- Dispatch 開始呼叫僅是 attempted，不代表已分配或已啟動。`prepare` 可能已 claim controller，即使未 reserve 也不能宣稱完全零副作用；拒絕回覆須區別這些範圍。原 identity/reservation/source/authority checks 不取消。
+- 一般 read/bash 等工具錯誤保留在 faults，不以單一永久 latch 否決後來的 Goal 結果，也不以任意後續成功消除未知副作用。observer 不推斷任意工具語意；L0 依原始效果／授權處理，未分類的 Task 工具故障與 provider/extension/RPC 故障仍由 host 機械性停止。`fullE2EPassed` 不因此自動變 true。
+- Collect 分開「本次等待視窗結束」與「Task deadline」。前者正常回傳 execution／candidate／Worker 狀態，可續等同一 execution；後者、Worker 無結果退出、launch unknown 仍失敗並保留 reservation。不延長 deadline、不接受未退出 Worker、不自動重派。
+
+### 29.2 契約與 prompt 交接
+
+- Worker 必須看見每個 criterion 的 `requiredEvidenceKinds`，以及已封存 contract 的精確路徑；不靠猜測或臨時 objective 字數規則。保留 6 KiB 限制，容量驗證仍在 reserve 前；精簡重複 runtime 指引而非刪除使用者要求。
+- v3 現行 final acceptance 只支援有 host-check binding 的 criteria，獨立 source-bound review 仍 required。揭露此能力限制及缺失的 check mapping，不自動改寫 criteria、默默換 evidence kinds、放寬 gate或新增「所有任務永遠只能 host-check」規範。**source-review-only 驗收不在本輪範圍**，沿第 25 節既有決定。
+- Review 工具權限以既有 native public preflight 的解析後 inventory 為準；回報 expected／effective／excess 差異，不手抄 profile selectors、不 hardcode 角色工具、不擴權、不放寬 ID regex。Ceiling mismatch 是未啟動的能力診斷，不是自動重試權；已封存 policy 不可修改，只能在原授權中選擇相容方案，否則交回 blocker。
+- Stage 回覆明示已跑 checks 與 receipts，verify-only 不要求 target apply。能力失敗不建議切換 mode。角色選擇、candidate artifact 指派、正確 cwd、語意覆蓋與依賴留給 L0／Worker／skill；不加入固定角色鏈、單 implementer、禁止 verifier 等規則。
+
+### 29.3 歷史計量
+
+- 重用 `measureClosedExecutionUsage`、既有 ledger/mailbox/native lifecycle 與 session hashes，在原 live owner 的終止／drain 入口封存完整 Task 計量。包含最後一個 leaf/review、失敗／取消和 cache，不從下一次 role admission 前的快照猜最終用量。對未進 stage 的已完成角色，也重用 `captureNativeTerminal` 保存 SHA-bound 終態 bytes，避免 native 暫存清理後只剩 scalar usage；歷史唯讀 reader 不補寫這些證據。
+- E2E history 以明列 execution 的完整 native inventory 核對來源；L0 仍負責 campaign membership，不掃描 session home、另造全域 ledger或把未列入的 execution 視為不存在。既有 raw snapshot history 保持可讀，但不宣稱它單獨證明 inventory 完整。
+- 清理終態與用量完整性分開呈現。無法完整計量時保存 unknown／原因，不阻礙必要 drain、不補零、不讓新一輪把未知用量當剩餘額度。舊 owner 已退出的資料只做唯讀核對，不能冒用其身分封存新 receipt。
+- Task 實耗包含 prior execution 時，campaign 彙整需按原生 session identity 去重並檢查來源一致，不把 prior actual 與原 Task reservation 重算。仍保留原 cumulative anchor、unknown-usage 與 aggregate reservation 規則。
+
+### 29.4 驗證與完成界線
+
+以現有 fixtures 測真 consumer seam：spec 拒絕→同 loop 修正→一次 launch；正常 collect 視窗結束→同 execution 成功；Task deadline／未知 launch／source 篡改仍阻擋；review preflight 不擴權／不耗 launch intent；已完成 checks 不重跑；history 包含最後角色且缺失／重複／篡改拒絕。使用非 Todo criterion／不同 roles，避免 app 或角色特判。修改後 scoped LSP、相關回歸、必要 full suite 與 lens diagnostics，保留 source-bound 證據。
+
+本輪 source 修正與離線驗證完成：完整 runtime suite **398/398**、18 檔 primary LSP 0 errors；takeover successor reconcile regression 通過，execution owner/epoch 與 contract identity 保持不變。Pi 公開 `tool_result` hook 保留拒絕的 error flag 與 details，已用真 Agent loop＋離線 fake provider 驗 consumer seam；未啟模型。補驗兩種 host-exit 事件順序均保留 failure／unresolved cleanup，未修改停止規則。
+
+唯讀核對 R6–R10：R9/R10 完整計量並找出原 history 各漏一個 leaf；R6–R8 reader 所需的部分 native 暫存終態已不存在，保持 unknown，未冒用舊 owner 補封存。依使用者授權修復 takeover→reconcile seam 後，逐一準備 proof 並推進 4 個舊 controller 至 epoch 2；三筆 process/pane 或 role proof 不完整而保留 reservation，一筆因 workspace 遺失 fail closed。未關閉整個 campaign 歷史缺口、舊 reservation、live G1／完整 request-to-outcome 或 readiness；pi-gateway config 與既有 archive diagnostics 亦未處理。證據：[執行事實修復](goal-team-evidence/task-runtime-execution-facts-20260922/README.md)、[舊帳處置](goal-team-evidence/task-runtime-execution-facts-20260922/old-account-close-attempt.json)。
+
+## 31. r18 後的啟動交接、Agent 規劃與 runtime 邊界修正（v1.22，待實作）
+
+### 31.1 授權、證據與更正
+
+本次使用者要求更新設計並逐一建立 TODO，**不是實作、reload、權限／模型／預算變更或新 live 授權**。main-only；既有 dirty work、Goals、execution、sealed artifacts、正式 ledger 均不動。下列十項是待辦，不因文件完成就算功能完成。
+
+直接證據以 [r18 原始 request](goal-team-evidence/task-runtime-g1-request-driven-20260922-r18/request.txt)、[實際啟動及 RPC observation](goal-team-evidence/task-runtime-g1-request-driven-20260922-r18/live/rpc-observation.json)、其 `sessionFile` 所指原始 session、[launcher](goal-team-evidence/task-runtime-g1-request-driven-20260922-r18/run-request-driven-g1.mjs) 為準；對照 [r17 request](goal-team-evidence/task-runtime-g1-request-driven-20260922-r17/request.txt)。r18 README/accounting 中下列錯誤尚待 R31-A 追加更正，不作權威結論：
+
+- 啟動參數有 `--no-skills`、`--no-context-files`；L0 未讀 team-flow，但確實讀了當時的 Orchestrator SPEC。不能稱「完整 skill 已載入但 Agent 不遵守」，也不能稱完全沒有指引。
+- r18 移除 r17 的明確 fresh Goal 授權與預算數字，改稱 separately supplied；launcher 的 host admission 有資料，但傳入模型的仍只有原 request。`get_goal` 回無 Goal 後轉 raw subagent，是可觀察偏離；缺交接、模式歧義是已證缺口，不能由單次 trace 證明模型內部唯一原因。r17 曾在相同關閉 skill 設定下進入 Task，故不把關閉 skill 當充分因果證明。
+- L0 約第九分鐘回覆 blocker 並 `agent_settled`；observer 在 `goal:null` 時仍等到 deadline。deadline 不是持續規劃三十分鐘的證據。Task drain 空 inventory 不能證明直接 subagent 全部已收尾。
+- L0 手動 browser worktree 命令在切 cwd 前 `git apply`，曾誤寫原 target，之後清乾淨；不得稱全程未改 target。無 Task execution／AcceptanceReceipt，r18 仍 NOT PASSED。
+- 原生 `acceptance:false` 是合法 API；只有相關 acceptance report 設定要求 `outputSchema`。r18 後追加的「false deprecated／所有 subagent 必須 schema＋acceptance 物件」須撤回；Task required evidence 仍不可因此關閉。
+- r18 純 L0 assistant 用量 **293,387**，implementer **163,702**，reviewer **89,443**，去重共 **546,532**。strict L0 reader／RPC aggregate 已含兩筆 tool-result child usage，再加 child 會重算；799,677 與 839,677 均非正確去重值。此值不是 campaign 最新總量、provider billing 或舊 unknown 結清證明。
+
+### 31.2 設計責任：完整環境，不增加語意 gate
+
+| 層 | 應負責 | 不應負責 |
+| --- | --- | --- |
+| 使用者／啟動端 | 交接真實模式、Goal 授權、交付要求、現行資源／來源、適用能力與規範 | 替 Agent 寫答案 spec、固定 Task／角色鏈；從 env 旗標創造授權 |
+| Agent／skill | 理解需求、成果／依賴、角色與完整成本、證據選擇、診斷與修訂計畫 | 猜授權、預算、receipt identity 或遺漏的上下文；用換路掩蓋 blocker |
+| Runtime／host | 執行已授權操作；owner/scope/budget/source/terminal/evidence 事實及有效性 | 用 Todo/G1 keyword、固定角色／順序判斷規劃好壞；代替 Agent 決定修什麼 |
+| 驗收／評估 | 原始需求、實際成果、有效證據、效率與恢復能力 | 只數工具／角色／PASS；把 fixtures、一次成功或 audit skip 當 readiness |
+
+不新增 planner controller、plan registry、workflow engine、全域 campaign ledger 或逐步語意 gate。必要機械欄位／receipt／hash 優先由既有 owner 回傳，不把平台機械操作包裝成 Agent 的規劃責任。保留既有 6 KiB prompt、source freshness、required review、owner、usage、scope 與 acceptance 邊界。小工作仍可 direct；模式未指定仍由 Agent 判斷，指定模式缺能力不能靜默 fallback。
+
+### 31.3 逐項修正與驗收
+
+以下代碼與 native TODO 一對一；各 TODO 亦包含如何修正、依賴及證據要求。原母項 `TODO-a955d56c` 保留，不改其 owner／狀態。
+
+#### R31-A — 證據更正與計量去重（TODO-cb47c13d）
+
+- **修改位置／做法：** r18 evidence 追加 correction 與 README 指向；查 `task-runtime/e2e/usage.mjs`、`task-usage.mjs` 和實際彙整 consumer。用 native message/run/session identity、來源 SHA 對帳 parent tool-result 與 child corpus，不以 scalar 相等猜重複。保留原錯誤 JSON、失敗與正式 ledger；僅確認 consumer 有缺陷才修改該層，不全面重造計量。
+- **驗收：** 三份原 session 與 RPC aggregate 一致；已內嵌／未內嵌／部分重疊、failed/cache、缺失／不符來源案例均可區分。不能猜扣未知成本。parent 最新 snapshot、campaign membership 與 r18 本次值分列。
+- **依賴：** 無；供 B/I/J 使用。報告更正不得冒稱 runtime 已修或 campaign 已結案。
+
+#### R31-B — 模式／授權／預算交接（TODO-552919e5）
+
+- **修改位置／做法：** `run-todo-flow.mjs` 的 public launch／prompt seam、`g1-request.txt`、`E2E-INPUTS.md` 及未來 launcher 準備流程；不回填歷史 requests。從同一已核 host admission 資料產生精簡 context：批准模式、Goal 建立／續用權、交付模式、anchor/ceiling、actual/unknown/holds、可配置上限、來源 ref/SHA/時間與 deadline。模型可讀的來源不可只藏在 host JSON；不交完整私密 parent transcript。
+- **驗收：** 經實際公開 host/model-request seam 捕获模型可見內容，核與 admission 一致；fresh Goal 已授權、未授權、現有 Goal 續用、普通不建 Goal、missing history／stale snapshot 全覆蓋。不是只 assert prompt 檔案含某字串。env 的 canary/auto-confirm 不能代替批准。
+- **依賴：** A；與 C 同步口徑。Task/role 數、依賴與配額仍由 Agent 規劃。
+
+#### R31-C — 精選 skill 送達與規範一致（TODO-e43e3aec）
+
+- **修改位置／做法：** `publicCommand`、team-flow/member、`GOAL-TEAMS.md`、Orchestrator SPEC、tool description/promptGuidelines、E2E request。沿 Pi 公開 resource/skill 入口明列本模式必要內容；可保留不載入無關全域 context，不一口氣開所有 skills。必要責任集中一份當前規範，其他文件路由引用，歷史 helper 與新操作隔離。
+- **撤回：** false deprecated／所有 subagent 強制 schema＋acceptance 物件的錯誤概括；依原生 API 與任務 required policy 區分。G1 特例留 E2E，不注入通用 SPEC。保留 `request-flow.test.mjs` 的非 Todo/G1 通用性要求，而不是刪測試迎合過度規則。
+- **驗收：** 實際模型可見規範及來源／版本可核對，skill 檔名被 discovery 不等內容已送達；覆蓋缺失、衝突、普通 handoff、Task、leaf 不帶 Goal 控制及 acceptance 正反例。不強制 read 次數、固定工具序列，不改模型 routing。
+- **依賴：** 與 B 協同，不互設循環完成依賴。
+
+#### R31-D — 按模式與 owner 整理工具介面（TODO-b9d4800b）
+
+- **修改位置／做法：** 查 L0 tool registry、Orchestrator initialize/preflight/review RPC、Worker/native role 入口。Task 模式 L0 負責成果 dispatch/collect/stage/review/accept，Worker 負責 task-local role launch；ordinary handoff 保留直接 subagent。先列能力對照，再選最小的公開工具曝光／描述調整，不能刪 native 註冊而破壞 host RPC。
+- **驗收：** 前後 effective inventory 與真正 consumer 測 L0、Worker、ordinary handoff、review transport。缺能力回具體 blocker，不新 install/fallback。工具隱藏不是 OS sandbox，shell 副作用仍依既有授權與作用範圍，不宣稱完全封死旁路。
+- **依賴：** B/C。若涉及權限/profile/全域配置或架構變更，先提交精確差異取得 owner 批准；此設計不是該執行批准。不以每次 tool call 新增拒絕 gate 代替角色介面整理。
+
+**現況與 2026-09-23 owner 已批准的限定實作（非 live 授權）：** 現行 `publicCommand` 同時載入 Orchestrator 與 pi-subagents；Task L0 的模型工具清單仍含可直接啟 raw writer/reviewer 的 `subagent`，而 `team_task_dispatch` 也提供同一成果的 Task 執行入口。`extensions/teams-orchestrator/index.mjs` 的 source-bound review 使用 `pi.events` 上的 `SubagentsRpcClient`，`Worker` 的 `team_role_spawn` 亦走原生 RPC；刪 pi-subagents extension 會破壞內部 preflight/review，不能這樣修。Pi 官方公開 `pi.setActiveTools()` 可調整**模型可見工具**，並不移除 extension RPC bus。已僅當受信任的 request-driven admission 核定 `mode=task-pi` 時，由 launcher 合成 `TEAMS_E2E_L0_MODE`；extension 在 `session_start` 核 session owner/Task capability 後、首次模型請求前**從 active tool names 移除 `subagent`**，保留 extension 載入與內部 RPC；Worker 的 `team_role_spawn` 不變。ordinary/direct、未指定模式的 L0 active tools 不變；缺工具／RPC 時回 exact blocker，不開第二條 writer 路徑。以公開 inventory／review preflight 消費端測 Task L0、ordinary、Worker、read-only review，確保實際 internal `structured_output` inventory 仍合 sealed ceiling。這是模式限定的 tool visibility／permission 變更，**不是 OS sandbox 或 shell 防旁路**；owner 已批准，但目前單元與 fake-RPC 只證工具選擇及 admission env，尚未證真 Pi 模型首次請求的 effective inventory。若 native `setActiveTools`/review seam 不相容，停止，呈證據重新決策，不能改成每步關鍵字 gate。
+
+#### R31-E — 成果規劃與實際交接（TODO-874a8f73）
+
+- **修改位置／做法：** 既有 Goal/task 描述、Task spec/contextRefs、Worker prompt 與 native leaf handoff。由 Agent 簡述需求→成果→依賴→checks→implementation/final-review 資源；查 producer/consumer 真正保留 selectors/keys/routes、行為、scope、版本與 required evidence。僅修已證丟失，不建新 plan schema／registry。
+- **操作分工：** host 回傳已知 identity、hash、精確 receipt/log/cwd；L0 不重造候選 browser worktree，使用 Task stage 的 relocation/check seam。普通 direct 工作不被這個 Task 分工一律禁止。保留動態角色與不重複 review 的選擇。
+- **驗收：** 非 Todo／單一 cohesive 成果／相依成果／合法少角色方案；原要求跨三層可追溯，完整 review 成本未漏且 rendered Worker prompt ≤6 KiB。不用 runtime keyword 判語意、不預製 spec/patch。真規劃能力另外在 I 驗。
+- **依賴：** B/C/D。
+
+#### R31-F — settled 結束與精確收尾（TODO-5ac6e636）
+
+- **修改位置／做法：** `run-todo-flow.mjs` 的 `agent_settled`、final stats、stop/drain。用公開 session／queue／continuation 與已知 run inventory 分清：本回合 settled、仍有合法續跑、真正結束但缺交付、未知 child。無 Goal 且已結束者取 final usage、記未完成事實並安全收尾，不空等 deadline，不靠 prose 或任意短 timeout 猜狀態。
+- **驗收：** r18 事件時序、no-Goal final、create_goal 後正常續跑、queued follow-up、active child、provider retry、check failure、unknown launch 與事件順序變化；不能錯殺合法等待、force release 或用舊 usage sample 當終態。Task rows=[] 不替 raw child terminal 作證，native proof 不足保持 unknown。
+- **依賴：** 無；用量口徑沿 A。這是 observer 正確性，不是 Agent 規劃 gate。
+
+#### R31-G — 有界修復設計／公開能力查核（TODO-5383c3ba）
+
+- **修改位置／做法：** 讀 Task/native public revision/report-repair 能力與 integration/review/acceptance 封存點；列「已支援、只有 schema、缺 consumer」。區分 draft/input、report-only、已知 candidate defect、unknown 外部副作用。`request_report_repair` 名稱存在不等有可呼叫路徑。
+- **交付設計：** Agent 決定修什麼；原 failure/sealed bytes 不變；新 candidate 如需版本化，明確原 Task/campaign lineage、owner、共享 budget/repair 計數與 source/evidence 失效規則。只重驗受影響且失效的證據，不用舊 failed receipt 接受新 source，不重開 terminal execution、不以新 Goal 清帳。unknown 先 reconcile；不支援就回精確 blocker。
+- **驗收：** 精確 API/consumer／相容性／crash-partial 處理方案與成功恢復、report-only 不重派 writer、drift/unknown/owner/超限負例。先證實最小既有機制能否承擔，再提出必要變更，不能預設新 controller/ledger。
+- **依賴：** A/B/C/F。此項完成僅是設計，架構/API/權限變更需 owner 確認；不操作舊 execution。
+
+**現行公開能力查核（2026-09-23，待審批，不視為 H 已實作）：**
+
+| 情況 | 已支援的 consumer 與安全邊界 | 缺口／處置 |
+| --- | --- | --- |
+| 尚未派工的 draft/schema 或 bound pre-dispatch 拒絕 | `team_task_dispatch`→`TaskOrchestrator.prepare` 在 reservation 前驗證；原 L0 可改自己的 draft，仍核原需求、6 KiB、owner／scope／budget | 不需要 revision API，且不編寫 sealed artifact；已預備但效果未知不得自行重派。 |
+| Leaf 同次 native run 的 report 格式更正 | role handoff 既有 `structured_output`／native acceptance，僅在仍可用且被批准的 run 上回報，禁止 writer/check 重新執行；`team-member` 寫明其限度 | `contracts.mjs` 僅允許 `request_report_repair` control **type**，`teams-worker`／`teams-orchestrator` 沒有完整對外修報 handler。封存 Worker result 後的 L0 主導 report-only 修補並無 public path；名稱／schema 不等可呼叫能力。 |
+| 已 sealed candidate 的已知行為缺陷／completed host check 非零 | `integration.mjs:stageIntegration` 保存 check receipt/log 和 `failure.json`；L0 可唯讀 diagnose／pause／cancel。`worker-runtime.mjs:sealResult` 從 RUNNING→QUIESCENT，old `resultRevision` 與 candidate bytes 保留 | `failure.json` 使原 stage 不可重試；`RESULT_READY` 沒有重進 RUNNING／換來源再 stage 的公開轉移。原目標不能由 L0 `git apply` 修。要完成需核准新增修訂入口並重驗新候選。 |
+| terminal/unknown | `ledger.mjs` ACCEPTED/REJECTED/FAILED/CANCELLED 為 terminal；已存在 reconcile/cancel 與 source/owner/usage reader | unknown 或尚有 open reservation 不能修訂；不得 reopening、force-release 或從空用量開始。 |
+
+**最小實作提案（H 之前需 owner 對確切 API/權限方案批准）：** 保持舊 execution/result/check/failure、review candidate、Task/Goal records 為 immutable。由相同活 L0 以公開 **Task 修訂 intent** 指定舊 execution ID、Goal/task identity、舊 contract/result/source/check-failure 的精確 digest 與欲修的行為；host 核 terminal＋reservation 已關、Worker/native run 全終止、原 target/base仍乾淨、owner/epoch及 scope/實耗，CAS 鎖住 revision，再開**同 Goal-X task 下有 lineage 的新 Task execution**，而非重開 terminal 或新 Goal。沿既有 `TaskOrchestrator.prepare` 的 `priorExecutionId`、closed `priorUsage`、Task pool carry-over 和 `maxProcessRestarts` 原子預留接線，**現行 prepare 只讀最新 prior execution 的 `measureClosedExecutionUsage`：該 reader 的 totals 僅當次 sources，並不包含再前一版；若將來放寬 revision 數，直接重用會漏掉更早實耗。但當前 v3 `maxProcessRestarts` 驗證只允許 `0..1`，且 history gate 限至兩個 executions，因此不能把「第三版漏帳」冒稱現行可達的漏洞。** 目前有界候選修訂嚴格只允許一筆舊 execution 和一輪 repair（repair ordinal 1），原始 closed Worker/leaf/review 用量必須可測並注入新 Task pool；任何提高 revision cap 的變更須先改為完整歷史去重 reader 並另行批准。這個一輪 candidate repair 計數獨立於同一 execution 內的 per-role product repair allowance，不將 process restart cap 誤稱其替代。初始 patch 只能以舊 stage 已核來源作**只讀參考**，Agent 在新受控 writer worktree 提出修正；舊 staged repo `failure.json` 不移動／不重播。新 execution 用自己的 patch、check、review、AcceptanceReceipt；**目前實作對 candidate revision 一律重新執行新 stage/check、重新獨審，不引用舊 failed check 或 review。** 若未來要重用未變收據，先證明完整 source/contract/check/owner binding，不能因名稱相同直接帶入。report-only 則先證 native 原 run 可恢復才同 run 修報；若 Task 已 sealed，需另議只修報內容且不改來源的明確 public revision consumer，絕不可偽造新 implementation。
+
+**2026-09-23 owner 已批准限定實作（非新 live 授權）：** `team_task_revise({previous_execution_id,spec_path,expected_previous_result_digest,failure_receipt_ref,failure_receipt_sha256,repair_reason})` 僅由原 live L0 呼叫。現有 `TaskOrchestrator.prepare` 新增明確 `repairOf` 分支；只接受同 Goal/task、單調 `taskRevision`、原 scope/policy/criteria/contextRefs、相同 check IDs/criterion ownership 的 v3 shared Task。失敗類型先限定為已完成非零、無 signal/error/副作用且整合 failure intent 相符的 stage host-check；已關閉 Worker/leaf/review 的 exact usage 承接新 Task pool。新 receipt 綁 previous contract/result/source/基線/check log/失敗收據和新 normalized spec/request；Worker prompt 指向精確舊候選與 staged source refs，舊 execution 不修改。新 candidate 必重新 stage/check、獨立 source-bound review、accept/readback；已用 disposable Git/SQLite 與合成 native-format writer/reviewer 走通原 check 失敗→新 Task/source-bound check verified→新獨審 sealed→AcceptanceReceipt/3，old failed bytes/receipt 保留，old20+new30=50 只計一次；final Goal tool reply 由 fixture 模擬，**非**真 Goal-X 或模型修復成功。`task-runtime/test/integration.test.mjs` 另驗 signaled/半寫/owner/drift/錯 SHA/超 scope/第二輪及 direct dispatch 繞過被拒。一般 v3 process restart 仍在，但必須 same scope/policy/ceiling/checks；若舊 stage `failure.json` 存在，不能從普通 dispatch 繞過新 repair intent。
+
+對 sealed report-only，native run 不能恢復時仍需另議**不重啟 writer**的報告修訂 consumer；此 API 要求 integration failed-check receipt，不能以 report-only 或 unknown 效果冒充。現有一般 `prepare` 的舊 bounded process-restart 路徑仍在，尚非以 tool visibility 實現的安全 sandbox；新 API 不替那條路徑宣稱額外語意授權。沒有舊 execution 實際被重派或重開。
+
+實際記錄順序沿現有 `prepare`：先驗 failure/source/usage 和 Task prompt → ledger.reserve CAS → `Mailbox.create` → immutable contract/prior-usage/baseline/repair-intent/bootstrap → `launch`。reserve 後若在 receipt/bootstrap 寫入中 crash，新 reservation 為**未明／需 owner reconcile**，絕不自動重送 revision call；沒有另造交易 controller 或原地改 sealed artifact。後續若要求自動恢復 half-published 意圖，需要獨立證據與授權。任何步驟中斷，依 intent 與 durable ledger/source 唯讀 reconcile，不能因未拿到回應就再發一次。新舊執行同 campaign/同 Task 成本與修復次數延續；半完成寫入保持 UNKNOWN／預留而不掃除。正常可恢復正例要由**原失敗行為**經修正通過相同成功情境，並完成新的 source-bound review／receipt；負例含 report-only 誤重派 writer、source drift、舊失敗 receipt 被重用、超額、owner 變更、partial journal、unknown/signal。此設計中僅 completed nonzero staged-check candidate 分支已獲 owner 限定批准並開始實作；不宣稱 report-only 或 unknown 分支有可用 API，H 仍需修後成功及 source-bound review/receipt 回歸才算完成。與 D 的工具可見性分開核准，不能藉修訂修改模型／權限／預算。
+
+#### R31-H sealed report-only 修訂方案（2026-09-23，owner 已核准**限定離線實作**；非 live 授權）
+
+**已證缺口及選擇：** `contracts.mjs` 只容許 `request_report_repair` control type；`WorkerRuntime.processControls` 沒有該 handler，而 `teams-worker` 的 `team_task_result` 封存 r1 後 `ctx.shutdown()`。原 Worker 不再可恢復；pi-subagents 公開 `resume` 會產新 run，無原 Task result/role/candidate 的完整綁定，不能保證不派 writer。直接把 r1 改 bytes 或以 L0 補稱 Worker 作者均不合法。若 owner 要求**已封結果且獨審指出 report-only 問題後**仍能修報，推薦使用現有同 Task `maxProcessRestarts ≤1`／prior-usage 的新 execution，而不是復活舊 execution 或新增 controller。這**不是**目前已批准的 failed-check candidate API；只修未改產品 source/patch 的報告問題。無獨審封存失敗及可重驗候選的例子不硬造修報；尚未 sealed 的輸入/schema拒絕仍沿原 Worker loop 更正。
+
+- **公開 API 草案：** `team_task_revise_report({previous_execution_id, spec_path, expected_previous_result_digest, review_failure_ref, review_failure_sha256, report_reason})`。原活 L0 自行擬同 Task `taskRevision+1` spec，host 不幫 Agent 寫改正答案。`review_failure_ref` 必須是前 execution 真獨審已封存的 BLOCKED 報告，且其 review request/subject、source、old result、old staged successful checks 可核，不接受 L0 自稱的 reviewer prose 或任意檔案。舊 execution 已 terminal、reservation closed、acceptance absent、target 未 apply；owner/session/epoch、Goal/task、scope/base/policy/criteria/check vector/contextRefs、source snapshot與原結果 SHA 全相同。只限 v3 shared、verify-only 與 **history 僅一筆**；同一 Task 的 candidate repair 已用掉 `maxProcessRestarts=1` 時拒絕，不能藉新模式升 ceiling、reset 額度或造第三版。
+- **流程／狀態差異：** `TaskOrchestrator.prepareReportRevision` 先驗上述舊證、測完整 closed usage、以 `prepare(spec,{reportOf})` 用原 ceiling／owner reserve 新 execution，封存新 `report-revision-intent`（舊契約、r1、native writer capture、staged patch/tree、成功 checks、review failure 各 SHA）。新 Task Worker 只修報告，不改產品來源；現行離線實作更嚴格，`RoleController` **拒絕任何新 role**（不僅 mutation/check），若將來確需獨立 read-only 協助，須補相應新 run/usage/evidence reader，不能以本路徑偷偷開通。Worker 寫自己的 r1/來源快照，**不冒稱舊 native writer 是新 run**。Host 的 `stageReportRevision` 只讀重驗原完整 native writer/role terminal/usage、captured patch、來源、原 checks 的 input/log/receipt，再在新隔離 repo 套**同一已封 patch**並核 tree/scope/target 未變；綁 origin receipts 產生新的 lineage receipt，不執行原 writer 或重播原 host check。任何跨 execution proof 缺失／外部副作用未知／原 check 不可按完整 source/command binding 安全重用就 fail closed；不開通用『直接信任舊 check』路徑。
+- **獨審／驗收：** 新 revision 有**全新** review admission/wave/seal，舊 BLOCKED review 留在舊 execution、不可變 PASS。新 review request 明示 origin writer+host check hashes、report-only 差異與 source/tree 相同；`integrationReviewBinding`/`HostAcceptance` 僅此模式可重核 origin native writer 證據，不跳過 writer requirement、不得接受未證明的 required evidence 或舊 failed review。最終 AcceptanceReceipt/3 必須綁新結果、新 review 與 origin provenance，Goal-X 仍只 readback 新 acceptance。新 Worker/reviewer/parent 用量加舊完整實耗，接受時再核，不能將新報告拿來偷偷改 source／checks／policy；新 Task 若無原始成功行為證據，報告修正不能冒稱產品成功。
+- **故障與回歸門檻：** reserve 後 half-published 仍保留新 reservation 待原 owner reconcile，未知效果不重播；舊 sealed r1/review/失敗不覆寫。離線正例須從真 blocked review 的**報告缺陷**恢復，證實**無新 native writer run、patch/tree 未變**，新獨審與 receipt；負例含偽 BLOCKED／產品缺陷誤判、非法證據提升、identity/source/old capture/check tamper、review replay、owner/cap/usage/第二修訂、部分 journal、side effect unknown 與 target apply。改動面為 Orchestrator/Worker role admission、專用 integration/review/acceptance lineage reader、公開 tool schema 與對應 fixtures；不改 ledger schema、通用 Task 註冊或舊 receipt bytes。**這是跨封存 writer provenance 的 material API/authority 變更，沒有本方案的明確批准不得實作。**
+
+**限定實作與證據邊界（2026-09-23）：** owner 選擇精確方案後明確批准**僅離線**實作，非真模型／新 G1 授權。`team_task_revise_report`、`report-lineage.mjs`、`readCompletedReviewWave`、`stageReportRevision` 與 Worker／review／acceptance 接線已在隔離 Git/SQLite＋合成 native-format 報告走通：舊獨審 BLOCKED（含顯式 blocker finding）→舊 execution 已關→同 Task 新 Worker 只修報告、零新 role／零 host check 重跑→相同 patch/tree 與原 writer/check SHA→獨立新 PASS 並逐 finding 解釋→AcceptanceReceipt/3 與新 acceptance 的合成 Goal matching gate／重讀。舊 BLOCKED bytes 不改，舊無 acceptance，舊實耗加新實耗；old incomplete/unknown review、半發佈 candidate、SHA/source/scope/ceiling drift 均拒。**目前只支援前次恰一個已完成 BLOCKED wave**，多 wave/鎖未明先停止；這是能力界限，不是放寬原始 reviewer gate。所有 native review/Worker 為合成證據，未有真模型自主修報或同 CLI+Herdr 結果；原正式 ledger、Goals、campaign 四筆 open reservations 未動。以上離線驗證須以最終 source 與 log readback 為準；不把此段當 R31-I/J live 驗收。
+
+#### R31-H — 核准後實作修復能力（TODO-94da5e92）
+
+- **修改位置／做法：** 僅依 G 核准後的既有 Task/native consumer 方案實作；精確檔案由 G 的能力查核決定，不預造無公開支援的接口。Agent 提修復，runtime 檢核 owner/source/usage/repair limits 並執行，不自動選方案或重試。舊失敗與 immutable bytes 保留，新的 candidate/證據綁自己的 source，Task/campaign 成本延續。
+- **驗收：** 原已知失敗→局部修正→原成功行為恢復→新 source-bound checks/review/receipt 的完整 consumer seam；report-only 無 writer 重做，無 unknown replay／budget reset，crash/partial/owner/drift/超限拒絕正確。不能只加防呆拒絕就稱修復能力完成。
+- **依賴：** G 完成、必要 owner 批准，以及 D/E/F 整合。未批准保持 open/blocked；live 修復另驗，不冒稱 fixture 是模型恢復能力。
+
+#### R31-I — 分層驗證而非碰運氣重試（TODO-db0596e1）
+
+- **修改位置／做法：** 既有 request-flow/e2e-control/e2e-admission/integration 測試、`E2E-INPUTS.md` 與 E2E matrix。第一層零模型公開 seam 驗 context/skills/工具/授權/預算/settled；第二層經另行授權的真模型規劃案例；第三層完整交付由 J 承接。不建新 eval 平台。
+- **評估：** 非 Todo 單成果、相依成果、缺授權／能力、合法實作替代與 repair decision；事前固定案例、評規、版本、attempt 上限與 budget，不規定唯一角色數／工具序列。記需求涵蓋、完整 review 資源、scope、人工介入、重複工作、tokens/cache、耗時／空等、首次成功與恢復；保存全部失敗，不即興重試。
+- **驗收：** 區分規範送達、Agent 規劃、實際交付與穩定性；一次 PASS 不代替後者。scoped LSP、相關／必要完整回歸及 lens，結果綁 final source。真模型未批准／未跑仍未完成，不能只因離線子項 PASS 關閉。
+- **依賴：** A–F 對應實作；可先驗已就緒部分，repair 評估另需 G/H；不把部分結果包成整體。
+
+#### R31-J — 新版 G1 與逐項完成核對（TODO-2ea851ba）
+
+- **前置：** I 對應環境／規劃證據及一次新的明確 live 授權。r18 授權已消耗，不從 TODO 或「繼續」推定第二輪。核當下 source、實際 context/skill/tool 版本、campaign membership、parent 新快照、r12–r18 去重來源與尚存 unknown；不把舊 snapshot 當當下餘額。
+- **執行／驗收：** L0 從原始需求建立真正 Goal/task/spec，自定成果/依賴/roles，經 public dispatch→collect→stage/check→source-bound review→seal→AcceptanceReceipt→Goal/task readback→drain；不預製答案，不手動繞 Task stage。原需求、target 狀態、run terminal、source/evidence freshness、全部去重成本可讀回；failure 不自動下一輪。
+- **完成界線：** 逐一 readback A–I，附實作檔案、驗證範圍、證據與剩餘阻擋。H 尚未批准／驗證时，可由 owner 明確限定只驗正常交付路徑，但不能因此關閉 repair 或宣稱全 R31/readiness 完成。舊 campaign recovery 不順便處理；一次 G1 PASS 不代表穩定性或所有需求已驗。
+
+### 31.4 執行順序、狀態與防遺漏
+
+1. A 更正事實；B/C 對齊環境與規範。F 可獨立修生命週期，但由同一 writer 序列修改共享檔案。
+2. B/C → D → E；G 在其依賴具備後完成可實作設計，所需批准後才 H。不因批准等待停住其他已授權工作。
+3. I 逐層收證據，不用更嚴的 runtime workflow 約束來製造規劃 PASS；J 最後在新授權下執行。這是修復工作的依賴，不是產品 Agent 的固定角色／工具 DAG。
+4. 每项開工前 `todo claim`，核當前 source／文件；完成時記修改位置、原失敗與恢復證據、source digest、命令／結果、未驗範圍，才更新 native TODO 與 Markdown 索引。未批准／缺證據保持 open/blocked，不能用 sibling 的 PASS 代替。
+5. 最終按本節 A–J 逐項 readback；文件、程式、零模型、真模型規劃、完整 E2E 分別標示，不把「已寫設計」勾成「已修復」。十個 TODO 均已建立；A–I 已有不同程度的設計或零模型實作，本輪未啟新模型/Goal/live G1。依 native TODO 及最終 source 證據逐項 readback，不以局部實作自動關項。
+
+### 31.5 前瞻性新 G1 的來源缺席交接（2026-09-24；不倒填舊 J）
+
+在唯一獲准的獨立 live `306fee16-d443-4f38-b4da-b86fe3bc156f`，L0 選擇 `sourcePaths:["app"]`、`allowedWritePaths:["app"]`；乾淨空白 Git base 並無 `app/`，實作者的 managed worktree patch 已完成但未寫回 target。舊 `host-evidence.snapshot` 對 source path 直接 `realpathSync`／`lstatSync`，使 Worker 的 `team_task_result` 在建立 source manifest 前兩次 ENOENT；沒有 result/host stage/review/Receipt，L0 collect 等到 deadline 才 drain。這是設計文件未明說「預計新增的 evidence root 可不存在」與既有 reader 不能表達 absence 的共同契約缺口；agent 的選擇觸發該缺口，不能用手動 materialize patch、弱化 criteria 或臆測 reviewer PASS 掩蓋。r18 等先前失敗另有獨立成因，不把本案稱為它們的唯一原因。
+
+本輪限於原生邊界修復：沿用單一 source snapshot reader，對明列、相對且不經 symlink／credential 的尚不存在來源記錄確定性的 `kind:"absent"`；source digest 在後續 sourceRoot、候選 stage、host/acceptance 讀回仍逐次比對，出現新目錄（即使 Git status 仍 clean）亦使舊 result 失效。若來源讀取真故障，Worker 沿既有 durable failed event 及 owner collect 及時交接，保留 reservation 直到原 owner cancel/reconcile，不把報告格式更正變成 fatal，也不重派。真 Git＋合成 native handoff 的 regression 證明缺席目錄→writer patch→ready candidate→verify-only host check 可恢復，並驗 source 漂移／symlink／credential 負例；這仍**不是**修後真 Pi CLI／Herdr／Edge G1 PASS。前瞻性新案 `TODO-dc40e174` 及舊 R31-J 在新的 live 授權／readback 前都不得標完成。
+
+## 32. Review-origin product revision（本地實作；live 未驗證）
+
+使用者先要求設計、後另行授權本地實作與離線驗證 L0 最終獨立 review 發現產品缺陷後的修訂流程。完整方案見 [Review-origin product revision 設計](TASK-PI-REVIEW-PRODUCT-REVISION-DESIGN.md)。本地驗證不授權 live Worker／新 E2E、修改既有 sealed artifacts／正式 ledger／Goal 或 target apply。
+
+推薦同 Goal／同 Task、taskRevision + 1／新 execution：事前 opt-in 且在原 scope、累計額度與期限內，L0 可主動診斷並派一輪新修訂 Worker；新實作者從原 base 重建完整舊候選，輸出原 base→完整修正版 patch，重新檢查與獨審全部需求及全部舊 findings，再以新 AcceptanceReceipt 完成同 Task。舊 BLOCKED 證據保留；approved-integration 仍需新精確計畫的逐筆確認。此能力現以原 `team_task_revise` 的 `origin:"blocked-review"` 分支接線；可與既有 failed-check／report-only 路徑區分。離線 disposable Git／SQLite 與合成 native-format 證據已測到新候選的 verify-only Receipt/3 與 approved-integration Receipt/2、雙舊 wave、費用／期限及拒絕案例；尚未以真 Pi 模型／公開工具 live E2E 驗證，亦不追認任何舊 Task。

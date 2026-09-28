@@ -13,6 +13,13 @@ import {
   taskBudgetBinding,
 } from "../../task-runtime/task-budget.mjs";
 
+const roleModeSchema = {
+  type: "string",
+  enum: ["mutation", "review", "read-only", "check"],
+  description:
+    "Effect boundary: mutation/check are write-capable and require nonempty allowedWritePaths even for an expected empty diff; read-only/review forbid source changes. check is not a synonym for read-only inspection or L0 host checks.",
+};
+
 const resultSchema = {
   type: "object",
   additionalProperties: false,
@@ -29,9 +36,15 @@ const resultSchema = {
     resultRevision: { type: "integer", minimum: 1 },
     outcome: {
       type: "string",
-      enum: ["ready_for_acceptance", "blocked", "failed", "cancelled"],
+      enum: [
+        "ready_for_acceptance",
+        "ready_for_review",
+        "blocked",
+        "failed",
+        "cancelled",
+      ],
       description:
-        "ready_for_acceptance means the candidate/handoff is ready for host verification, NOT accepted: role work succeeded and all roles are terminal. With L0-owned checks/review, keep pending host-check criteria indeterminate; those pending gates alone are not blocked. blocked requires a concrete candidate impediment or out-of-scope decision; failed means task work failed; cancelled means cancelled work. Never relabel a real blocker as ready.",
+        "ready_for_acceptance means role work succeeded with terminal handoffs and only host verification remains, NOT accepted; untested host-check criteria stay indeterminate. In v3 with required L0 review, ready_for_review delivers a complete native candidate with disclosed product not_met for staging/review ONLY; it cannot be accepted or applied. Preserve the known defects, never relabel them indeterminate. Missing authority/artifacts or unknown effects remain blocked; failed/cancelled keep their original meanings.",
     },
     summary: { type: "string", maxLength: 4096 },
     criterionResults: {
@@ -159,7 +172,7 @@ export default function teamsWorker(pi) {
     name: "team_role_spawn",
     label: "Spawn Task Role",
     description:
-      "Start one role or an independently justified parallel wave through one native controller run. Roles are chosen from the task allowlist, not a fixed pipeline. Shared writes/checks run alone; parallel writers require managed worktrees. New v3 Tasks use a shared pool: max_tokens is a cumulative role estimate including input/output/cache, not an output limit. Request headroom grows only from unreserved Task funds; actual usage is settled atomically. Unknown usage or insufficient Task funds block requests. Legacy member-hard contracts retain hard role limits. Reported metering is not an instantaneous provider billing cap.",
+      "Start a role or a justified wave through one native controller run; a one-run wave can request explicit isolation without parallel work. Roles are chosen from the task allowlist, not a fixed pipeline. In v3 the single form selects mutation/check -> worktree, read-only/review -> shared; all v3 mutation/check work requires a managed worktree. Legacy shared writes/checks run alone. A rejection is not permission to switch mode or isolation, widen write scope or change a sealed requirement. Choose within existing authority or report the blocker. New v3 Tasks use a shared pool: max_tokens is a cumulative role estimate including input/output/cache, not an output limit. Request headroom grows only from unreserved Task funds; actual usage is settled atomically. Unknown usage or insufficient Task funds block requests. Legacy member-hard contracts retain hard role limits. Reported metering is not an instantaneous provider billing cap.",
     parameters: {
       type: "object",
       additionalProperties: false,
@@ -184,10 +197,7 @@ export default function teamsWorker(pi) {
       properties: {
         role: { type: "string", pattern: "^team\\.[A-Za-z0-9._-]+$" },
         task: { type: "string", maxLength: 16384 },
-        mode: {
-          type: "string",
-          enum: ["mutation", "review", "read-only", "check"],
-        },
+        mode: roleModeSchema,
         max_tokens: {
           type: "integer",
           minimum: 1,
@@ -198,6 +208,8 @@ export default function teamsWorker(pi) {
         reason: { type: "string", minLength: 1, maxLength: 1000 },
         runs: {
           type: "array",
+          description:
+            "Use even one run when explicit isolation is needed. For an unchanged-source candidate with no writes authorized, select mode=read-only and isolation=worktree while keeping allowedWritePaths:[]. Its native empty-patch handoff supports staging; shared readers do not. L0 still owns designated host checks, final source-bound review and acceptance.",
           minItems: 1,
           maxItems: 64,
           items: {
@@ -218,11 +230,13 @@ export default function teamsWorker(pi) {
               },
               role: { type: "string", pattern: "^team\\.[A-Za-z0-9._-]+$" },
               task: { type: "string", maxLength: 16384 },
-              mode: {
+              mode: roleModeSchema,
+              isolation: {
                 type: "string",
-                enum: ["mutation", "review", "read-only", "check"],
+                enum: ["shared", "worktree"],
+                description:
+                  "worktree produces a native isolated handoff, including an empty patch for unchanged read-only source; shared readers produce no isolated candidate handoff. Worktrees are not security sandboxes. Neither isolation grants source-write authority.",
               },
-              isolation: { type: "string", enum: ["shared", "worktree"] },
               max_tokens: {
                 type: "integer",
                 minimum: 1,
@@ -264,12 +278,59 @@ export default function teamsWorker(pi) {
         content: [
           {
             type: "text",
-            text: `${launched.members.length} role(s) started as native run ${launched.runId}. Consume completion and process-terminal proof before the next wave. Worktree outputs are not merged or accepted.`,
+            text:
+              launched.disposition === "not-started"
+                ? `Native run ${launched.runId} did not start a child. Preserve the failure and diagnose it; no automatic retry or mode switch. Healthy contributions remain available.`
+                : `${launched.members.length} role(s) started as native run ${launched.runId}. Consume completion and process-terminal proof before the next wave. Worktree outputs are not merged or accepted.`,
           },
         ],
         details: launched,
-        // Yield to native completion notification instead of another polling LLM turn.
-        terminate: true,
+        // A proven no-start has no future child notification: keep diagnosis live.
+        terminate: launched.disposition !== "not-started",
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "team_role_control",
+    label: "Control Task Branch",
+    description:
+      "Inspect owned role waves, stop ONE native child without stopping siblings, or explicitly repair one settled branch within its original assignment and Task limits (writers remain isolated; shared readers require a clean original target). Use spawn's runId and member key. A repair starts a fresh same-role attempt and retains successful siblings and all history/usage. Stop is not proof of termination. Diagnose first; no report-only implementation rerun, unknown-effect retry, permission change or polling.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      required: ["action"],
+      properties: {
+        action: { type: "string", enum: ["status", "stop", "repair"] },
+        run_id: {
+          type: "string",
+          pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+        },
+        key: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$" },
+        reason: { type: "string", minLength: 1, maxLength: 1000 },
+        task: { type: "string", minLength: 1, maxLength: 4096 },
+        max_tokens: { type: "integer", minimum: 1 },
+      },
+    },
+    executionMode: "sequential",
+    async execute(_id, params) {
+      if (!roles) throw new Error("Task role controller is not bound.");
+      const value = await roles.control({
+        action: params.action,
+        runId: params.run_id,
+        key: params.key,
+        reason: params.reason,
+        task: params.task,
+        maxTokens: params.max_tokens,
+      });
+      return {
+        content: [{ type: "text", text: JSON.stringify(value) }],
+        details: value,
+        ...((params.action === "repair" &&
+          value.disposition !== "not-started") ||
+        params.action === "stop"
+          ? { terminate: true }
+          : {}),
       };
     },
   });
@@ -420,7 +481,7 @@ export default function teamsWorker(pi) {
             if (roles.snapshot().unresolvedRunCount === 0) {
               waitingForRoles = false;
               pi.sendUserMessage(
-                "The registered native roles have terminated. Continue the same bounded task; admission is rechecked before the model turn.",
+                "The registered native roles have terminated. Inspect each member, not only the wave status. Preserve successful siblings; diagnose a failed contribution and use team_role_control repair when authorized, rather than sealing blocked for a recoverable branch. Continue the same bounded task; admission is rechecked before the model turn. For each completed role, inspect its native status at spawn details.asyncDir/status.json: steps[].structuredOutput (and structuredOutputPath) carries the validated report even if the plaintext output file is empty. Do not treat empty prose as a missing handoff or task-local review as L0's final review.",
               );
             }
           }

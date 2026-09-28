@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -9,9 +10,13 @@ import {
   digest,
   validateTaskContract,
   validateTaskResult,
+  taskPreparationDiagnostics,
+  isRelocatableCheck,
 } from "../contracts.mjs";
 import { RuntimeLedger } from "../ledger.mjs";
 import { Mailbox } from "../mailbox.mjs";
+import { TaskOrchestrator, deriveProjectId } from "../orchestrator.mjs";
+import { WorkerRuntime, buildTaskPrompt } from "../worker-runtime.mjs";
 import {
   captureWorkspace,
   verifyWorkspaceScope,
@@ -81,6 +86,434 @@ function temp() {
   fs.writeFileSync(path.join(root, "src", "index.js"), "export default 1;\n");
   return root;
 }
+
+test("v3 known product defects remain honest review-only candidates, never acceptance-ready", (t) => {
+  const root = temp();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const contract = fixture(root, { schemaVersion: "teams-task-runtime/3" });
+  contract.policy.allowedRoles.push("team.reviewer");
+  contract.policy.review = {
+    authority: "l0-source-bound",
+    allowedRoles: ["team.reviewer"],
+    allowedTools: ["read"],
+  };
+  const result = {
+    schemaVersion: "teams-task-result/1",
+    identity: contract.identity,
+    requestDigest: digest(contract),
+    resultRevision: 1,
+    outcome: "ready_for_review",
+    summary:
+      "Complete controlled candidate with a known escaping defect; request independent L0 review.",
+    source: {
+      baseCommit: contract.workspace.baseCommit,
+      sourceDigest: sha,
+      manifestRef: "receipts/source.json",
+    },
+    criterionResults: [
+      {
+        criterionId: "criterion-1",
+        status: "not_met",
+        observation: "Backslashes are not encoded by the complete candidate.",
+        evidenceIds: [],
+      },
+    ],
+    evidence: [],
+    childRunRefs: ["completed-writer"],
+    unresolvedRunCount: 0,
+    risks: ["Product defect remains; no acceptance or target application."],
+    usage: { inputTokens: null, outputTokens: null },
+  };
+  assert.equal(validateTaskResult(result, contract, digest(contract)), result);
+  assert.equal(result.criterionResults[0].status, "not_met");
+  assert.match(buildTaskPrompt(contract), /ready_for_review/);
+  for (const mutate of [
+    (r) => {
+      r.outcome = "ready_for_acceptance";
+    },
+    (r) => {
+      r.criterionResults[0].status = "needs_user";
+    },
+    (r) => {
+      r.criterionResults[0].status = "indeterminate";
+    },
+    (r) => {
+      r.unresolvedRunCount = 1;
+    },
+    (r) => {
+      r.childRunRefs = [];
+    },
+  ]) {
+    const invalid = structuredClone(result);
+    mutate(invalid);
+    assert.throws(() =>
+      validateTaskResult(invalid, contract, digest(contract)),
+    );
+  }
+  for (const version of ["teams-task-runtime/1", "teams-task-runtime/2"]) {
+    const invalid = structuredClone(contract);
+    invalid.schemaVersion = version;
+    delete invalid.policy.review;
+    const row = { ...result, requestDigest: digest(invalid) };
+    assert.throws(
+      () => validateTaskResult(row, invalid, digest(invalid)),
+      /review-only requires v3 L0 review/,
+    );
+  }
+  const missingReview = structuredClone(contract);
+  delete missingReview.policy.review;
+  assert.throws(
+    () =>
+      validateTaskResult(
+        { ...result, requestDigest: digest(missingReview) },
+        missingReview,
+        digest(missingReview),
+      ),
+    /policy fields changed/,
+  );
+});
+
+test("v3 Worker role subset restricts dispatch without changing total Task or L0 review authority", (t) => {
+  const root = temp();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const legacy = fixture(root, { schemaVersion: "teams-task-runtime/3" });
+  legacy.policy.allowedRoles.push("team.reviewer");
+  legacy.policy.review = {
+    authority: "l0-source-bound",
+    allowedRoles: ["team.reviewer"],
+    allowedTools: ["read"],
+  };
+  assert.deepEqual(validateTaskContract(legacy), legacy);
+  assert.equal(
+    Object.hasOwn(validateTaskContract(legacy).policy, "workerAllowedRoles"),
+    false,
+  );
+  const restricted = structuredClone(legacy);
+  restricted.policy.workerAllowedRoles = ["team.implementer"];
+  assert.deepEqual(validateTaskContract(restricted), restricted);
+  assert.deepEqual(restricted.policy.review.allowedRoles, ["team.reviewer"]);
+  assert.deepEqual(restricted.policy.allowedRoles, [
+    "team.implementer",
+    "team.reviewer",
+  ]);
+  assert.match(
+    buildTaskPrompt(restricted),
+    /Allowed Worker roles: team\.implementer\n/,
+  );
+  for (const roles of [
+    [],
+    null,
+    "team.implementer",
+    ["team.implementer", "team.implementer"],
+    ["team.advisor"],
+  ]) {
+    const invalid = structuredClone(restricted);
+    invalid.policy.workerAllowedRoles = roles;
+    assert.throws(() => validateTaskContract(invalid), /worker|Worker/);
+  }
+  const old = fixture(root);
+  old.policy.workerAllowedRoles = ["team.implementer"];
+  assert.throws(() => validateTaskContract(old), /policy fields/);
+});
+
+test("preparation diagnostics expose capability gaps without rewriting requirements or commands", (t) => {
+  const root = temp();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const contract = fixture(root, { schemaVersion: "teams-task-runtime/3" });
+  contract.criteria.push({
+    id: "design",
+    text: "Explain tradeoffs",
+    requiredEvidenceKinds: ["source-review"],
+  });
+  contract.checks[0].argv = [path.join(root, "src/index.js")];
+  const before = structuredClone(contract);
+  assert.deepEqual(taskPreparationDiagnostics(contract), [
+    {
+      code: "unsupported-final-evidence",
+      criterionId: "design",
+      kinds: ["source-review"],
+    },
+    { code: "missing-final-host-check", criterionId: "design" },
+    { code: "non-relocatable-check", commandId: "check-1" },
+  ]);
+  assert.deepEqual(contract, before);
+  const prompt = buildTaskPrompt(contract);
+  assert.match(prompt, /design \[source-review\]: Explain tradeoffs/);
+  assert.equal(isRelocatableCheck({ executable: root, argv: [] }, root), false);
+  assert.equal(
+    isRelocatableCheck(
+      { executable: process.execPath, argv: ["src/index.js"] },
+      root,
+    ),
+    true,
+  );
+});
+
+for (const version of ["teams-task-runtime/1", "teams-task-runtime/3"]) {
+  test(`large sealed requirements stay bounded through E0 and E1: ${version}`, (t) => {
+    const root = temp();
+    const runtimeRoot = path.join(root, "runtime");
+    const orchestrator = new TaskOrchestrator({
+      runtimeRoot,
+      ownerSessionId: "owner-1",
+    });
+    t.after(() => {
+      orchestrator.close();
+      fs.rmSync(root, { recursive: true, force: true });
+    });
+    const contract = fixture(root, { schemaVersion: version });
+    if (version.endsWith("/3")) {
+      contract.policy.allowedRoles.push("team.reviewer");
+      contract.policy.tokenBudgetMode = "shared";
+      contract.policy.review = {
+        authority: "l0-source-bound",
+        allowedRoles: ["team.reviewer"],
+        allowedTools: ["read"],
+      };
+    }
+    const { identity, ...fields } = contract;
+    const spec = {
+      ...fields,
+      goalId: identity.goalId,
+      taskId: identity.taskId,
+      taskRevision: 1,
+    };
+    const projectId = deriveProjectId(root);
+    // Large product requirements stay in the sealed file, not repeated in the procedure.
+    for (const oversized of [
+      { ...spec, objective: "x".repeat(3500) },
+      { ...spec, criteria: [{ ...spec.criteria[0], text: "需".repeat(1300) }] },
+    ]) {
+      const { goalId, taskId, taskRevision, ...contractFields } = oversized;
+      validateTaskContract({
+        ...contractFields,
+        identity: { ...identity, goalId, taskId, taskRevision },
+      });
+      const referenced = {
+        ...contractFields,
+        identity: { ...identity, goalId, taskId, taskRevision },
+      };
+      const contractRef = path.join(
+        runtimeRoot,
+        "projects",
+        projectId,
+        "executions",
+        identity.executionId,
+        "task-request.json",
+      );
+      const e0 = buildTaskPrompt(referenced, contractRef);
+      const e1 = buildTaskPrompt(
+        referenced,
+        contractRef,
+        path.join(path.dirname(contractRef), "receipts/repair-intent.json"),
+        true,
+      );
+      assert.ok(Buffer.byteLength(e0) <= 6144);
+      assert.ok(
+        Buffer.byteLength(e1) <= 6144,
+        "unchanged contract must remain usable in E1",
+      );
+      assert.match(e1, /Read the complete sealed contract before assigning/);
+      assert.ok(
+        !e1.includes(oversized.objective),
+        "do not duplicate product requirements in procedure prompt",
+      );
+      assert.deepEqual(
+        orchestrator.ledger.listTaskExecutions(
+          projectId,
+          spec.goalId,
+          spec.taskId,
+        ),
+        [],
+      );
+      assert.deepEqual(orchestrator.ledger.listOpen(projectId), []);
+      assert.equal(
+        fs.existsSync(
+          path.join(runtimeRoot, "projects", projectId, "executions"),
+        ),
+        false,
+      );
+    }
+    spec.objective = "x".repeat(3500);
+    spec.criteria = [{ ...spec.criteria[0], text: "需".repeat(1300) }];
+    if (version.endsWith("/3")) {
+      spec.policy.reviewProductRevision = "within-scope-once";
+      spec.contextRefs = [{ uri: "src/index.js", sha256: sha }];
+      assert.throws(
+        () => orchestrator.prepare(spec),
+        (error) =>
+          error.phase === "task-context-ref" &&
+          /contextRef SHA-256 mismatch: src\/index.js/.test(error.message),
+      );
+      assert.deepEqual(
+        orchestrator.ledger.listTaskExecutions(
+          projectId,
+          spec.goalId,
+          spec.taskId,
+        ),
+        [],
+      );
+      assert.deepEqual(orchestrator.ledger.listOpen(projectId), []);
+      spec.contextRefs[0].sha256 = createHash("sha256")
+        .update(fs.readFileSync(path.join(root, "src/index.js")))
+        .digest("hex");
+    }
+    // Same Task can be corrected before reservation; no failed execution used a restart.
+    const prepared = orchestrator.prepare(spec);
+    const worker = new WorkerRuntime({ executionRoot: prepared.executionRoot });
+    const sessionFile = path.join(
+      prepared.executionRoot,
+      "worker-sessions/worker.jsonl",
+    );
+    fs.mkdirSync(path.dirname(sessionFile), { recursive: true });
+    fs.writeFileSync(
+      sessionFile,
+      JSON.stringify({ type: "session", id: "worker-1", cwd: root }) + "\n",
+    );
+    worker.boot({
+      sessionId: "worker-1",
+      sessionFile,
+      cwd: root,
+      activeTools: ["read", "team_role_spawn", "team_task_result"],
+      extensions: ["teams-worker", "pi-subagents"],
+      subagents: { compatible: true, checks: {}, ping: { version: 1 } },
+    });
+    const mailbox = Mailbox.open(prepared.executionRoot, prepared.executionId);
+    mailbox.writeCommand({
+      schemaVersion: "teams-task-control/1",
+      commandId: `grant-${prepared.executionId}`,
+      executionId: prepared.executionId,
+      ownerEpoch: prepared.ownerEpoch,
+      requestDigest: prepared.requestDigest,
+      type: "grant",
+      payload: {},
+    });
+    const started = worker.processControls();
+    assert.equal(started.started, true);
+    assert.equal(
+      started.prompt,
+      buildTaskPrompt(
+        worker.contract,
+        path.join(prepared.executionRoot, "task-request.json"),
+      ),
+    );
+    assert.ok(
+      started.prompt.includes(
+        path.join(prepared.executionRoot, "task-request.json"),
+      ),
+    );
+    assert.deepEqual(worker.contract.criteria, spec.criteria);
+    assert.equal(worker.contract.objective, spec.objective);
+    assert.ok(Buffer.byteLength(started.prompt) <= 6144);
+  });
+}
+
+test("prompt limit counts UTF-8 bytes, accepts exactly 6144 and retains Worker guard", (t) => {
+  const root = temp();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const contract = fixture(root, { objective: "任務" });
+  const mailbox = { root };
+  const room = 6144 - Buffer.byteLength(buildTaskPrompt(contract));
+  contract.objective += "x".repeat(room);
+  assert.equal(Buffer.byteLength(buildTaskPrompt(contract)), 6144);
+  contract.objective += "x";
+  assert.throws(() => buildTaskPrompt(contract), /6145 bytes > 6144 bytes/);
+  contract.objective = "任務";
+  const workerRoom =
+    6144 -
+    Buffer.byteLength(
+      WorkerRuntime.prototype.taskPrompt.call({ contract, mailbox }),
+    );
+  mailbox.root += "x".repeat(workerRoom);
+  assert.equal(
+    Buffer.byteLength(
+      WorkerRuntime.prototype.taskPrompt.call({ contract, mailbox }),
+    ),
+    6144,
+  );
+  mailbox.root += "x";
+  assert.throws(
+    () => WorkerRuntime.prototype.taskPrompt.call({ contract, mailbox }),
+    /6145 bytes > 6144 bytes/,
+  );
+});
+
+test("opted-in E0 admission reserves prompt space for immutable E1 before allocating", (t) => {
+  const root = temp();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const contract = fixture(root, { schemaVersion: "teams-task-runtime/3" });
+  Object.assign(contract.policy, {
+    tokenBudgetMode: "shared",
+    reviewProductRevision: "within-scope-once",
+    review: {
+      authority: "l0-source-bound",
+      allowedRoles: ["team.reviewer"],
+      allowedTools: ["read"],
+    },
+    allowedRoles: [
+      "team.reviewer",
+      ...Array.from({ length: 15 }, (_, i) => `team.${i}.`.padEnd(128, "r")),
+    ],
+  });
+  validateTaskContract(contract);
+  const projectId = deriveProjectId(root);
+  let runtimeRoot = path.join(root, "runtime");
+  const ref = () =>
+    path.join(
+      runtimeRoot,
+      "projects",
+      projectId,
+      "executions",
+      contract.identity.executionId,
+      "task-request.json",
+    );
+  while (Buffer.byteLength(buildTaskPrompt(contract, ref())) < 6000) {
+    const room = 6000 - Buffer.byteLength(buildTaskPrompt(contract, ref()));
+    runtimeRoot = path.join(
+      runtimeRoot,
+      "p".repeat(Math.min(200, Math.max(1, room - 1))),
+    );
+  }
+  assert.ok(Buffer.byteLength(buildTaskPrompt(contract, ref())) <= 6144);
+  assert.throws(
+    () =>
+      buildTaskPrompt(
+        contract,
+        ref(),
+        path.join(path.dirname(ref()), "receipts/repair-intent.json"),
+        true,
+      ),
+    /exceeds 6 KiB/,
+  );
+  const orchestrator = new TaskOrchestrator({
+    runtimeRoot,
+    ownerSessionId: "owner-1",
+  });
+  t.after(() => orchestrator.close());
+  const { identity, ...fields } = contract;
+  assert.throws(
+    () =>
+      orchestrator.prepare({
+        ...fields,
+        goalId: identity.goalId,
+        taskId: identity.taskId,
+        taskRevision: 1,
+      }),
+    (error) => error.phase === "task-prompt",
+  );
+  assert.deepEqual(
+    orchestrator.ledger.listTaskExecutions(
+      projectId,
+      identity.goalId,
+      identity.taskId,
+    ),
+    [],
+  );
+  assert.equal(
+    fs.existsSync(path.join(runtimeRoot, "projects", projectId, "executions")),
+    false,
+  );
+});
 
 test("D6 permits official Goal metadata only in the source project without granting Worker writes", (t) => {
   const root = temp(),

@@ -64,7 +64,7 @@ export function workerCommand({
     "--session-dir",
     path.join(executionRoot, "worker-sessions"),
     "--tools",
-    "read,team_role_spawn,team_task_result,subagent_supervisor",
+    "read,team_role_spawn,team_role_control,team_task_result,subagent_supervisor",
     "--name",
     `task-${path.basename(executionRoot).slice(0, 8)}`,
   ];

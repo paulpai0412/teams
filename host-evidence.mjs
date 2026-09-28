@@ -108,7 +108,7 @@ export function saveEvidenceJson(file, value) {
 }
 const save = saveEvidenceJson;
 
-function scopedPath(cwd, relative) {
+function scopedPath(cwd, relative, { allowMissing = false } = {}) {
   assert.ok(
     typeof relative === "string" &&
       relative &&
@@ -123,7 +123,25 @@ function scopedPath(cwd, relative) {
   );
   const file = path.resolve(cwd, relative);
   assert.ok(inside(cwd, file), "path escapes cwd");
-  assert.equal(fs.realpathSync(file), file, "symlink paths are not evidence");
+  let existing = file;
+  if (allowMissing) {
+    while (!fs.lstatSync(existing, { throwIfNoEntry: false })) {
+      const parent = path.dirname(existing);
+      assert.notEqual(parent, existing, "source path has no existing ancestor");
+      existing = parent;
+    }
+    assert.ok(
+      existing === file || fs.lstatSync(existing).isDirectory(),
+      "source path parent must be a directory",
+    );
+  }
+  // A missing future output is safe only when its nearest existing ancestor is
+  // canonical; this also rejects dangling symlinks in the path to that output.
+  assert.equal(
+    fs.realpathSync(existing),
+    existing,
+    "symlink paths are not evidence",
+  );
   return file;
 }
 
@@ -181,7 +199,17 @@ export function snapshot(cwdInput, sourcePaths, excludedPaths = []) {
       });
     }
   }
-  for (const name of sourcePaths) visit(scopedPath(cwd, name));
+  for (const name of sourcePaths) {
+    const file = scopedPath(cwd, name, { allowMissing: true });
+    const relative = path.relative(cwd, file);
+    if (!fs.lstatSync(file, { throwIfNoEntry: false })) {
+      if (excludedPaths.includes(relative)) continue;
+      assert.ok(++visited <= 1024, "source scope too broad");
+      // A new file/directory created only in an isolated writer's patch is
+      // absent from the original target. Bind that absence until host staging.
+      files.set(relative, { path: relative, kind: "absent" });
+    } else visit(file);
+  }
   assert.ok(files.size > 0, "empty source scope");
   const entries = [...files.values()].sort((a, b) =>
     a.path.localeCompare(b.path),
@@ -229,8 +257,17 @@ function checkInput(input) {
   };
 }
 
-export function runCheck(rawInput, receiptPath) {
+export function runCheck(
+  rawInput,
+  receiptPath,
+  { hardDeadlineAt = null } = {},
+) {
   const input = checkInput(rawInput);
+  if (hardDeadlineAt !== null)
+    assert.ok(
+      Number.isSafeInteger(hardDeadlineAt) && hardDeadlineAt > Date.now(),
+      "Task deadline expired before host check",
+    );
   const receiptFile = path.resolve(receiptPath);
   assert.equal(
     fs.realpathSync(path.dirname(receiptFile)),
@@ -258,9 +295,14 @@ export function runCheck(rawInput, receiptPath) {
   const started = Date.now();
   let result, log;
   try {
+    const remaining =
+      hardDeadlineAt === null
+        ? input.timeoutMs
+        : Math.min(input.timeoutMs, hardDeadlineAt - Date.now());
+    assert.ok(remaining > 0, "Task deadline expired before host check launch");
     result = spawnSync(input.argv[0], input.argv.slice(1), {
       cwd: input.cwd,
-      timeout: input.timeoutMs,
+      timeout: remaining,
       killSignal: "SIGKILL",
       maxBuffer: 8 * 1024 * 1024,
     });

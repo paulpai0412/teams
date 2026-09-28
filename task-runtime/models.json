@@ -1,20 +1,20 @@
 {
   "version": 1,
-  "l0": "antigravity/gemini-3.8-flash",
-  "taskPi": "antigravity/gemini-3.7-flash",
+  "l0": "openai-codex/gpt-5.6-luna",
+  "taskPi": "openai-codex/gpt-5.6-luna",
   "roles": {
-    "team.planner": "antigravity/gemini-3.8-flash",
-    "team.implementer": "antigravity/gemini-3.7-flash",
-    "team.verifier": "antigravity/gemini-3.7-flash",
-    "team.e2e": "antigravity/gemini-3.7-flash",
-    "team.qa": "antigravity/gemini-3.7-flash",
-    "team.debugger": "antigravity/gemini-3.7-flash",
-    "team.reviewer": "antigravity/gemini-3.8-flash",
-    "team.security": "antigravity/gemini-3.8-flash",
-    "team.challenger": "antigravity/gemini-3.8-flash",
-    "team.docs": "antigravity/gemini-3.7-flash",
-    "team.researcher": "antigravity/gemini-3.7-flash",
-    "team.release": "antigravity/gemini-3.7-flash",
-    "team.curator": "antigravity/gemini-3.7-flash"
+    "team.planner": "openai-codex/gpt-5.6-luna",
+    "team.implementer": "openai-codex/gpt-5.6-luna",
+    "team.verifier": "openai-codex/gpt-5.6-luna",
+    "team.e2e": "openai-codex/gpt-5.6-luna",
+    "team.qa": "openai-codex/gpt-5.6-luna",
+    "team.debugger": "openai-codex/gpt-5.6-luna",
+    "team.reviewer": "openai-codex/gpt-5.6-luna",
+    "team.security": "openai-codex/gpt-5.6-luna",
+    "team.challenger": "openai-codex/gpt-5.6-luna",
+    "team.docs": "openai-codex/gpt-5.6-luna",
+    "team.researcher": "openai-codex/gpt-5.6-luna",
+    "team.release": "openai-codex/gpt-5.6-luna",
+    "team.curator": "openai-codex/gpt-5.6-luna"
   }
 }

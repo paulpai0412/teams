@@ -10,6 +10,8 @@
 
 - 小任務維持direct；一般team handoff不用自動建立Goal。只有明確使用Goal才使用Task Pi的Goal流程，不把普通『目標』文字當持久Goal建立授權。
 - L0負責成果／依賴／總預算；Worker負責任務內角色與候選交接；extension只做已有機械控制與驗收。規劃不是另一個planner controller。
+- 局部故障不是整個 Goal 失敗：Task Pi 用既有 `team_role_control` 定向停止、診斷及有界替換分支，保留成功 siblings、失敗歷史與全部用量；L0 判斷跨 Task 影響，讓無依賴的工作繼續。未知效果不得重播，可修復分支也不應直接交 blocked 作為終點。完整契約與限制見 [SPEC 的 Task-local branch recovery](extensions/teams-orchestrator/SPEC.md#task-local-branch-recovery)。
+- 恢復後仍須完整整合、fresh checks／獨立 review／AcceptanceReceipt／Goal readback。完成 hook 依 native session focus 與最新 execution 檢查，已關閉但未 accepted 的失敗也會阻擋完成；不能靠取消 reservation 或同名外部 Goal 的 Task 過關。
 - 新任務從實際sourceRoot／base／範圍與現有檢查產生spec，不固定檔名SPEC.md、不讀歷史E2E patch當答案。原始要求涵蓋、依賴、權限或計量不足時先處理，不把工具schema通過當語意正確。
 - 接受個別Task後仍須驗完整使用情境／必要整合；verify-only不冒稱已安裝，audit skip不當pass。G1/G2/G3只是protocol案例，不是通用能力的完成條件。
 

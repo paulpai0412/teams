@@ -1,8 +1,21 @@
 #!/usr/bin/env node
+import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { collectRunUsage, sessionUsage, sumUsage } from "./usage.mjs";
+import { auditRpcAttempt } from "./audit-rpc-attempt.mjs";
+import { readEvidenceBytes } from "../../host-evidence.mjs";
+
+function readJsonEvidence(file) {
+  try {
+    return JSON.parse(
+      readEvidenceBytes(file, 8 * 1024 * 1024).toString("utf8"),
+    );
+  } catch (cause) {
+    throw new Error(`Invalid run evidence: ${file}`, { cause });
+  }
+}
 
 const [rootArg, parentSession, since] = process.argv.slice(2);
 if (
@@ -24,7 +37,63 @@ for (const directory of fs
   const reportFile = ["report.json", "failure.json"]
     .map((name) => path.join(runRoot, name))
     .find((file) => fs.existsSync(file));
-  if (!reportFile) continue;
+  const rpcFile = path.join(runRoot, "live", "rpc-observation.json");
+  assert.ok(
+    !reportFile || !fs.existsSync(rpcFile),
+    "ambiguous legacy and native reports in one run",
+  );
+  if (!reportFile && !fs.existsSync(rpcFile)) continue;
+  if (!reportFile) {
+    const report = readJsonEvidence(rpcFile);
+    const auditFile = path.join(runRoot, "main-audit.json");
+    const mainAudit = fs.existsSync(auditFile)
+      ? readJsonEvidence(auditFile)
+      : null;
+    if (mainAudit) {
+      assert.equal(mainAudit.schemaVersion, "teams-e2e-main-audit/1");
+      assert.deepEqual(
+        mainAudit,
+        auditRpcAttempt(rpcFile, mainAudit.runtimeRoot),
+        "native audit no longer matches the exact post-run evidence",
+      );
+    }
+    const complete =
+      Number.isSafeInteger(report.rootUsage?.total) &&
+      report.taskUsage?.status === "measured" &&
+      Number.isSafeInteger(report.taskUsage.totals?.total);
+    const tokens = {
+      knownTotals: sumUsage([
+        report.rootUsage ?? {},
+        report.taskUsage?.totals ?? {},
+      ]),
+      complete,
+      completenessNote: complete
+        ? "Observer root plus reconciled native closed usage; campaign parent/history are separate"
+        : "Native root or Task usage unknown: known totals are a lower bound",
+      unknownLaunches: complete ? [] : (report.executionIds ?? []),
+      anomalies: complete ? [] : [{ kind: "incomplete-native-usage" }],
+    };
+    const tokensFile = path.join(runRoot, "metrics.json");
+    fs.writeFileSync(tokensFile, `${JSON.stringify(tokens, null, 2)}\n`, {
+      mode: 0o600,
+    });
+    runs.push({
+      runId: directory.name,
+      status: mainAudit?.decision ?? "not-assessed",
+      harnessStatus: report.status,
+      mainAudit,
+      elapsedMs: report.elapsedMs,
+      preflightRejected: false,
+      reportFile: rpcFile,
+      tokensFile,
+      tokensComplete: complete,
+      knownTokens: tokens.knownTotals,
+      unknownLaunches: tokens.unknownLaunches,
+      toolErrors: report.faults?.length ?? 0,
+      anomalies: tokens.anomalies,
+    });
+    continue;
+  }
   let report;
   try {
     report = JSON.parse(fs.readFileSync(reportFile, "utf8"));

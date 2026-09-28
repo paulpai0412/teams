@@ -13,6 +13,7 @@ import {
   validateEvent,
   validateTaskContract,
 } from "./contracts.mjs";
+import { taskDeadlineAt } from "./task-deadline.mjs";
 
 const transitions = {
   RESERVED: new Set(["SPAWNING", "CANCELLED"]),
@@ -332,8 +333,7 @@ export class RuntimeLedger {
         );
         assert.ok(
           Date.now() <
-            Date.parse(execution.createdAt) +
-              this.getContract(executionId).policy.deadlineMs,
+            taskDeadlineAt(this, execution, this.getContract(executionId)),
           "execution deadline exhausted",
         );
       }
@@ -429,7 +429,12 @@ export class RuntimeLedger {
     });
   }
 
-  reserve(contract, requestDigest, ownerSessionId) {
+  reserve(
+    contract,
+    requestDigest,
+    ownerSessionId,
+    { expectedPrevious = null } = {},
+  ) {
     validateTaskContract(contract);
     assert.equal(digest(contract), requestDigest, "request digest mismatch");
     return transaction(this.db, () => {
@@ -471,6 +476,34 @@ export class RuntimeLedger {
         !open,
         `task has an open reservation: ${open?.execution_id ?? "unknown"}`,
       );
+      if (expectedPrevious) {
+        const history = this.listTaskExecutions(projectId, goalId, taskId);
+        assert.deepEqual(
+          history.map((row) => row.executionId),
+          [expectedPrevious.executionId],
+          "revision predecessor changed before reservation",
+        );
+        assert.equal(
+          history[0].revision,
+          expectedPrevious.revision,
+          "revision predecessor changed",
+        );
+        assert.equal(
+          history[0].requestDigest,
+          expectedPrevious.requestDigest,
+          "revision predecessor contract changed",
+        );
+        assert.ok(
+          !history[0].reservationOpen &&
+            ["FAILED", "CANCELLED"].includes(history[0].state),
+          "revision predecessor is not closed",
+        );
+        assert.equal(
+          taskRevision,
+          history[0].taskRevision + 1,
+          "task revision changed",
+        );
+      }
       const timestamp = now();
       this.db
         .prepare(`INSERT INTO executions(
@@ -568,6 +601,16 @@ export class RuntimeLedger {
           .run(`released:${ownerSessionId}`, projectId, ownerSessionId);
       return projects;
     });
+  }
+
+  // Public input admission may test existence without weakening internal
+  // getExecution assertions: a row disappearing after admission is still fatal.
+  hasExecution(executionId) {
+    return Boolean(
+      this.db
+        .prepare("SELECT 1 FROM executions WHERE execution_id = ?")
+        .get(executionId),
+    );
   }
 
   getExecution(executionId) {
@@ -773,7 +816,7 @@ export class RuntimeLedger {
   findLatestTask(projectId, goalId, taskId) {
     const row = this.db
       .prepare(
-        "SELECT * FROM executions WHERE project_id = ? AND goal_id = ? AND task_id = ? ORDER BY created_at DESC LIMIT 1",
+        "SELECT * FROM executions WHERE project_id = ? AND goal_id = ? AND task_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
       )
       .get(projectId, goalId, taskId);
     return rowObject(row);
@@ -794,6 +837,16 @@ export class RuntimeLedger {
         "SELECT * FROM executions WHERE project_id = ? AND task_id = ? AND reservation_open = 1 ORDER BY created_at",
       )
       .all(projectId, taskId)
+      .map(rowObject);
+  }
+
+  listGoalLatest(projectId, goalId) {
+    return this.db
+      .prepare(`SELECT * FROM executions e WHERE e.project_id = ? AND e.goal_id = ?
+      AND e.rowid = (SELECT newer.rowid FROM executions newer WHERE newer.project_id = e.project_id
+        AND newer.goal_id = e.goal_id AND newer.task_id = e.task_id ORDER BY newer.created_at DESC, newer.rowid DESC LIMIT 1)
+      ORDER BY e.task_id`)
+      .all(projectId, goalId)
       .map(rowObject);
   }
 
@@ -1049,6 +1102,47 @@ export class RuntimeLedger {
       result.changes,
       1,
       "cancellation owner or execution changed; reconcile before retry",
+    );
+    return this.getExecution(executionId);
+  }
+
+  // A takeover fences the old root controller without rewriting the execution
+  // identity. This narrow CAS path lets the successor close only an already
+  // cancelled/drained execution whose immutable owner/epoch are bound to the
+  // durable takeover proof.
+  finishCancellationAfterTakeover(
+    executionId,
+    expectedRevision,
+    previousOwnerSessionId,
+    previousOwnerEpoch,
+    nextOwnerSessionId,
+    nextOwnerEpoch,
+    proofRef,
+  ) {
+    const result = this.db
+      .prepare(`UPDATE executions
+      SET state = 'CANCELLED', reservation_open = 0, unresolved_run_count = 0,
+          revision = revision + 1, updated_at = ?
+      WHERE execution_id = ? AND revision = ?
+        AND owner_session_id = ? AND owner_epoch = ?
+        AND state IN ('RESERVED', 'CANCEL_REQUESTED', 'CANCELLED')
+        AND EXISTS (SELECT 1 FROM controllers c WHERE c.project_id = executions.project_id
+          AND c.owner_session_id = ? AND c.owner_epoch = ?
+          AND c.takeover_proof_ref = ?)`)
+      .run(
+        now(),
+        executionId,
+        expectedRevision,
+        previousOwnerSessionId,
+        previousOwnerEpoch,
+        nextOwnerSessionId,
+        nextOwnerEpoch,
+        proofRef,
+      );
+    assert.equal(
+      result.changes,
+      1,
+      "takeover cancellation owner or execution changed; reconcile before retry",
     );
     return this.getExecution(executionId);
   }

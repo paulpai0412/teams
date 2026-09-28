@@ -12,6 +12,7 @@ import {
   readReviewLifecycle,
   readNativeTerminal,
   readNativeTerminalBytes,
+  captureNativeTerminal,
 } from "./role-lifecycle.mjs";
 
 const parts = ["input", "output", "cacheRead", "cacheWrite"];
@@ -20,6 +21,7 @@ const entryTypes = new Set([
   "message",
   "model_change",
   "thinking_level_change",
+  "context_edit",
   "compaction",
   "branch_summary",
   "custom",
@@ -143,12 +145,27 @@ export function measureSessionBytes(bytes, { allowEmpty = false } = {}) {
       "missing or duplicate usage session entry identity",
     );
     ids.add(entry.id);
+    if (entry.type === "context_edit") {
+      // Native retry omits an attempt only from future model context. Charge
+      // its unchanged raw assistant record; never meter the edited projection.
+      assert.equal(
+        entry.usage,
+        undefined,
+        "context edit has unaccounted usage",
+      );
+      assert.equal(
+        entry.message,
+        undefined,
+        "context edit cannot replace usage metadata",
+      );
+    }
     if (entry.type === "message") {
       assert.ok(
         [
           "user",
           "assistant",
           "toolResult",
+          "system",
           "bashExecution",
           "custom",
           "branchSummary",
@@ -156,6 +173,12 @@ export function measureSessionBytes(bytes, { allowEmpty = false } = {}) {
         ].includes(entry.message?.role),
         "unknown usage message role",
       );
+      if (entry.message?.role === "system")
+        assert.equal(
+          entry.message.usage,
+          undefined,
+          "system message has unaccounted usage",
+        );
       if (entry.message?.stopReason !== undefined)
         assert.ok(
           ["stop", "length", "toolUse", "error", "aborted"].includes(
@@ -602,11 +625,25 @@ export function measureExecutionUsage(
   };
 }
 
-// Read-only reconciliation of a CLOSED previous attempt. Source freshness is
-// irrelevant to historical cost, but owner/run/session/terminal identities are not.
-export function measureClosedExecutionUsage(context) {
+// CLOSED execution accounting; historical readers never retain new evidence.
+// Only the original live owner opts into the existing native terminal captures.
+// Source freshness is irrelevant to cost, but owner/run/session/terminal identity is not.
+export function measureClosedExecutionUsage(
+  context,
+  { retainTerminal = false } = {},
+) {
   context.assertOwner();
   const { mailbox, contract } = context;
+  const terminalBytes = (launch, owners, key) => {
+    if (retainTerminal) {
+      context.assertOwner();
+      assert.ok(
+        captureNativeTerminal(mailbox, launch, owners, key),
+        "closed usage native terminal unresolved",
+      );
+    }
+    return readNativeTerminalBytes(mailbox, launch, owners, key).bytes;
+  };
   if (!fs.existsSync(path.join(mailbox.root, "receipts/boot.json"))) {
     const execution = context.execution;
     const bootstrap = mailbox.readJson("bootstrap.json");
@@ -701,12 +738,7 @@ export function measureClosedExecutionUsage(context) {
       path.join(role.asyncDir, "status.json"),
       retainedRead
         ? retainedRead(path.join(role.asyncDir, "status.json"), 1024 * 1024)
-        : readNativeTerminalBytes(
-            mailbox,
-            role,
-            owners,
-            `role-${role.launchId}`,
-          ).bytes,
+        : terminalBytes(role, owners, `role-${role.launchId}`),
     ]),
   );
   const readNative = (origin, limit) =>
@@ -720,12 +752,7 @@ export function measureClosedExecutionUsage(context) {
     (launch, owners, read) => {
       const statusBytes =
         read === readEvidenceBytes
-          ? readNativeTerminalBytes(
-              mailbox,
-              launch,
-              owners,
-              `review-${launch.key}`,
-            ).bytes
+          ? terminalBytes(launch, owners, `review-${launch.key}`)
           : read(path.join(launch.asyncDir, "status.json"));
       const proof = readNativeTerminal(launch, owners, () => statusBytes);
       assert.ok(proof, "previous review lifecycle unresolved");

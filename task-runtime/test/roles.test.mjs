@@ -42,6 +42,8 @@ function runningWorker(
     gitFixture = false,
     objective = "Produce the bounded outcome.",
     contextRefs = [],
+    criteriaText = "The outcome is observable.",
+    requirementsText = "baseline\n",
     allowedWritePaths = ["src"],
     workerProcess = {},
     paneId = null,
@@ -50,7 +52,7 @@ function runningWorker(
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "teams-roles-"));
   fs.mkdirSync(path.join(root, "src"));
   fs.writeFileSync(path.join(root, "src", "index.js"), "export default 1;\n");
-  fs.writeFileSync(path.join(root, "README.md"), "baseline\n");
+  fs.writeFileSync(path.join(root, "README.md"), requirementsText);
   let baseCommit = "b".repeat(40);
   if (gitFixture) {
     for (const args of [
@@ -97,7 +99,7 @@ function runningWorker(
     criteria: [
       {
         id: "criterion-1",
-        text: "The outcome is observable.",
+        text: criteriaText,
         requiredEvidenceKinds: ["host-check"],
       },
     ],
@@ -251,6 +253,12 @@ function meteredWorker(t, options = {}) {
       ...(options.sharedBudget
         ? { tokenBudgetMode: "shared", maxTaskTokens: 1000 }
         : {}),
+      ...(options.roleSpawns
+        ? { maxRoleSpawnsPerTask: options.roleSpawns }
+        : {}),
+      ...(options.workerAllowedRoles
+        ? { workerAllowedRoles: options.workerAllowedRoles }
+        : {}),
     },
     options,
   );
@@ -398,6 +406,89 @@ test("shared Task admission dispatches a subsequent role after actual usage exce
   assert.equal(f.roles.snapshot().unresolvedRunCount, 0);
 });
 
+test("v3 Worker subset rejects single and entire mixed waves before native effects, then allowed work proceeds", async (t) => {
+  const f = meteredWorker(t, {
+    sharedBudget: true,
+    workerAllowedRoles: ["team.implementer"],
+  });
+  const reviewer = {
+    role: "team.reviewer",
+    task: "Forbidden Task-local review, not the L0 review.",
+    mode: "review",
+    maxTokens: 20,
+  };
+  await assert.rejects(
+    f.roles.spawn(reviewer),
+    /role not permitted for Worker/,
+  );
+  await assert.rejects(
+    f.roles.spawnWave({
+      key: "mixed",
+      reason: "No partial launch of allowed sibling",
+      runs: [
+        {
+          key: "writer",
+          role: "team.implementer",
+          task: "Read candidate",
+          mode: "read-only",
+          isolation: "shared",
+          maxTokens: 20,
+        },
+        { key: "reviewer", ...reviewer, isolation: "shared" },
+      ],
+    }),
+    /role not permitted for Worker/,
+  );
+  assert.equal(f.calls.length, 0);
+  assert.equal(f.roles.snapshot().launches.length, 0);
+  assert.equal(f.worker.state, "RUNNING");
+  const allowed = await f.spawn(20);
+  f.settle(allowed);
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.roles.snapshot().unresolvedRunCount, 0);
+  assert.deepEqual(f.worker.contract.policy.review.allowedRoles, [
+    "team.reviewer",
+  ]);
+});
+
+test("v3 Worker role admission preserves the required L0 source-bound review slot", async (t) => {
+  for (const maxSpawns of [2, 3]) {
+    await t.test(`total role spawns ${maxSpawns}`, async (t) => {
+      const f = meteredWorker(t, {
+        sharedBudget: true,
+        roleSpawns: maxSpawns,
+      });
+      assert.match(
+        f.worker.taskPrompt(),
+        /one spawn.*final source-bound review/i,
+      );
+      for (let index = 0; index < maxSpawns - 1; index++) {
+        const launched = await f.spawn(20);
+        f.settle(launched);
+      }
+      await assert.rejects(
+        f.roles.spawn({
+          role: "team.reviewer",
+          task: "Optional task-local review of the candidate.",
+          mode: "review",
+          maxTokens: 20,
+        }),
+        (error) => {
+          assert.match(
+            error.message,
+            /reserved for.*final source-bound review/,
+          );
+          assert.match(error.message, /no role launched/);
+          assert.match(error.message, /seal ready_for_acceptance/);
+          return true;
+        },
+      );
+      assert.equal(f.calls.length, maxSpawns - 1);
+      assert.equal(f.roles.snapshot().unresolvedRunCount, 0);
+    });
+  }
+});
+
 test("D1 v3 single mutation uses the managed workflow and shared mutation rejects before RPC", async (t) => {
   const f = runningWorker(
     {
@@ -460,7 +551,7 @@ test("D1 v3 single mutation uses the managed workflow and shared mutation reject
   assert.equal(children.length, 1);
   assert.equal(children[0].worktree, true);
   assert.equal(children[0].async, false);
-  assert.equal(children[0].model, "antigravity/gemini-3.7-flash");
+  assert.equal(children[0].model, "openai-codex/gpt-5.6-luna");
   assert.equal(children[0].cwd, f.root);
   assert.doesNotMatch(children[0].task, /Optional memory: confirm/);
   assert.match(children[0].task, /do not invent a mock DOM/);
@@ -480,6 +571,80 @@ test("D1 v3 single mutation uses the managed workflow and shared mutation reject
     }).stdout,
     "",
   );
+});
+
+test("v3 zero-write role dispatch keeps single readers shared and explicit wave readers isolated", async (t) => {
+  for (const isolation of ["shared", "worktree"]) {
+    await t.test(isolation, async (t) => {
+      const f = runningWorker(
+        {
+          review: {
+            authority: "l0-source-bound",
+            allowedRoles: ["team.reviewer"],
+            allowedTools: ["read"],
+          },
+        },
+        { gitFixture: true, allowedWritePaths: [] },
+      );
+      t.after(() => {
+        f.orchestrator.close();
+        fs.rmSync(f.root, { recursive: true, force: true });
+      });
+      const calls = [];
+      const roles = new RoleController({
+        runtime: f.worker,
+        cwd: f.root,
+        rpc: {
+          async request(method, params) {
+            assert.equal(method, "spawn");
+            calls.push(params);
+            return {
+              runId: "reader",
+              asyncDir: path.join(f.prepared.executionRoot, "native"),
+            };
+          },
+        },
+      });
+      const task = {
+        role: "team.implementer",
+        task: "Inspect current source; designated checks belong to L0.",
+        mode: "read-only",
+        maxTokens: 20,
+      };
+      await assert.rejects(
+        roles.spawn({ ...task, mode: "check" }),
+        /mutation\/check requires allowed write paths/,
+      );
+      assert.equal(calls.length, 0);
+      assert.equal(roles.snapshot().reservedTokens, 0);
+      const launched =
+        isolation === "shared"
+          ? await roles.spawn(task)
+          : await roles.spawnWave({
+              key: "inspect",
+              reason: "One isolated no-write candidate handoff.",
+              runs: [{ key: "reader", ...task, isolation }],
+            });
+      assert.equal(calls.length, 1);
+      assert.equal(launched.members[0].mode, "read-only");
+      assert.equal(launched.members[0].isolation, isolation);
+      if (isolation === "worktree") {
+        const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor;
+        await new AsyncFunction("runs", calls[0].workflowScript)({
+          async all(children) {
+            assert.equal(children.length, 1);
+            assert.equal(children[0].worktree, true);
+            assert.match(children[0].task, /Read-only work: do not modify/);
+            return [{ ok: true }];
+          },
+        });
+      } else {
+        assert.equal(calls[0].agent, task.role);
+        assert.equal(calls[0].worktree, undefined); // Native single form omits the worktree option.
+      }
+      assert.deepEqual(f.worker.contract.workspace.allowedWritePaths, []);
+    });
+  }
 });
 
 test("D6 role dispatch checks the entire workspace before RPC", async (t) => {
@@ -779,7 +944,7 @@ test("D5b1 incomplete, altered or foreign usage stops admission without spending
 });
 
 test("D5b1 already charged native bytes cannot shrink on a later wave", async (t) => {
-  const f = meteredWorker(t);
+  const f = meteredWorker(t, { roleSpawns: 4 });
   const first = await f.spawn();
   const firstStatus = f.settle(first);
   f.settle(await f.spawn());
@@ -825,7 +990,7 @@ test("D5b1 missing native directory leaves an unknown run, never a retry grant",
 });
 
 test("D5b1 sequential and parallel role starts preserve measured checkpoints", async (t) => {
-  const f = meteredWorker(t);
+  const f = meteredWorker(t, { roleSpawns: 4 });
   const first = await f.spawn();
   f.settle(first);
   fs.appendFileSync(
@@ -1217,18 +1382,11 @@ test("D5 only a never-launched cancellation can carry zero missing-session usage
   }
 });
 
-for (const scenario of [
-  "success",
-  "budget",
-  "shared",
-  "oversized-prompt",
-  "send-error",
-])
+for (const scenario of ["success", "budget", "shared", "send-error"])
   test(`D5 actual Worker extension ${scenario}`, async (t) => {
     const denied = scenario === "budget";
     const shared = scenario === "shared";
-    const startupFailure =
-      scenario === "oversized-prompt" || scenario === "send-error";
+    const startupFailure = scenario === "send-error";
     const { createJiti } = createRequire(
       path.join(os.homedir(), ".pi/agent/npm/package.json"),
     )("jiti");
@@ -1249,10 +1407,7 @@ for (const scenario of [
       },
       {
         prepareOnly: true,
-        objective:
-          scenario === "oversized-prompt"
-            ? "x".repeat(3500)
-            : "Produce the bounded outcome.",
+        objective: "Produce the bounded outcome.",
       },
     );
     const manager = SessionManager.create(
@@ -1367,10 +1522,7 @@ for (const scenario of [
         f.prepared.executionRoot,
         f.prepared.executionId,
       );
-      const expected =
-        scenario === "oversized-prompt"
-          ? /worker prompt exceeds 6 KiB/
-          : /fixture sendUserMessage failed/;
+      const expected = /fixture sendUserMessage failed/;
       const failed = mailbox
         .listEvents()
         .filter((event) => event.type === "failed");
@@ -1401,11 +1553,7 @@ for (const scenario of [
         mailbox.listEvents().filter((event) => event.type === "failed").length,
         1,
       );
-      assert.equal(
-        prompts,
-        scenario === "oversized-prompt" ? 0 : 1,
-        "no prompt replay after failure",
-      );
+      assert.equal(prompts, 1, "no prompt replay after failure");
       f.orchestrator.requestCancel(
         f.prepared.executionId,
         "fixture startup rejection",
@@ -2023,17 +2171,16 @@ test("native no-start crosses RPC, preserves prior usage, and permits Worker can
   f.settle(first);
   const bus = failingNativeBus();
   f.roles.rpc = new SubagentsRpcClient(bus);
-  await assert.rejects(
-    f.roles.spawn({
-      role: "team.reviewer",
-      task: "Review candidate",
-      mode: "review",
-      maxTokens: 20,
-    }),
-    /failed before runner spawn/,
-  );
+  const notStarted = await f.roles.spawn({
+    role: "team.reviewer",
+    task: "Review candidate",
+    mode: "review",
+    maxTokens: 20,
+  });
+  assert.equal(notStarted.disposition, "not-started");
   assert.equal(bus.count(), 1);
-  assert.equal(f.worker.state, "QUIESCENT");
+  assert.equal(f.worker.state, "RUNNING");
+  assert.equal(f.roles.admitTurn().waiting, false); // diagnosis still available
   const launches = f.roles.snapshot().launches;
   const failed = launches.at(-1);
   assert.equal(failed.completion, "failed");
@@ -2053,7 +2200,7 @@ test("native no-start crosses RPC, preserves prior usage, and permits Worker can
   assert.equal(usage.totals.total, 15); // Worker 10 + prior successful leaf 5; no phantom session.
   assert.equal(usage.sources.length, 2);
   assert.equal(usage.sources.filter((s) => s.kind === "leaf").length, 1);
-  await assert.rejects(f.spawn(), /not running/);
+  await assert.rejects(f.spawn(), /spawn budget/);
   f.orchestrator.requestCancel(f.prepared.executionId, "native startup failed");
   f.worker.processControls();
   const recovered = new RoleController({
@@ -2156,6 +2303,39 @@ test("D7 an ambiguous spawn stays unresolved after reconstruction", async (t) =>
   assert.equal(f.calls.length, 0);
 });
 
+test("public role tool documents effects, single defaults and one-run isolated read-only handoffs", () => {
+  const tools = new Map();
+  teamsWorker({ registerTool: (tool) => tools.set(tool.name, tool), on() {} });
+  const spawn = tools.get("team_role_spawn");
+  const fields = spawn.parameters.properties;
+  assert.match(
+    spawn.description,
+    /single.*mutation\/check.*worktree.*read-only\/review.*shared/i,
+  );
+  assert.match(spawn.description, /not.*permission.*switch.*mode.*isolation/i);
+  for (const mode of [fields.mode, fields.runs.items.properties.mode]) {
+    assert.deepEqual(mode.enum, ["mutation", "review", "read-only", "check"]);
+    assert.match(mode.description, /mutation\/check.*write-capable/);
+    assert.match(mode.description, /nonempty.*allowedWritePaths/);
+    assert.match(mode.description, /read-only\/review.*source changes/);
+  }
+  assert.equal(fields.runs.minItems, 1);
+  assert.match(fields.runs.description, /one run.*explicit isolation/);
+  assert.match(
+    fields.runs.description,
+    /read-only.*worktree.*allowedWritePaths/,
+  );
+  assert.match(
+    fields.runs.items.properties.isolation.description,
+    /shared.*no isolated.*handoff/,
+  );
+  assert.match(
+    tools.get("team_task_result").parameters.properties.criterionResults.items
+      .properties.status.description,
+    /indeterminate for untested host-check behavior/,
+  );
+});
+
 test("public Worker schemas match exclusive spawn shapes and execution-relative evidence", async () => {
   const tools = new Map();
   teamsWorker({ registerTool: (tool) => tools.set(tool.name, tool), on() {} });
@@ -2215,11 +2395,11 @@ test("public Worker schemas match exclusive spawn shapes and execution-relative 
   const result = tools.get("team_task_result");
   assert.match(
     result.parameters.properties.outcome.description,
-    /candidate\/handoff is ready for host verification, NOT accepted/,
+    /ready_for_acceptance.*terminal handoffs.*host verification remains, NOT accepted/,
   );
   assert.match(
     result.parameters.properties.outcome.description,
-    /pending gates alone are not blocked/,
+    /untested host-check criteria stay indeterminate.*Missing authority\/artifacts or unknown effects remain blocked/,
   );
   assert.match(
     result.parameters.properties.criterionResults.items.properties.status
@@ -2294,6 +2474,14 @@ test("public Worker schemas match exclusive spawn shapes and execution-relative 
   }
 });
 
+function readPromptContract(prompt) {
+  const ref = prompt.match(
+    /Read the complete sealed contract before assigning work: (.+?task-request\.json)\./,
+  )?.[1];
+  assert.ok(ref, "Worker must receive an exact readable contract ref");
+  return JSON.parse(fs.readFileSync(ref, "utf8"));
+}
+
 test("L0-authored task scope and context refs reach the Worker without a patch or fixture-specific objective", (t) => {
   const contextRefs = [
     { uri: "README.md", sha256: bytesDigest(Buffer.from("baseline\n")) },
@@ -2320,14 +2508,13 @@ test("L0-authored task scope and context refs reach the Worker without a patch o
   });
   assert.deepEqual(f.worker.contract.contextRefs, contextRefs);
   const prompt = f.worker.taskPrompt();
-  assert.ok(prompt.includes(objective));
-  assert.ok(prompt.includes(f.root));
-  assert.match(prompt, /Source paths.*src/);
-  assert.match(prompt, /Allowed writes.*src\/index\.js/);
-  assert.deepEqual(
-    JSON.parse(prompt.match(/Context refs[^\n]*?: (\[.*\])\. Read/)[1]),
-    contextRefs,
-  );
+  const received = readPromptContract(prompt);
+  assert.deepEqual(received, f.worker.contract);
+  assert.equal(received.objective, objective);
+  assert.equal(received.workspace.sourceRoot, f.root);
+  assert.deepEqual(received.workspace.sourcePaths, ["src"]);
+  assert.deepEqual(received.workspace.allowedWritePaths, ["src/index.js"]);
+  assert.deepEqual(received.contextRefs, contextRefs);
   assert.doesNotMatch(
     prompt,
     /see task specification|specification file named in the objective/,
@@ -2337,6 +2524,85 @@ test("L0-authored task scope and context refs reach the Worker without a patch o
     /approved.patch|Todo|G1|team_task_dispatch|create_goal/,
   );
   assert.ok(Buffer.byteLength(prompt) <= 6144);
+});
+
+test("non-Todo interface literals and hashed original requirements traverse contract, Worker and native leaf payload", async (t) => {
+  const requirements =
+    "Use /api/records/:id, x-request-id and schema.version exactly; a missing record returns 404.\n";
+  const contextRefs = [
+    { uri: "README.md", sha256: bytesDigest(Buffer.from(requirements)) },
+  ];
+  const f = runningWorker(
+    {
+      review: {
+        authority: "l0-source-bound",
+        allowedRoles: ["team.reviewer"],
+        allowedTools: ["read"],
+      },
+    },
+    {
+      gitFixture: true,
+      objective:
+        "Deliver a record lookup preserving /api/records/:id and x-request-id without renaming the interface.",
+      criteriaText:
+        "Missing /api/records/:id returns 404 and preserves x-request-id; schema.version remains unchanged.",
+      requirementsText: requirements,
+      contextRefs,
+      allowedWritePaths: ["src/index.js"],
+    },
+  );
+  t.after(() => {
+    f.orchestrator.close();
+    fs.rmSync(f.root, { recursive: true, force: true });
+  });
+  assert.deepEqual(f.worker.contract.contextRefs, contextRefs);
+  assert.equal(
+    bytesDigest(fs.readFileSync(path.join(f.root, "README.md"))),
+    contextRefs[0].sha256,
+  );
+  const workerPrompt = f.worker.taskPrompt();
+  const received = readPromptContract(workerPrompt);
+  assert.deepEqual(received, f.worker.contract);
+  for (const literal of [
+    "/api/records/:id",
+    "x-request-id",
+    "schema.version",
+    "404",
+  ])
+    assert.ok(
+      JSON.stringify(received).includes(literal),
+      `${literal} lost before Worker`,
+    );
+  assert.ok(Buffer.byteLength(workerPrompt) <= 6144);
+  const calls = [];
+  const roles = new RoleController({
+    runtime: f.worker,
+    cwd: f.root,
+    rpc: {
+      async request(method, params) {
+        assert.equal(method, "spawn");
+        calls.push(params);
+        return {
+          runId: "record-check-1",
+          asyncDir: path.join(f.prepared.executionRoot, "native"),
+        };
+      },
+    },
+  });
+  const roleTask = `Inspect the actual candidate with ${received.contextRefs[0].uri} SHA-256 ${received.contextRefs[0].sha256}; verify ${received.criteria.map((c) => c.text).join("; ")}. Do not substitute a differently named interface.`;
+  await roles.spawn({
+    role: "team.reviewer",
+    task: roleTask,
+    mode: "review",
+    maxTokens: 20,
+  });
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].task, /\/api\/records\/:id/);
+  assert.ok(calls[0].task.includes(contextRefs[0].sha256));
+  for (const literal of ["x-request-id", "schema.version", "404"])
+    assert.ok(calls[0].task.includes(literal));
+  assert.doesNotMatch(calls[0].task, /create_goal|team_task_dispatch|G1|Todo/);
+  // This proves only transport of an L0/Worker-authored task, not model planning.
 });
 
 test("prepared C3 candidate objective survives the actual Task mailbox and Worker prompt without L0 control instructions", (t) => {
@@ -2368,8 +2634,10 @@ test("prepared C3 candidate objective survives the actual Task mailbox and Worke
   assert.equal(f.worker.contract.objective, objective);
   const prompt = f.worker.taskPrompt();
   assert.ok(Buffer.byteLength(prompt) <= 6 * 1024);
+  const received = readPromptContract(prompt);
+  assert.equal(received.objective, objective);
   assert.match(
-    prompt,
+    received.objective,
     /\/task-pi-todo-c3-20260914-r14\/\.git\/task-pi-approved\.patch/,
   );
   assert.match(
@@ -2377,8 +2645,8 @@ test("prepared C3 candidate objective survives the actual Task mailbox and Worke
     /team\.implementer with max_tokens=500000/,
   );
   assert.equal(f.worker.contract.policy.maxTaskTokens, 5_000_000);
-  assert.ok(prompt.includes("a".repeat(64)));
-  assert.match(prompt, /pipe it to node --check on stdin/);
+  assert.ok(received.objective.includes("a".repeat(64)));
+  assert.match(received.objective, /pipe it to node --check on stdin/);
   assert.doesNotMatch(
     prompt,
     /Create exactly one|create_goal|spec_path|team_task_dispatch|\{\{patch/,
@@ -2398,13 +2666,19 @@ test("Worker evidence keeps exact-byte verification and accepts a correctly pair
     fs.rmSync(f.root, { recursive: true, force: true });
   });
   const prompt = f.worker.taskPrompt();
+  assert.match(prompt, /Terminal native handoffs with only L0 gates pending use ready_for_acceptance/);
+  assert.match(prompt, /host-check criteria stay indeterminate, evidence\/IDs empty/);
   assert.match(
     prompt,
-    /seal outcome=ready_for_acceptance when only L0 gates remain/,
+    /details\.asyncDir\/status\.json steps\[\]\.structuredOutput/,
   );
   assert.match(
     prompt,
-    /untested host-check criteria indeterminate, even if static checks passed/,
+    /empty plaintext after structured_output is valid/,
+  );
+  assert.match(
+    prompt,
+    /Optional local review inspects the candidate, never claims L0 final review/,
   );
   assert.match(prompt, /outcome=blocked.*concrete impediment/);
   assert.match(prompt, /Report correction ceiling: 1/);
@@ -2482,6 +2756,28 @@ test("Worker evidence keeps exact-byte verification and accepts a correctly pair
   assert.equal(f.worker.mailbox.listResults().length, 1);
 });
 
+test("source capture failure notifies the owner instead of leaving a live Worker waiting", (t) => {
+  const f = runningWorker();
+  t.after(() => {
+    f.orchestrator.close();
+    fs.rmSync(f.root, { recursive: true, force: true });
+  });
+  fs.rmSync(path.join(f.root, "src"), { recursive: true });
+  fs.symlinkSync(os.tmpdir(), path.join(f.root, "src"));
+  assert.throws(
+    () => f.worker.captureSource(1),
+    /symlink paths are not evidence/,
+  );
+  assert.equal(f.worker.state, "QUIESCENT");
+  assert.equal(
+    f.worker.mailbox.listEvents().filter((event) => event.type === "failed")
+      .length,
+    1,
+  );
+  assert.deepEqual(f.worker.mailbox.listResults(), []);
+  assert.throws(() => f.worker.captureSource(1), /not running/);
+});
+
 test("D7 persisted cancellation rejects a late result before publication", (t) => {
   const f = meteredWorker(t);
   cancelWorker(f, false);
@@ -2490,3 +2786,96 @@ test("D7 persisted cancellation rejects a late result before publication", (t) =
   assert.deepEqual(f.worker.mailbox.listResults(), []);
   assert.equal(f.calls.length, 0);
 });
+
+for (const predecessorStatus of ["failed", "completed"])
+  test(`shared read-only branch repair requires clean source and references a full 16 KiB assignment (${predecessorStatus} process)`, async (t) => {
+    const f = meteredWorker(t, { gitFixture: true });
+    const task =
+      "Read the complete assigned context. " +
+      "x".repeat(
+        16384 - Buffer.byteLength("Read the complete assigned context. "),
+      );
+    const first = await f.roles.spawn({
+      role: "team.implementer",
+      task,
+      mode: "read-only",
+      maxTokens: 20,
+    });
+    const status = f.settle(first, predecessorStatus);
+    status.steps[0].exitCode = predecessorStatus === "completed" ? 0 : 1;
+    status.steps[0].structuredOutput = {
+      value: {
+        summary:
+          "Completed process, but its finding contradicts the assigned source.",
+        criterionResults: f.worker.contract.criteria.map((criterion) => ({
+          criterionId: criterion.id,
+          status: "not_met",
+          observation:
+            "Product finding is wrong, not a report parsing failure.",
+          evidenceIds: [],
+        })),
+        residualRisks: [],
+      },
+    };
+    fs.writeFileSync(
+      path.join(first.asyncDir, "status.json"),
+      JSON.stringify(status),
+    );
+    const input = {
+      action: "repair",
+      runId: first.runId,
+      key: "role",
+      reason: "The prior finding is wrong; use the complete original input.",
+      task: "Correct the read-only finding, not source or working siblings.",
+      maxTokens: 20,
+    };
+    const stopped = structuredClone(status);
+    stopped.steps[0].status = "stopped";
+    fs.writeFileSync(
+      path.join(first.asyncDir, "status.json"),
+      JSON.stringify(stopped),
+    );
+    await assert.rejects(f.roles.control(input), /effects need reconciliation/);
+    assert.equal(
+      f.calls.length,
+      1,
+      "stopped projection cannot authorize a replacement",
+    );
+    fs.writeFileSync(
+      path.join(first.asyncDir, "status.json"),
+      JSON.stringify(status),
+    );
+    const source = path.join(f.root, "src/index.js"),
+      bytes = fs.readFileSync(source);
+    fs.writeFileSync(source, "dirty\n");
+    await assert.rejects(f.roles.control(input), /clean baseline/);
+    assert.equal(f.calls.length, 1);
+    fs.writeFileSync(source, bytes);
+    const replacement = await f.roles.control(input);
+    assert.equal(replacement.members[0].mode, "read-only");
+    assert.equal(replacement.members[0].isolation, "shared");
+    const plan = f.worker.mailbox.readJson(
+      `receipts/wave-plan-${replacement.launchId}.json`,
+    );
+    assert.ok(Buffer.byteLength(plan.runs[0].task) < 16384);
+    assert.match(plan.runs[0].task, /FIRST read the FULL original assignment/);
+    assert.match(
+      plan.runs[0].task,
+      /read-only handoff without modifying source/,
+    );
+    assert.ok(plan.runs[0].task.includes(`wave-plan-${first.launchId}.json`));
+    const { roleRecovery } = await import("../role-recovery.mjs");
+    const recovery = roleRecovery(f.worker.mailbox, f.worker.contract);
+    assert.equal(recovery.replaced.has(`${first.runId}/role`), true);
+    const ref = recovery.repairs[0].previous.assignmentRef;
+    const old = f.worker.mailbox.readJson(ref);
+    old.runs[0].task = "Dropped original requirements";
+    fs.writeFileSync(
+      path.join(f.worker.mailbox.root, ref),
+      JSON.stringify(old),
+    );
+    assert.throws(
+      () => roleRecovery(f.worker.mailbox, f.worker.contract),
+      /original assignment changed/,
+    );
+  });

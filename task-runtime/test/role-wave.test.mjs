@@ -226,13 +226,42 @@ test("D1 multiple same-role writers compile to native managed worktrees, never a
       (result) => result.artifactPaths[0] === "native/patch-handoff",
     ),
   );
+  const partial = await run({
+    async all() {
+      return [{ ok: true, artifactPaths: ["healthy.patch"] }, { ok: false }];
+    },
+  });
+  assert.deepEqual(
+    partial.map((row) => row.ok),
+    [true, false],
+  );
+  assert.deepEqual(partial[0].artifactPaths, ["healthy.patch"]);
+  const interrupted = {
+    index: 0,
+    agent: "team.implementer",
+    exitCode: 0,
+    interrupted: true,
+    stopped: true,
+    turnBudgetExceeded: true,
+    toolBudgetBlocked: true,
+  };
+  const partialNative = await run({
+    async all() {
+      return [{ ok: true }, { ok: false, results: [interrupted] }];
+    },
+  });
+  assert.deepEqual(
+    partialNative[1].nativeResults,
+    [interrupted],
+    "transport must preserve every native partial-effects flag for recovery admission",
+  );
   await assert.rejects(
     run({
       async all() {
-        return [{ ok: true }, { ok: false }];
+        return [{ ok: true }, null];
       },
     }),
-    /failed or missing/,
+    /missing or unknown/,
   );
   assert.equal(
     fs.readFileSync(path.join(root, "source.txt"), "utf8"),
@@ -288,6 +317,59 @@ test("D1 unknown fields, duplicate identities, role caps and unsafe checks rejec
     run.mode = "check";
   });
   assert.throws(() => prepareRoleWave(c, root, checks), /shared checkout/);
+});
+
+test("v3 role effects and isolation are independent of an expected empty diff", (t) => {
+  const { root, head } = repository(t);
+  const c = {
+    ...contract(root, head),
+    schemaVersion: "teams-task-runtime/3",
+  };
+  c.workspace.allowedWritePaths = [];
+  const input = {
+    key: "inspect",
+    reason: "Inspect unchanged source without granting write authority.",
+    runs: [{ ...wave().runs[0], mode: "read-only" }],
+  };
+  for (const mode of ["read-only", "review"]) {
+    for (const isolation of ["shared", "worktree"]) {
+      input.runs[0] = { ...input.runs[0], mode, isolation };
+      const plan = prepareRoleWave(c, root, input);
+      assert.equal(plan.members[0].mode, mode);
+      assert.equal(plan.children[0].worktree, isolation === "worktree");
+      assert.equal(plan.baseCommit, isolation === "worktree" ? head : null);
+      assert.match(plan.children[0].task, /Read-only work: do not modify/);
+      assert.match(
+        plan.children[0].task,
+        /Missing\/pending host evidence is indeterminate/,
+      );
+    }
+  }
+  for (const mode of ["mutation", "check"]) {
+    input.runs[0] = { ...input.runs[0], mode, isolation: "worktree" };
+    assert.throws(
+      () => prepareRoleWave(c, root, input),
+      /mutation\/check requires allowed write paths/,
+    );
+    const writable = {
+      ...c,
+      workspace: { ...c.workspace, allowedWritePaths: ["source.txt"] },
+    };
+    assert.equal(
+      prepareRoleWave(writable, root, input).children[0].worktree,
+      true,
+    );
+    input.runs[0].isolation = "shared";
+    assert.throws(
+      () => prepareRoleWave(writable, root, input),
+      /v3 mutation\/check requires a managed worktree/,
+    );
+  }
+  assert.deepEqual(c.workspace.allowedWritePaths, []);
+  assert.equal(
+    fs.readFileSync(path.join(root, "source.txt"), "utf8"),
+    "baseline\n",
+  );
 });
 
 test("D1 acceptance refuses missing integration and mismatched native members", (t) => {

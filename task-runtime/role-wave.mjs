@@ -76,7 +76,7 @@ export function compileRoleWave(children, sessionDir = null) {
   }
   const script = [
     `const results = await runs.all(${JSON.stringify(children)});`,
-    `if (!Array.isArray(results) || results.length !== ${children.length} || results.some(result => !result || result.ok !== true)) throw new Error("Role wave contains failed or missing child results; preserve native receipts and reconcile.");`,
+    `if (!Array.isArray(results) || results.length !== ${children.length} || results.some(result => !result || typeof result.ok !== "boolean")) throw new Error("Role wave contains missing or unknown child results; preserve native receipts and reconcile.");`,
     "const nativeFields = " +
       JSON.stringify([
         "index",
@@ -88,6 +88,8 @@ export function compileRoleWave(children, sessionDir = null) {
         "interrupted",
         "timedOut",
         "stopped",
+        "turnBudgetExceeded",
+        "toolBudgetBlocked",
         "error",
         "sessionFile",
         "launchContractDigest",
@@ -111,13 +113,8 @@ export function compileRoleWave(children, sessionDir = null) {
   return script;
 }
 
-// Admission and compilation only. Native pi-subagents owns scheduling and worktrees.
-export function prepareRoleWave(contract, cwd, wave) {
-  assert.equal(
-    fs.realpathSync(cwd),
-    contract.workspace.worktreePath ?? contract.workspace.sourceRoot,
-    "role wave cwd mismatch",
-  );
+// Pure request validation; no source/IO/model resolution or allocation.
+export function validateRoleWaveInput(contract, wave) {
   exact(wave, ["key", "reason", "runs"], "wave");
   assert.match(wave.key, keyPattern, "invalid wave key");
   boundedText(wave.reason, 1000, "wave reason");
@@ -195,6 +192,28 @@ export function prepareRoleWave(contract, cwd, wave) {
       reservedTokens <= contract.policy.maxTaskTokens,
     "task token budget exhausted",
   );
+  return { members, reservedTokens };
+}
+
+// Admission and compilation only. Native pi-subagents owns scheduling and worktrees.
+export function prepareRoleWave(
+  contract,
+  cwd,
+  wave,
+  { timeoutMs = contract.policy.deadlineMs } = {},
+) {
+  assert.ok(
+    Number.isSafeInteger(timeoutMs) &&
+      timeoutMs > 0 &&
+      timeoutMs <= contract.policy.deadlineMs,
+    "bounded role timeout required",
+  );
+  assert.equal(
+    fs.realpathSync(cwd),
+    contract.workspace.worktreePath ?? contract.workspace.sourceRoot,
+    "role wave cwd mismatch",
+  );
+  const { members, reservedTokens } = validateRoleWaveInput(contract, wave);
   const worktree = members.some((member) => member.isolation === "worktree");
   const baseCommit = worktree
     ? inspectWorktreeBase(cwd, contract.workspace.baseCommit)
@@ -223,7 +242,7 @@ export function prepareRoleWave(contract, cwd, wave) {
             "L0 owns the designated host checks. Keep their criteria indeterminate until evidence arrives; do not invent a mock DOM or substitute harness to claim browser verification. Perform only assigned candidate checks.",
           ]
         : []),
-      "Use structured_output for the handoff. Check every required outputSchema field, including value.residualRisks. Native acceptanceReport is a sibling of value, never a substitute for required value fields. Report each criterion once; missing evidence is indeterminate. Parent owns final verification; never claim unreceived host checks or acceptance.",
+      "Use structured_output for the handoff. Check every required outputSchema field, including value.residualRisks. Native acceptanceReport is a sibling of value, never a substitute for required value fields. value has only summary, criterionResults and residualRisks: never invent top-level blocked, status, outcome or verdict fields. Report each criterion once using met, not_met, indeterminate or needs_user. Missing/pending host evidence is indeterminate; a required owner decision is needs_user, not permission to rerun implementation. Parent owns final verification; never claim unreceived host checks or acceptance.",
       `Report correction ceiling: ${contract.policy.maxReportRepairs}. Only an explicitly authorized report-only correction may resubmit existing evidence in the same run; never replay implementation or checks to fix a report. Preserve the rejected submission. Zero allowance, exhausted allowance or a stricter task stop rule means stop and request a decision, not permission to correct.`,
       "Classify errors by their effect: product failure, verification-tool limitation, report-format error or diagnostic. Preserve raw evidence; do not assume a failed check is harmless. Unknown effects, missing required evidence or unsafe state block progression. A supervisor request is not repair approval.",
     ].join("\n"),
@@ -231,7 +250,7 @@ export function prepareRoleWave(contract, cwd, wave) {
     async: false,
     output: `task-role-${wave.key}-${run.key}.json`,
     outputSchema: schema,
-    timeoutMs: contract.policy.deadlineMs,
+    timeoutMs,
     worktree: run.isolation === "worktree",
   }));
   const workflowScript = compileRoleWave(children);

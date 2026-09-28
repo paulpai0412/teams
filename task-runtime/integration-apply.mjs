@@ -10,6 +10,7 @@ import {
   integrationGitInvocation,
   integrationWorkspaceSnapshot as workspaceSnapshot,
   readIntegrationRehearsal,
+  restoreGitBaseModes,
 } from "./integration.mjs";
 
 function json(file) {
@@ -183,6 +184,7 @@ export function prepareIntegrationApply(context) {
   git(staged.cwd, ["checkout-index", "--all", `--prefix=${baseline}/`], {
     index,
   });
+  restoreGitBaseModes(staged.cwd, base, baseline);
   assert.equal(
     workspaceSnapshot(baseline).digest,
     before.workspaceDigest,
@@ -459,6 +461,18 @@ function readOperationReceipt(context, { dir, plan }, action) {
   );
   assert.equal(command.terminal.code, 0, "operation did not exit successfully");
   assert.equal(command.terminal.signal, null, "operation was interrupted");
+  if ("indexRefreshTerminal" in command) {
+    assert.deepEqual(
+      command.indexRefreshTerminal,
+      {
+        observed: true,
+        code: 0,
+        signal: null,
+        error: null,
+      },
+      "index refresh did not terminate successfully",
+    );
+  }
   assert.equal(
     command.mutationTerminal?.observed,
     true,
@@ -635,13 +649,42 @@ export async function executeIntegrationApply(
       authority: "interactive-confirmation",
       confirmedAt: new Date().toISOString(),
     });
-    let mutationTerminal = null;
+    let mutationTerminal = null,
+      indexRefreshTerminal = null;
     const command = await withTargetFence(plan, () => {
       context.assertOwner();
       assert.deepEqual(
         targetState(context),
         expected,
         "target changed before fenced apply",
+      );
+      // Read-only gates deliberately leave Git's stat cache untouched. A clean
+      // file restored/touched since the index was written can therefore fail
+      // `apply --index`. Refresh metadata only inside the confirmed, fenced
+      // operation; never refresh before approval or retry a failed mutation.
+      const refreshInvocation = integrationGitInvocation(plan.targetRoot, [
+        "update-index",
+        "--refresh",
+      ]);
+      const refresh = spawnSync(
+        "git",
+        refreshInvocation.args,
+        refreshInvocation.options,
+      );
+      indexRefreshTerminal = {
+        observed: !refresh.error && refresh.status !== null && !refresh.signal,
+        code: refresh.status,
+        signal: refresh.signal,
+        error: refresh.error?.code ?? null,
+      };
+      assert.ok(
+        indexRefreshTerminal.observed && refresh.status === 0,
+        `Git index refresh failed; reconcile required: ${String(refresh.error?.code ?? refresh.stderr).slice(0, 1500)}`,
+      );
+      assert.deepEqual(
+        logical(targetState(context)),
+        logical(expected),
+        "target changed during index refresh",
       );
       const invocation = integrationGitInvocation(
         plan.targetRoot,
@@ -667,7 +710,7 @@ export async function executeIntegrationApply(
         mutationTerminal.observed && mutation.status === 0,
         `Git mutation failed; reconcile required: ${String(mutation.error?.code ?? mutation.stderr).slice(0, 1500)}`,
       );
-      context.assertOwner();
+      context.assertOwner({ duringApply: action === "apply" });
       assert.deepEqual(
         logical(targetState(context)),
         action === "apply" ? plan.after : logical(plan.before),
@@ -686,6 +729,7 @@ export async function executeIntegrationApply(
       ...identity,
       schemaVersion: "teams-integration-apply-command/1",
       ...command,
+      indexRefreshTerminal,
       mutationTerminal,
       after,
       observationError,
@@ -701,7 +745,7 @@ export async function executeIntegrationApply(
       null,
       "cannot observe target; preserve and reconcile",
     );
-    context.assertOwner();
+    context.assertOwner({ duringApply: action === "apply" });
     assert.deepEqual(
       logical(after),
       action === "apply" ? plan.after : logical(plan.before),

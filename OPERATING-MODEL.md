@@ -62,29 +62,19 @@ PI_OFFLINE=1 PI_MEMORY_EXIT_SUMMARY=off node ~/.pi/agent/teams/check-config.mjs
 
 ## 角色與責任
 
-**2026-09-17 模型配置更新：依使用者指示，整套 Agent Teams 改以 Antigravity 提供之便宜模型（Gemini 3.8 Flash / Gemini 3.7 Flash）配置各角色，避免測試浪費 token。**
-Subagents 預設使用 Antigravity Gemini Flash 系列；分析/審查/決策使用 Gemini 3.8 Flash，實作/除錯/測試/驗證使用 Gemini 3.7 Flash。
+**依使用者最新指示，全部 14 個 team profiles、subagents 預設、L0、TaskPi 與全部 Task 角色統一使用 `openai-codex/gpt-5.6-luna`（GPT-5.6 Luna）；各 role 保留原 thinking level。**
 
-| 模型                         | Thinking | 角色                           |
-| ---------------------------- | -------- | ------------------------------ |
-| antigravity/gemini-3.7-flash | low      | verifier、curator              |
-| antigravity/gemini-3.7-flash | medium   | researcher、e2e、docs、qa      |
-| antigravity/gemini-3.7-flash | high     | implementer、release、debugger |
-| antigravity/gemini-3.8-flash | high     | planner                        |
-| antigravity/gemini-3.8-flash | high     | challenger、reviewer、security |
-| antigravity/gemini-3.8-flash | medium   | **team.advisor，僅必要時**     |
-
-四個模型均在本機 registry 註冊；這是工作負載／資源分級政策，尚無本次模型
-benchmark 支持「最便宜／最佳」的說法。沒有自動 fallback；不得因一般任務
-失敗就把整個工作移交 Astra。主 agent 先檢查原始錯誤與既有分析。
+本機 registry 費率為 0；免費供應／額度仍依 provider 當下政策。模型標記為
+`reasoning: false`；各角色原有 thinking 設定保留，但不保證模型支援。
+工具、權限、token 預算與 advisor 的必要性限制不變。沒有自動 fallback；
+失敗先檢查原始錯誤與既有分析，不切回舊付費模型。
 
 只有一般分析仍無法釐清的重大決策／根因，才可請 advisor：先記錄問題、
-Luna/Terra 證據、必要性及預期決策，向使用者說明，預設一次、最多三項重點，
+既有分析證據、必要性及預期決策，向使用者說明，預設一次、最多三項重點，
 任何 follow-up 另說明理由。它不寫程式、不取得 shell，也不是必跑 review gate。
 原生工具可能把 advisor 列為 proactive skill 建議；該建議不構成必要性，主 agent
-不得因此自動呼叫 Astra。
-逐角色 strict modelScope 阻擋一般角色的 explicit/inherited Astra override 與
-非 openai-codex 模型；「何時必要」由主 agent 契約判斷，不是假裝存在自動裁決器。
+不得因此自動呼叫 advisor。
+全域與逐角色 strict modelScope 僅允許 GPT-5.6 Luna，拒絕其他模型 override；「何時必要」由主 agent 契約判斷，不是假裝存在自動裁決器。
 新的／覆寫的 project profiles 仍需重審模型與權限，不自動沿用顧問例外。
 
 工具集合：
@@ -115,7 +105,7 @@ Luna/Terra 證據、必要性及預期決策，向使用者說明，預設一次
 | team.security    | high     | threat model、auth/input/secrets/agent/CI/supply-chain 靜態審查          | R L G                                                            | code-audit、llm-security、supply-chain-security、codebase-memory     |
 | team.curator     | low      | 證據回顧、memory 去重／失效、可測試的流程改善提案                        | R                                                                | team-member                                                          |
 
-另有 **team.advisor（Astra medium，R L，team-member／codebase-design）**：僅重大
+另有 **team.advisor（GPT-5.6 Luna，設定 medium，R L，team-member／codebase-design）**：僅重大
 未解決問題的唯讀諮詢；不參與常態 wave。Timeout 由主 agent 依任務設定；
 advisor profile fallback 為 15 分鐘，其餘 13 角色為 30 分鐘；皆 fresh context。
 

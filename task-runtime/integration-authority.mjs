@@ -2,9 +2,16 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import { readEvidenceBytes } from "../host-evidence.mjs";
-import { bytesDigest, digest, validateScopedPath } from "./contracts.mjs";
+import {
+  bytesDigest,
+  digest,
+  validateScopedPath,
+  workerRoleCeiling,
+} from "./contracts.mjs";
 import { inspectNativeHandoffs } from "./native-handoff.mjs";
+import { verifyReportOrigin } from "./report-lineage.mjs";
 import { nativeWorkflowResult } from "./role-lifecycle.mjs";
+import { branchId, roleRecovery } from "./role-recovery.mjs";
 import { measureSessionBytes } from "./task-usage.mjs";
 import { usesSharedTaskBudget } from "./budget-pool.mjs";
 import { assertTaskBudgetUsage } from "./task-budget.mjs";
@@ -154,6 +161,30 @@ export function integrationReviewBinding(context, staged, candidate) {
     ),
     "final integrated-source evidence binding required before apply",
   );
+  if (staged.inheritedFrom) {
+    assert.deepEqual(
+      result.childRunRefs,
+      [],
+      "report revision cannot claim a new writer",
+    );
+    const intent = mailbox.readJson("receipts/report-revision-intent.json");
+    assert.equal(digest(intent), staged.inheritedFrom.intentDigest);
+    const origin = verifyReportOrigin({
+      runtimeRoot: context.runtimeRoot,
+      ledger: context.ledger,
+      contract,
+      intent,
+      assertOwner: context.assertOwner,
+    });
+    assert.equal(origin.staged.tree, staged.tree);
+    assert.equal(origin.staged.sourceDigest, staged.sourceDigest);
+    return {
+      schemaVersion: "teams-integration-review-binding/1",
+      requestDigest: candidate.requestDigest,
+      candidateDigest: candidate.candidateDigest,
+      writerEvidenceDigest: intent.writerEvidenceDigest,
+    };
+  }
   const read = (origin, limit) => {
     const rows = staged.captures.filter((row) => row.origin === origin);
     assert.equal(rows.length, 1, "unique captured native artifact required");
@@ -197,6 +228,7 @@ export function integrationReviewBinding(context, staged, candidate) {
     roles.length,
     "duplicate native root run",
   );
+  const recovery = roleRecovery(mailbox, contract, read);
   const receipts = roles.map((role) => {
     let status;
     const statusBytes = read(
@@ -256,6 +288,10 @@ export function integrationReviewBinding(context, staged, candidate) {
         "native role outside approved policy",
       );
       assert.ok(
+        workerRoleCeiling(contract).includes(member.role),
+        "native Worker role outside approved policy",
+      );
+      assert.ok(
         ["mutation", "check", "read-only", "review"].includes(member.mode),
         "unknown native member mode",
       );
@@ -282,6 +318,9 @@ export function integrationReviewBinding(context, staged, candidate) {
           "native wave budget exceeded",
         );
       }
+      // Superseded attempts still bind identity and all measured usage above.
+      // Their failed product evidence is retained, never relabeled successful.
+      if (recovery.replaced.has(branchId(role.runId, member.key))) continue;
       if (["mutation", "check"].includes(member.mode)) writerEvidence(step);
       else {
         assert.ok(
