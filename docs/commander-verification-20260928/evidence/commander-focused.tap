@@ -1,0 +1,30 @@
+✔ Commander joins focused Goal-X tasks with latest Task Pi without creating state (4.529787ms)
+✔ Candidate, staged check, review and final Goal readback remain distinct (2.043281ms)
+✔ Invalid evidence fails visibly rather than counting as progress (0.817808ms)
+✔ Goal-X symlink and blocked review cannot be presented as success (1.775163ms)
+✔ Herdr navigation uses returned workspace identity, never a derived pane prefix (0.992793ms)
+✔ Shortcut target opens in TUI without waiting for model idle or focused Goal (7.879674ms)
+✔ Panel opens, updates without model turns and closes its timer (0.935577ms)
+✔ runtime readiness uses fresh live evidence, never a package/version allowlist (59.949882ms)
+▶ public entry admits only explicit canary with compatible live protocols, never promotes readiness
+  ✔ L0 dispatches two overlapping v3 Workers and cancels each independently (446.70708ms)
+  ℹ {"executionId":"ec3ca582-b3ad-406d-9330-001247ff2773","taskId":"task-a","workerSessionId":"worker-ec3ca582-b3ad-406d-9330-001247ff2773","processProof":{"terminal":false,"reason":"worker-process-alive"}}
+  ℹ {"executionId":"59aa82b4-59b5-41b2-9240-03b69c5bb001","taskId":"task-b","workerSessionId":"worker-59aa82b4-59b5-41b2-9240-03b69c5bb001","processProof":{"terminal":false,"reason":"worker-process-alive"}}
+✔ public entry admits only explicit canary with compatible live protocols, never promotes readiness (478.895067ms)
+✔ exited Pi shell is idle only with exact foreground shell proof (0.636955ms)
+✔ failure usage retains cache, deduplicates messages, and exposes unknown launches (1.699148ms)
+✔ leaf usage follows native steps.sessionFile rather than guessing async directory names (1.264291ms)
+✔ strict review usage includes nested tools and compaction, never retained-tail duplicates (0.472781ms)
+✔ native Agent loop preserves rejection details and error flag through the public tool_result hook (179.142014ms)
+✔ missing draft spec path is a bound pre-dispatch input correction, not a Task retry (0.764272ms)
+✔ only explicit validation failures carry an input rejection, never arbitrary runtime exceptions (0.565479ms)
+✔ execution selector rejection is exact-call bound and cannot soften runtime or foreign-tool errors (0.644448ms)
+✔ host input rejection is bound to exact tool call, input and non-launch phase (0.411373ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1221.270184

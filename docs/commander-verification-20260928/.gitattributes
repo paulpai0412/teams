@@ -1,0 +1,4 @@
+# Exact terminal evidence keeps padding/CRLF bytes; do not normalize or diff as source.
+evidence/commander-shortcut-visible.ansi -diff
+evidence/commander-shortcut-visible.txt -diff
+evidence/commander-capture.html -diff

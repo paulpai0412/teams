@@ -1,0 +1,137 @@
+✔ shared Task admission dispatches a subsequent role after actual usage exceeds its soft estimate (54.659099ms)
+✔ v3 Worker subset rejects single and entire mixed waves before native effects, then allowed work proceeds (20.783721ms)
+▶ v3 Worker role admission preserves the required L0 source-bound review slot
+  ✔ total role spawns 2 (15.404409ms)
+  ✔ total role spawns 3 (23.074601ms)
+✔ v3 Worker role admission preserves the required L0 source-bound review slot (38.963201ms)
+✔ D1 v3 single mutation uses the managed workflow and shared mutation rejects before RPC (29.517242ms)
+▶ v3 zero-write role dispatch keeps single readers shared and explicit wave readers isolated
+  ✔ shared (17.079667ms)
+  ✔ worktree (24.198346ms)
+✔ v3 zero-write role dispatch keeps single readers shared and explicit wave readers isolated (41.688964ms)
+▶ D6 role dispatch checks the entire workspace before RPC
+  ✔ addition (4.517168ms)
+  ✔ modification (6.168961ms)
+  ✔ deletion (4.990939ms)
+  ✔ mode (3.481261ms)
+  ✔ empty directory (3.499542ms)
+  ✔ prefix lookalike (5.482867ms)
+  ✔ report lookalike (5.066378ms)
+  ✔ symlink (4.44268ms)
+  ✔ sensitive path (3.409831ms)
+✔ D6 role dispatch checks the entire workspace before RPC (41.932598ms)
+✔ D6 permits authorized adds, binary edits and deletes; runtime artifacts are explicit (30.769104ms)
+✔ D6 missing, altered and foreign baselines cannot be recaptured (3.70065ms)
+✔ D6 baseline admission rejects harness overlap and unsafe trees before reservation (4.48954ms)
+✔ D6 workspace scanning rejects FIFOs without blocking the host (38.754383ms)
+✔ D6 captures an explicit second checkout and empty workspace without guessing exclusions (3.711208ms)
+✔ D5b1 role admission counts worker cache before any native call (6.29207ms)
+✔ D5b1 complete failed native session costs cannot be omitted (10.672815ms)
+✔ D5b1 a fresh controller cannot reset existing role history (7.761503ms)
+▶ D5b1 incomplete, altered or foreign usage stops admission without spending a new reservation
+  ✔ worker-truncate (12.24129ms)
+  ✔ worker-unknown (8.686828ms)
+  ✔ native-missing (10.139349ms)
+  ✔ native-proof (8.773752ms)
+  ✔ member-cap (10.885447ms)
+  ✔ checkpoint (6.795035ms)
+  ✔ prior (9.515753ms)
+  ✔ partial-plan (6.987525ms)
+✔ D5b1 incomplete, altered or foreign usage stops admission without spending a new reservation (74.722402ms)
+✔ D5b1 already charged native bytes cannot shrink on a later wave (15.142282ms)
+✔ D5b1 cancellation is consumed before metered native dispatch (4.004852ms)
+✔ D5b1 missing native directory leaves an unknown run, never a retry grant (7.683004ms)
+✔ D5b1 sequential and parallel role starts preserve measured checkpoints (12.361646ms)
+✔ D5 Worker turns charge failed/cache/summary usage and stop before another model request (9.197134ms)
+✔ D5 Worker waits for native termination then meters it without a completion callback (14.319965ms)
+✔ D5 settled hosted leaf over budget hands failure to collect, not another Worker turn (17.708714ms)
+✔ D5 active coordination retains allocations, meters Worker turns and forbids another wave (20.37955ms)
+▶ D5 Worker turn checkpoints cannot disappear, change or reset with a new controller
+  ✔ recreate (5.268555ms)
+  ✔ truncate (7.793951ms)
+  ✔ checkpoint (7.195599ms)
+  ✔ unknown (6.310621ms)
+✔ D5 Worker turn checkpoints cannot disappear, change or reset with a new controller (27.134604ms)
+▶ D5 fresh L0 ownership and liveness gate Worker turns and role dispatch
+  ✔ fenced (4.478486ms)
+  ✔ dead (4.221501ms)
+  ✔ deadline (3.435038ms)
+  ✔ state (3.643344ms)
+✔ D5 fresh L0 ownership and liveness gate Worker turns and role dispatch (16.207875ms)
+✔ D5 public SessionManager admits a fresh zero-usage Worker before its first disk flush (422.149245ms)
+✔ D5 ending L0 in a still-live process revokes Worker admission without releasing its reservation (5.107473ms)
+✔ D5 only a never-launched cancellation can carry zero missing-session usage (7.030963ms)
+✔ D5 actual Worker extension success (288.015279ms)
+✔ D5 actual Worker extension budget (577.274922ms)
+✔ D5 actual Worker extension shared (276.703937ms)
+(node:3152847) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ D5 actual Worker extension send-error (869.380377ms)
+✔ M3 public RPC role controller enforces one writer and bounded budgets (10.834808ms)
+✔ D1 dynamic read-only wave uses one native root, stable keys and every member's budget (9.93269ms)
+✔ D1 invalid shared-writer and mixed review waves fail before any native call (2.838056ms)
+✔ M5 cancellation requests public RPC stop and waits for terminal event (6.557021ms)
+✔ M3 ambiguous spawn failure remains unresolved and cannot be retried blindly (3.521224ms)
+✔ D7 reconstructed controller reads native terminal evidence, not empty RAM (11.481269ms)
+✔ D7 timed-out stop is not repeated after controller reconstruction (12.269928ms)
+✔ native no-start crosses RPC, preserves prior usage, and permits Worker cancellation without replay (113.552831ms)
+▶ unproven or mismatched no-start replies remain unknown, not zero-usage failures
+  ✔ (s) => {
+      s.processTerminal.reason = undefined;
+    } (24.136957ms)
+  ✔ (s) => {
+      s.pid = 12345;
+    } (27.401871ms)
+  ✔ (s) => {
+      s.runId = "different-run";
+    } (26.61184ms)
+  ✔ (s) => {
+      s.sessionId = "different-owner";
+    } (28.828859ms)
+  ✔ (s) => {
+      s.sessionRoot = "/different-task";
+    } (24.003339ms)
+  ✔ (s) => {
+      s.steps[0].sessionFile = "/some/session.jsonl";
+    } (19.884937ms)
+  ✔ (s) => {
+      s.steps[0].status = "running";
+    } (18.216538ms)
+  ✔ (s) => {
+      s.steps[0].children = [{ state: "running" }];
+    } (18.564562ms)
+✔ unproven or mismatched no-start replies remain unknown, not zero-usage failures (188.489868ms)
+✔ D7 an ambiguous spawn stays unresolved after reconstruction (7.791935ms)
+✔ public role tool documents effects, single defaults and one-run isolated read-only handoffs (0.596189ms)
+✔ public Worker schemas match exclusive spawn shapes and execution-relative evidence (9.938617ms)
+✔ L0-authored task scope and context refs reach the Worker without a patch or fixture-specific objective (4.184794ms)
+✔ non-Todo interface literals and hashed original requirements traverse contract, Worker and native leaf payload (20.625004ms)
+✔ prepared C3 candidate objective survives the actual Task mailbox and Worker prompt without L0 control instructions (3.813974ms)
+✔ Worker evidence keeps exact-byte verification and accepts a correctly paired current file (6.179755ms)
+✔ source capture failure notifies the owner instead of leaving a live Worker waiting (2.995562ms)
+✔ D7 persisted cancellation rejects a late result before publication (3.37075ms)
+✔ shared read-only branch repair requires clean source and references a full 16 KiB assignment (failed process) (52.940745ms)
+✔ shared read-only branch repair requires clean source and references a full 16 KiB assignment (completed process) (49.568902ms)
+✔ v3 known product defects remain honest review-only candidates, never acceptance-ready (8.025334ms)
+✔ v3 Worker role subset restricts dispatch without changing total Task or L0 review authority (3.319308ms)
+✔ preparation diagnostics expose capability gaps without rewriting requirements or commands (0.859751ms)
+✔ large sealed requirements stay bounded through E0 and E1: teams-task-runtime/1 (7.738577ms)
+✔ large sealed requirements stay bounded through E0 and E1: teams-task-runtime/3 (15.946552ms)
+✔ prompt limit counts UTF-8 bytes, accepts exactly 6144 and retains Worker guard (0.769119ms)
+✔ opted-in E0 admission reserves prompt space for immutable E1 before allocating (1.942895ms)
+✔ D6 permits official Goal metadata only in the source project without granting Worker writes (12.294693ms)
+✔ T01 contract canonicalization is stable and strict (0.78303ms)
+✔ T02/T04 one controller and one open task reservation (1.682312ms)
+✔ execution transitions use state and revision compare-and-swap (1.553723ms)
+✔ T03/T20/T21 mailbox writes are scoped and idempotent (1.211684ms)
+✔ result validation rejects missing evidence and stale identity (1.527479ms)
+✔ U3 ledger migrates v0/v1/v2 to v3 and refuses future schemas (3.957367ms)
+✔ U3 mailbox reads v0/v1 and refuses unknown schemas (0.563953ms)
+ℹ tests 104
+ℹ suites 0
+ℹ pass 104
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3621.964357

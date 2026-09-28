@@ -29,6 +29,7 @@ test("native Agent loop preserves rejection details and error flag through the p
   teamsOrchestrator({
     registerTool() {},
     registerCommand() {},
+    registerShortcut() {},
     on: (name, fn) => handlers.set(name, fn),
   });
   const model = {

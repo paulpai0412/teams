@@ -5411,6 +5411,8 @@ for (const action of [
       rpcCalls = [];
     extension({
       registerTool: (tool) => tools.set(tool.name, tool),
+      registerCommand() {},
+      registerShortcut() {},
       on: (name, handler) => handlers.set(name, handler),
       getActiveTools: () => ["update_goal_task", "update_goal"],
       getAllTools: () => [

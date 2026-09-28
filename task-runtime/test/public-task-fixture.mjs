@@ -188,6 +188,7 @@ export async function publicTaskFixture(
   extension({
     registerTool: (tool) => tools.set(tool.name, tool),
     registerCommand() {},
+    registerShortcut() {},
     on: (name, handler) => handlers.set(name, handler),
     getActiveTools: () => [...tools.keys(), ...goals.map((x) => x.name)],
     getAllTools: () => [...tools.values(), ...goals],

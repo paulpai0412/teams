@@ -1,0 +1,29 @@
+{
+  "report": "/home/timmypai/.pi/agent/teams-commander-integration/docs/commander-verification-20260928/index.html",
+  "captureSource": "/home/timmypai/.pi/agent/teams-commander-integration/docs/commander-verification-20260928/evidence/commander-capture.html",
+  "captureSha256": "b8c7b1328054e53cd7d38971ba7a8fce951d3f5c430c414562dcd4feb6b1ab8f",
+  "screenshotSha256": "350687620891c2cf4de29ad65345b9762052a7ebf4a6b897937961cf857d21eb",
+  "groups": [
+    {
+      "id": "commander-focused",
+      "tests": 19,
+      "pass": 19,
+      "fail": 0,
+      "digest": "0e9dc0b2260263a5fef2edffe8b2f153e9842e93f0d1e8ac9930661c1f2527b8"
+    },
+    {
+      "id": "public-integration",
+      "tests": 6,
+      "pass": 6,
+      "fail": 0,
+      "digest": "901b612adf7b3ba3ae144b9949b9543dc960ecbe93563e880841b0808be5254c"
+    },
+    {
+      "id": "baseline-runtime-roles",
+      "tests": 104,
+      "pass": 104,
+      "fail": 0,
+      "digest": "a13fbd6c518da658101db6c35997146b50c45358cc5504a5b14d69fe440a2546"
+    }
+  ]
+}

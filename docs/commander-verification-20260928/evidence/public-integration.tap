@@ -1,0 +1,14 @@
+✔ D4d public check-failure consumes actual host evidence without RPC spawn or model access (180.739742ms)
+✔ D4c public seal-review consumes actual host evidence without RPC spawn or model access (1957.263152ms)
+✔ D4d public read-applied-review consumes actual host evidence without RPC spawn or model access (3861.671959ms)
+✔ D4d public final-acceptance consumes actual host evidence without RPC spawn or model access (6454.180042ms)
+✔ D4d public verified-patch consumes actual host evidence without RPC spawn or model access (3484.516244ms)
+✔ R31-H read-only sealed BLOCKED review revalidates native capture without old writes (1355.812111ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 17798.350366

@@ -37,6 +37,8 @@ import {
 } from "../../task-runtime/orchestrator.mjs";
 
 import { taskToolParameters } from "../../task-runtime/task-tool-inputs.mjs";
+import { projectGoal, projectTask } from "../../task-runtime/commander-projection.mjs";
+import { openCommander } from "./commander-panel.mjs";
 import { taskDeadlineAt } from "../../task-runtime/task-deadline.mjs";
 import {
   inputRejectionReply,
@@ -367,6 +369,25 @@ export default function teamsOrchestrator(pi) {
   const pendingGoalCommits = new Map();
   const ownedExecutions = new Set();
   let draining = false;
+  let commanderOpen = false;
+
+  const showCommander = async (ctx) => {
+    if (commanderOpen) return;
+    commanderOpen = true;
+    try {
+      await openCommander(ctx, orchestrator, projectId, ctx.sessionManager, pi.events);
+    } finally {
+      commanderOpen = false;
+    }
+  };
+  pi.registerCommand("teams-commander", {
+    description: "Open the live Agent Teams Commander panel",
+    handler: async (_args, ctx) => showCommander(ctx),
+  });
+  pi.registerShortcut("ctrl+alt+t", {
+    description: "Open Agent Teams Commander while work continues",
+    handler: async (ctx) => showCommander(ctx),
+  });
 
   // The existing E2E RPC observer must drain through the LIVE owner, without
   // asking a model to cancel or constructing a second controller after its exit.
@@ -1095,14 +1116,30 @@ export default function teamsOrchestrator(pi) {
     name: "team_task_status",
     label: "Task Pi Status",
     description:
-      "Read the authoritative execution ledger state. Pane state alone is never completion evidence.",
+      "Read the authoritative execution ledger plus a bounded, read-only Commander projection of waves, reviews, phase and anomalies. Pane state alone is never completion evidence.",
     parameters: taskToolParameters.team_task_status,
     async execute(_id, params) {
       const execution = orchestrator.ledger.getExecution(params.execution_id);
+      const projection = projectTask(orchestrator, execution);
       return result(
-        `Task Pi ${params.execution_id}: ${execution.state}; Goal commit ${execution.goalCommitState}; resultDigest=${execution.resultDigest ?? "none"}. Status is not acceptance or permission to collect/stage/review a closed execution.`,
-        execution,
+        `Task Pi ${params.execution_id}: ${execution.state}; phase=${projection.phase}; next=${projection.next}; Goal commit ${execution.goalCommitState}; resultDigest=${execution.resultDigest ?? "none"}. Status is not acceptance or permission to collect/stage/review a closed execution.`,
+        { ...execution, projection },
       );
+    },
+  });
+
+  registerTaskTool({
+    name: "team_goal_board",
+    label: "Agent Teams Commander Goal Board",
+    description: "Read the current focused Goal-X goal and latest Task Pi executions in one bounded, read-only projection. Does not launch or approve work.",
+    parameters: { type: "object", properties: {}, additionalProperties: false },
+    async execute(_id, _params, _signal, _update, ctx) {
+      const goalId = focusedGoalId(ctx.sessionManager);
+      const board = projectGoal(orchestrator, {
+        projectId, goalId, sourceRoot: ctx.cwd,
+        ownerSessionId: ctx.sessionManager.getSessionId(),
+      });
+      return result(`Goal ${goalId}: ${board.tasks.length} task(s); ${board.tasks.filter((task) => task.alerts.length).length} requiring attention. Observations are not acceptance.`, board);
     },
   });
 

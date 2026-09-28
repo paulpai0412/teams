@@ -209,6 +209,17 @@ export class HerdrPort {
     return this.run(["pane", "get", id], 5_000);
   }
 
+  // Navigation only: read the exact workspace ID from Herdr instead of
+  // constructing one from an opaque pane ID. No agent prompt or pane control.
+  focusWorkspaceForPane(id) {
+    assert.match(id, /^w[^:]+:p[^:]+$/, "valid Herdr pane required");
+    const pane = this.status(id)?.result?.pane;
+    assert.equal(pane?.pane_id, id, "Herdr pane identity changed");
+    assert.match(pane.workspace_id, /^w[A-Za-z0-9_-]+$/, "Herdr workspace ID missing");
+    this.run(["workspace", "focus", pane.workspace_id], 5_000);
+    return { workspaceId: pane.workspace_id, paneId: id };
+  }
+
   isIdle(id, expectedCwd) {
     const status = this.status(id);
     const pane = status?.result?.pane ?? status?.pane;

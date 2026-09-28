@@ -1,0 +1,6 @@
+[0928/194526.526225:WARNING:media/gpu/vaapi/vaapi_wrapper.cc:1660] drmGetDevices2() has not found any devices
+[0928/194526.527232:WARNING:sandbox/policy/linux/sandbox_linux.cc:405] InitializeSandbox() called with multiple threads in process gpu-process.
+414911 bytes written to file /home/timmypai/.pi/agent/teams-commander-integration/docs/commander-verification-20260928/evidence/report-desktop.png
+[0928/194526.847934:WARNING:media/gpu/vaapi/vaapi_wrapper.cc:1660] drmGetDevices2() has not found any devices
+[0928/194526.849104:WARNING:sandbox/policy/linux/sandbox_linux.cc:405] InitializeSandbox() called with multiple threads in process gpu-process.
+169652 bytes written to file /home/timmypai/.pi/agent/teams-commander-integration/docs/commander-verification-20260928/evidence/report-narrow.png

@@ -1,0 +1,39 @@
+
+ [0m[1m[38;2;138;190;183mpi[0m[38;2;102;102;102m v0.87.1[0m                                                                      
+ [0m[38;2;102;102;102mescape[0m[38;2;128;128;128m interrupt · [0m[38;2;102;102;102mctrl+c/ctrl+d[0m[38;2;128;128;128m clear/exit · [0m[38;2;102;102;102m/[0m[38;2;128;128;128m commands · [0m[38;2;102;102;102m![0m[38;2;128;128;128m bash · [0m[38;2;102;102;102mctrl+o[0m[38;2;128;128;128m more[0m 
+ [0m[38;2;102;102;102mPress ctrl+o to show full startup help and loaded resources.[0m                    
+                                                                                 
+ [0m[38;2;102;102;102mPi can explain its own features and look up its docs. Ask it how to use or      [0m
+ [0m[38;2;102;102;102mextend Pi.[0m                                                                      
+
+[0m[38;2;240;198;116m[Skills][0m                                                                         
+[0m[38;2;102;102;102m  ask-matt, ask-user, batch-grill-me, claude-handoff, code-review,               [0m
+[0m[38;2;102;102;102mcodebase-memory, council-mode, diagnosing-bugs, diagram-design, edit-article,    [0m
+[0m[38;2;102;102;102mgrill-me, grill-with-docs, handoff, implement, improve-codebase-architecture,    [0m
+[0m[38;2;102;102;102mkb-retriever, loop-me, mcp-scripting, ml-research, parse-document, pi-subagents, [0m
+[0m[38;2;102;102;102mqa, resolving-merge-conflicts, setup-matt-pocock-skills, setup-ts-deep-modules,  [0m
+[0m[38;2;102;102;102mshow-me, teach, to-questionnaire, to-spec, to-tickets, triage,                   [0m
+[0m[38;2;102;102;102mubiquitous-language, wayfinder, web-design-engineer, wizard, writing-beats,      [0m
+[0m[38;2;102;102;102mwriting-fragments, writing-great-skills, writing-shape[0m                           
+
+[0m[38;2;240;198;116m[Extensions][0m                                                                     
+[0m[38;2;102;102;102m  index.mjs, pi-goal-x@0.31.2:goal.ts, pi-subagents@0.66.0[0m                       
+
+[0m[38;2;240;198;116m[Themes][0m                                                                         
+[0m[38;2;102;102;102m  fzf-bat, ghostty-dark, nightowl, p10k-inspired[0m                                 
+
+
+[0m[38;2;255;255;0m──[0mAGENT TEAMS COMMANDER  |  live read-only inspection                         [0m[38;2;255;255;0m───[0m
+ [0m[1m[38;2;255;255;0mP[0mGoal unfocused  Goal-X unfocused  captured 2026-09-28T11:43:43.113Z            
+ [0m[38;2;128;128;128mP[0mL0 native fleet observed: none                                                 
+ [0m[38;2;128;128;128mP[0mj/k select  Enter details  PgUp/Dn scroll  t tasks  a alerts  h help  w Wo     
+ ---------------------------------------------------------------------------     
+ -Goal-X: Other open project Tasks are shown below; focus a Goal-X goal for      
+[0m[38;2;255;255;0m──[0mNo Task Pi execution in the focused Goal.                                   [0m[38;2;255;255;0m───[0m
+  Pane IDs navigate workspaces, not completion proof. Inspect the Worker Fle     
+[0m[38;2;178;148;187m─────────────────────────────────────────────────────────────────────────────────[0m
+[0m[7m [0m                                                                                
+[0m[38;2;178;148;187m─────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;2;102;102;102m~/.pi/agent/teams-commander-integration (feat/agent-teams-commander-integration)[0m
+[0m[38;2;102;102;102m$0.000 (sub) 0.0%/272k (auto)                  (openai-codex) gpt-5.6-luna • high[0m
+direct-only · compatibility gate

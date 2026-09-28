@@ -256,7 +256,10 @@ async function verifyParallelWorkers(t, root, tools, handlers, ctx) {
     assert.equal(children.length, 2);
     assert.equal(closedPanes.length, 0);
     for (const execution of [a, b]) {
-      assert.equal((await status(execution.executionId)).state, "RUNNING");
+      const observedStatus = await status(execution.executionId);
+      assert.equal(observedStatus.state, "RUNNING");
+      assert.equal(observedStatus.projection.paneId, execution.paneId);
+      assert.equal(observedStatus.projection.phase, "worker");
       assert.equal(
         fs.existsSync(
           path.join(
@@ -500,6 +503,7 @@ test("public entry admits only explicit canary with compatible live protocols, n
       },
       registerTool: (tool) => tools.push(tool),
       registerCommand: (name, command) => commands.set(name, command),
+      registerShortcut: () => {},
       on: (name, fn) => handlers.set(name, fn),
       getAllTools: () =>
         scenario.goal
